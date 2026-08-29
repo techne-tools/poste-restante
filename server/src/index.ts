@@ -29,14 +29,17 @@ import { NoopPayloadStore } from "./minio/store.js";
 import { IngestionPipeline } from "./pipeline/pipeline.js";
 import { Retrieval } from "./retrieval/retrieval.js";
 import { WhisperService } from "./whisper/service.js";
-import { createLogger } from "./pipeline/logger.js";
+import { createLogger, silentLogger, type Logger } from "./pipeline/logger.js";
 
 /**
  * Build the full archive spine from the environment. Connects to postgres
  * (applying migrations), ensures the qdrant collection, and wires the pipeline
  * and retrieval together. Call `close()` when done.
  */
-export async function buildHouse(env: NodeJS.ProcessEnv = process.env) {
+export async function buildHouse(
+  env: NodeJS.ProcessEnv = process.env,
+  log: Logger = createLogger(),
+) {
   const config = loadConfig(env);
   const db = await connectDbAndMigrate(config.databaseUrl);
   const embedder = createEmbedder(config.embedding);
@@ -48,7 +51,6 @@ export async function buildHouse(env: NodeJS.ProcessEnv = process.env) {
   await semantic.ensureCollection();
   const repo = new PostgresRepository(db.pool);
   const payloads = new NoopPayloadStore();
-  const log = createLogger();
   const pipeline = new IngestionPipeline(repo, semantic, embedder, payloads, log);
   const retrieval = new Retrieval(db.pool, semantic, embedder);
   const whisper = new WhisperService(db.pool, log);

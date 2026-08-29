@@ -12,9 +12,12 @@
  */
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { buildHouse } from "../index.js";
+import { createStderrLogger } from "../pipeline/logger.js";
 import { createMcpHouse } from "./server.js";
 
-const house = await buildHouse();
+// The MCP server speaks JSON-RPC on stdout — every log line must go to
+// stderr or it corrupts the protocol channel.
+const house = await buildHouse(process.env, createStderrLogger());
 const server = createMcpHouse(house);
 const transport = new StdioServerTransport();
 

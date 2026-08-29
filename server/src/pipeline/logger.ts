@@ -22,6 +22,24 @@ export function createLogger(): Logger {
   };
 }
 
+/**
+ * A logger that writes everything to stderr. Required for protocol faces
+ * that own stdout — the MCP server speaks JSON-RPC on stdout, so any log
+ * line there would corrupt the protocol. Logs stay local; they never
+ * phone home.
+ */
+export function createStderrLogger(): Logger {
+  const write = (level: string, event: string, fields?: Record<string, unknown>) => {
+    const line = JSON.stringify({ level, event, ...fields, ts: new Date().toISOString() });
+    process.stderr.write(line + "\n");
+  };
+  return {
+    info: (event, fields) => write("info", event, fields),
+    warn: (event, fields) => write("warn", event, fields),
+    error: (event, fields) => write("error", event, fields),
+  };
+}
+
 /** A silent logger for tests. */
 export function silentLogger(): Logger {
   return { info: () => {}, warn: () => {}, error: () => {} };
