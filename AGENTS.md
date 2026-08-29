@@ -18,7 +18,7 @@ This is a **design-first** repo. The two-month Open Design window (granted 2026-
 
 ## Working conventions
 
-- **Docs split (callsheet convention):** the public repo carries README, CHANGELOG, ARCHITECTURE, SPEC, SKETCH, LICENSE, CI, FUNDING, AGENTS. Design/process docs (PRODUCT, DESIGN, CONTRACT, PIPELINE, TASK, RECON, DEVISING, .impeccable) are **gitignored and local-only** — they contain personal details and are not for public pushes.
+- **Docs split (callsheet convention):** the public repo carries README, CHANGELOG, ARCHITECTURE, SPEC, SKETCH, LICENSE, CI, FUNDING, AGENTS, plus the design truth — PRODUCT, DESIGN, CONTRACT, and `.impeccable/` (committed 2026-08-29 so worktree agents can see it). Process docs (PIPELINE, TASK, RECON, DEVISING, PLAN-*, .impeccable process runs) are **gitignored and local-only** — they contain personal details and are not for public pushes.
 - **Pipeline:** phases tracked in PIPELINE.md (local). Current phase: 1 — Governance.
 - **Verification first.** Before claiming a task complete, run the verification commands. "Done" means the artifact exists and the evidence level is stated.
 - **No irreversible actions without confirmation.** No force-pushes, no deep deletions, no publishing without explicit approval.

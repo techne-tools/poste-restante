@@ -113,10 +113,10 @@ Ranking uses the house's own signals: recency (gentle decay), thread weight, cor
 Callsheet's ghost cards scaled from daily to conversational. Same shape: surface something relevant, let the user pick it up or not, learn from the response.
 
 - **The sidebar is the mailbox for the house's own letters** — surfaced when relevant, quiet when not.
-- **The learning loop is the collaboration.** Relevance tables are the house's model of what matters, shaped by your responses. Co-adaptation.
+- **The learning loop is the collaboration (70/30 Relevance/Gap split).** Relevance tables are the house's model of what matters, shaped by your responses. The house focuses 70% of its attention on immediate relevance and 30% on discovery of gaps.
 - **Signal strength:** replying to the whisper (strongest) > opening the linked letter > ignoring (decay) > explicit dismissal (strongest negative). The strongest signal is *writing back*.
 - **Transparency:** the relevance tables are visible and correctable. "The house thinks you care about the tempest" — you can see the model and correct it. The correction is a letter.
-- **The gap engine:** the house maps the active frame's territory (letters, citations, correspondents, questions, semantic neighbourhood), then finds what's missing — the six gap types. The offer is made with confidence and visible reasoning.
+- **The gap engine:** to control computational cost and prevent noise, the house localises its search for gaps to the active semantic cloud. It prioritises cheap structural gaps (e.g. unanswered questions, dormant threads) using database metadata, reserving expensive semantic scans for explicit user requests.
 
 ### 2.5 The house is headless; the UI is composed
 
@@ -186,13 +186,13 @@ The framework is the product; the software is a reference implementation. In two
 
 ---
 
-## 5. Open questions & tensions (what to push against)
+## 5. Resolved design decisions & remaining tensions
 
-1. **Headless house, composed UI.** Resolved in §2.5: the house has no UI of its own — it exposes primitives and the user composes the space. The Tauri app is the reference client, not THE UI. The pub (instance-native slow-social threads) is first-class content; the client is the space. The tension that remains: how much of the reference client to build in two months, and how much to leave to the user's own composition.
-2. **Convergence vs gap.** The learning loop converges on what the user picks up. The gap engine must keep offering what's *missing*, not what matches. How does the house balance the two? (The contradiction gap — the house surfacing that the work holds two positions — is the test case: a recommendation engine would never do it.)
-3. **Frame detection.** The house's weak point. If the frame is wrong, the gaps are noise. How does the house know what you're working on without asking?
-4. **Federation: none by default, but the constitution requires the architecture to allow it.** Peer-to-peer, never hub-and-spoke. Design for the possibility without building it.
-5. **The plural-time archive.** The genuinely novel piece. What does memory look like when time is plural? This is the piece that makes the house *weird* — and the piece no SaaS can copy.
+1. **Headless house, composed UI.** Resolved in §2.5: the house has no UI of its own — it exposes primitives and the user composes the space. The reference client is purely conceptual for this phase.
+2. **Convergence vs gap (70/30 split).** Resolved (2026-08-29): The house operates on a 70/30 split — 70% relevance, 30% gap. To prevent noise and contain computational cost, the gap engine does not run full-archive searches. Instead, it localises searches to the active semantic cloud and relies on cheap structural gaps (unanswered questions, dormant threads) rather than continuous, expensive semantic evaluation.
+3. **Frame detection via tags.** Resolved (2026-08-29): The house uses a hybrid tagging model with a 70/30 split. Explicit user tags (70%) anchor the core work frames. Implicit semantic tags (30%), generated via Qdrant cluster prototypes, provide fuzzy edges. The active frame is a dynamic tag centroid representing the user's active reading and writing cloud, shifting without manual input.
+4. **Federation: none by default.** The architecture permits peer-to-peer federation without hub-and-spoke structures, keeping the capability local-first.
+5. **The plural-time archive.** Resolved (2026-08-29): Visualised as the **Horizon View**. The timeline is a single vertical flow of letters, flanked by parallel lines representing active frame spans (like a transit diagram). Selecting a frame line brings its associated letters to the foreground and dims the rest, making intersections and overlapping contexts immediately clear.
 
 ---
 

@@ -33,17 +33,15 @@ dist-ssr
 .codex/
 .opencode/
 
-# Design & process docs — filled-in process templates with personal details.
-# Kept local only; the public repo carries README/CHANGELOG/AGENTS instead.
-DESIGN*.md
+# Design & process docs
+# Design truth (PRODUCT, DESIGN, CONTRACT, .impeccable) is COMMITTED — the pipeline
+# requires it for worktree agents (FLEET 2026-08-10). Process docs (PIPELINE, TASK,
+# RECON, DEVISING, PLAN-*) stay local-only — they carry personal details and machine names.
 DEVISING.md
 PIPELINE.md
 PLAN-*.md
-PRODUCT.md
 RECON.md
 TASK.md
-CONTRACT.md
-.impeccable/
 
 # agent-orchestrator station output captures
 .ao-capture/

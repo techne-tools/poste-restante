@@ -62,6 +62,8 @@ Every letter is an envelope + body. The envelope is metadata (from, to, date, th
 - **Threads are correspondences.** The thread is the unit, not the message.
 - **No push.** The mailbox is the UI. You open it when you want. *Presence not pressure — hold, never ping; visible not sent.*
 
+**Presence is structural, not stylistic.** Observed 2026-08-29: asked to design presence without ping, a frontier assistant model proposed an *active footnote* — a margin element that constantly updated itself with relevant material. Push-back produced a reframe, not a revision: the footnote became "contextual help." Same channel, new costume. The lesson: an assistant-shaped model *cannot hold* a house-shaped system — it reads "not in the user's eyeline" as a bug and repairs it, because intervention is the definition of its job. A rule ("we don't push") is a preference any future agent can re-read. **The schema must make the push unrepresentable:** no push channel, no active footnote, no "contextual help" that reaches the user uninvited. The mailbox is the only surface. Presence isn't a discipline the house practises — it's the only shape the house can take.
+
 **Internal protocol:** HTTP + JSON + markdown. Every address is a resource. Letters are JSON envelopes with markdown bodies. Delivery is a POST to an inbox. Pull by default.
 
 **Bridges (the house speaks one protocol internally, bridges to everything else):**

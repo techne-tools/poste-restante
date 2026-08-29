@@ -1,0 +1,164 @@
+{
+  "schema": "poste-restante/design-tokens/1",
+  "name": "Poste Restante — design language",
+  "status": "bound",
+  "source": "design-language-specimen.html (Open Design, 2026-08-29)",
+  "governing": "Every thing gets an address, every address receives letters, every letter is kept, and nothing arrives unless you come for it.",
+  "metaphor": "Familiar shape, opposite operation. The pub reads as a channel, the letter as a DM — and both refuse the platform's speed.",
+
+  "material": {
+    "note": "Warm paper, warm ink, one seal. The house is warm, not cool. One accent, used at most twice on any surface — the seal, never the page.",
+    "tokens": {
+      "--bg":      "oklch(98% 0.004 95)",
+      "--surface": "oklch(100% 0.002 95)",
+      "--fg":      "oklch(20% 0.018 70)",
+      "--muted":   "oklch(48% 0.012 70)",
+      "--border":  "oklch(90% 0.006 95)",
+      "--accent":  "oklch(52% 0.10 28)"
+    },
+    "roles": {
+      "--bg":      "paper — the page",
+      "--surface": "sheet — the letter, the card",
+      "--fg":      "ink — primary text",
+      "--muted":   "faded ink — secondary text, metadata",
+      "--border":  "the fold — hairlines, rules",
+      "--accent":  "seal wax — the single accent, ≤2 uses per surface"
+    }
+  },
+
+  "typography": {
+    "note": "Three voices. Serif is the letter (the writer). Sans is the reading (the reader). Mono is the machine (addresses, frames, kickers, metadata).",
+    "stacks": {
+      "--font-display": "'Iowan Old Style', 'Charter', Georgia, 'Times New Roman', serif",
+      "--font-body":    "-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif",
+      "--font-mono":    "ui-monospace, 'SF Mono', 'Menlo', 'Consolas', monospace"
+    },
+    "voices": {
+      "display": "serif — the letter, the writer's voice. Headings, ledes, signoffs, the whisper's opening line.",
+      "body":    "sans — the reading, the reader's voice. Paragraph text, UI labels, buttons.",
+      "mono":    "the machine — addresses, frames, kickers, kind labels, metadata. Never body prose."
+    }
+  },
+
+  "scale": {
+    "--step-0": "0.875rem",
+    "--step-1": "1rem",
+    "--step-2": "1.25rem",
+    "--step-3": "1.75rem",
+    "--step-4": "2.5rem",
+    "--step-5": "3.5rem",
+    "space": {
+      "--space-1": "0.5rem",
+      "--space-2": "1rem",
+      "--space-3": "1.5rem",
+      "--space-4": "2.5rem",
+      "--space-5": "4rem",
+      "--space-6": "6rem"
+    },
+    "rules": {
+      "--rule":        "1px solid var(--border)",
+      "--rule-strong": "1px solid var(--fg)"
+    }
+  },
+
+  "decisions": {
+    "flourish": {
+      "decided": true,
+      "value": "The envelope / the letter is the unit (the object every surface is made of); plural time is the framework (the navigation). Object + frame, not two competing flourishes."
+    },
+    "whisper": {
+      "decided": true,
+      "value": "A sidebar presence with a distinct identity — the house's own voice, not another inbox. Surfaced when relevant, quiet when not. Never intrusive."
+    },
+    "plural_time": {
+      "decided": true,
+      "value": "Calm and native, never a novelty. The frame rail sits beside the Gregorian timeline; the empty frame is a quiet invitation, not a guilt trip."
+    },
+    "pub": {
+      "decided": true,
+      "value": "Included in the reference client as a real screen, distinct from the private mailbox. Shaped like a channel, operates like a pub."
+    },
+    "scoping": {
+      "decided": true,
+      "value": "The reference client is a guide, not a bible. Build enough to prove the protocol; leave composition to the user."
+    }
+  },
+
+  "interaction": {
+    "note": "Presence not pressure — hold, never ping; visible not sent.",
+    "rules": [
+      "No pings, no badges, no notification counts, no alert tones. The letter waits.",
+      "No red for errors anywhere. Errors are ink-secondary grey (--muted), dismissible, calm.",
+      "Hover/focus/active states must never reduce text contrast. Move the background by ±0.06–0.12 on the OKLch L channel, or adjust border/shadow/position. Never change the foreground to --muted.",
+      "Every focusable element has a clear :focus-visible ring (accent).",
+      "Buttons: solid primary inverts to ink on hover; ghost buttons darken border + foreground on hover, never lighten text.",
+      "Disabled is the only state allowed to reduce contrast."
+    ]
+  },
+
+  "surfaces": {
+    "letter": {
+      "note": "The atomic unit. Envelope + markdown body. Every surface is made of letters.",
+      "rules": [
+        "A letter reads as a letter, not a chat bubble, not a feed card.",
+        "Envelope metadata (from, to, cc, thread, kind, lang, subject, frames) is minimal by default, expandable on demand.",
+        "Frames render quietly and legibly on the letter (a quiet frame line under the subject).",
+        "Each kind (letter, feed, system, audio, note, task) has a distinct-but-quiet identity — not six loud badges.",
+        "The audio letter presents the sound and its transcription as two related letters.",
+        "The address is visible on the letter — addressed to a specific person, in a specific room, in a specific work, not generic."
+      ]
+    },
+    "whisper_sidebar": {
+      "note": "The mailbox for the house's own letters. Ghost-card lineage: surface, pick up or ignore, learn.",
+      "rules": [
+        "Never pings, never badges, never counts.",
+        "Has a distinct identity — reads as the house's own voice, not another inbox.",
+        "Every offer shows its reasoning, expandable ('here's what I was seeing').",
+        "Pick-up, ignore, and dismissal are all one-tap, calm, reversible-feeling actions.",
+        "Replying ('write back') is the most prominent action on a whisper — the strongest signal.",
+        "The correction path is visible and simple; the correction is a letter."
+      ]
+    },
+    "archive_browser": {
+      "note": "Plural time. Gregorian is the index; frames are the way in. The genuinely novel piece.",
+      "rules": [
+        "A user can navigate by frame ('what did we decide in tech week?') and by Gregorian date, and both feel native.",
+        "A letter in multiple frames is handled gracefully, not duplicated.",
+        "The empty frame / unvisited corner is surfaced as a quiet invitation, not a guilt trip.",
+        "A contradiction between two letters in a frame is made visible without the browser picking a side.",
+        "Never ranks, never counts, never 'you might also like.'",
+        "The plural-time view is the piece that makes the house weird — and it must feel calm, not gimmicky."
+      ]
+    },
+    "address_book": {
+      "note": "The social graph. No follower counts, no feeds — just who you correspond with.",
+      "rules": [
+        "No follower counts, no ranking, no engagement metrics anywhere.",
+        "An address renders as a person/entity, not a raw string.",
+        "A person's card handles a set of names, not first+last. No gender field; pronouns free text. Plural by default.",
+        "One tap from an address to compose a letter."
+      ]
+    },
+    "pub": {
+      "note": "The house's public letters. Shaped like a channel, operates like a pub.",
+      "rules": [
+        "Reads as a shared public space, distinct from the private mailbox.",
+        "Refuses channel behaviour: no reactions, no presence dots, no typing indicators, no unread counts.",
+        "Letters are posted whole and read at leisure — the slowness is visible in the design."
+      ]
+    }
+  },
+
+  "acceptance": [
+    "One accent (seal wax), ≤2 uses per screen.",
+    "No red for errors anywhere.",
+    "Display and body typefaces differ (serif display / sans body / mono metadata).",
+    "No purple gradient wash; no warm beige/cream unless the house metaphor calls for it (it does — warm paper is deliberate).",
+    "Hover/focus never lowers contrast; :focus-visible ring present on all controls.",
+    "Layout integrity — no overlap, no clipping, no orphaned words.",
+    "The reference client proves the protocol — it is a client, not the client.",
+    "All five design pieces (letter, mailbox+whisper, archive, address book, pub) are coherent under one design language.",
+    "The app is calm: no pings, no badges, no red, no engagement.",
+    "The primary flows work end-to-end in the prototype."
+  ]
+}
