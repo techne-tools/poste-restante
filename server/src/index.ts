@@ -17,6 +17,7 @@ export { IngestionPipeline, type IngestResult } from "./pipeline/pipeline.js";
 export { markdownToText } from "./pipeline/markdown.js";
 export { createLogger, silentLogger, type Logger } from "./pipeline/logger.js";
 export { Retrieval, rrf, type RetrievalQuery, type RetrievalHit } from "./retrieval/retrieval.js";
+export type { House } from "./house.js";
 
 import { loadConfig } from "./config.js";
 import { connectDbAndMigrate } from "./db/index.js";

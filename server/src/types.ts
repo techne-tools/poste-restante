@@ -59,10 +59,15 @@ export interface LetterBody {
   content: string;
 }
 
-/** A letter as it arrives at the house. */
+/**
+ * A letter as it arrives at the house. The id is derived from the envelope +
+ * body (sha256 of the canonical serialisation) — it is never supplied by the
+ * sender. Optional here so a letter can be constructed without one; the
+ * pipeline always derives it.
+ */
 export interface Letter {
-  /** sha256 of the canonical envelope+body serialisation. */
-  id: string;
+  /** sha256 of the canonical envelope+body serialisation. Derived, not supplied. */
+  id?: string;
   envelope: Envelope;
   time: LetterTime;
   body: LetterBody;

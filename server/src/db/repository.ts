@@ -148,6 +148,96 @@ export class PostgresRepository {
     return (res.rowCount ?? 0) > 0;
   }
 
+  /** List the address book — the social graph. Flat, no ranking. */
+  async listAddresses(): Promise<{ id: string; names: string[]; pronouns: string | null }[]> {
+    const { rows } = await this.pool.query(
+      `SELECT id, names, pronouns FROM addresses ORDER BY id`,
+    );
+    return rows;
+  }
+
+  /** Get one address. */
+  async getAddress(id: string): Promise<{ id: string; names: string[]; pronouns: string | null } | null> {
+    const { rows } = await this.pool.query(
+      `SELECT id, names, pronouns FROM addresses WHERE id = $1`,
+      [id],
+    );
+    return rows[0] ?? null;
+  }
+
+  /** Set an address's names and pronouns (the address book is correctable). */
+  async updateAddress(
+    id: string,
+    names: string[],
+    pronouns: string | null,
+  ): Promise<void> {
+    await this.pool.query(
+      `UPDATE addresses SET names = $2, pronouns = $3 WHERE id = $1`,
+      [id, names, pronouns],
+    );
+  }
+
+  /** List all frames. */
+  async listFrames(): Promise<{ id: string; name: string; value: string }[]> {
+    const { rows } = await this.pool.query(
+      `SELECT id, name, value FROM frames ORDER BY name, value`,
+    );
+    return rows;
+  }
+
+  /** List the letters in an address's mailbox, newest first. */
+  async listMailbox(
+    address: string,
+    limit: number,
+  ): Promise<StoredLetterRow[]> {
+    const { rows } = await this.pool.query<StoredLetterRow>(
+      `SELECT l.*, COALESCE(
+         (SELECT json_agg(json_build_object('frame', f.name, 'value', f.value))
+          FROM letter_frames lf JOIN frames f ON f.id = lf.frame_id
+          WHERE lf.letter_id = l.id), '[]'::json) AS frames
+       FROM letters l
+       WHERE l.from_addr = $1 OR $1 = ANY(l.to_addrs) OR $1 = ANY(l.cc_addrs)
+       ORDER BY l.received_at DESC
+       LIMIT $2`,
+      [address, limit],
+    );
+    return rows;
+  }
+
+  /** List the letters in a thread, oldest first (the correspondence). */
+  async listThread(threadId: string): Promise<StoredLetterRow[]> {
+    const { rows } = await this.pool.query<StoredLetterRow>(
+      `SELECT l.*, COALESCE(
+         (SELECT json_agg(json_build_object('frame', f.name, 'value', f.value))
+          FROM letter_frames lf JOIN frames f ON f.id = lf.frame_id
+          WHERE lf.letter_id = l.id), '[]'::json) AS frames
+       FROM letters l
+       WHERE l.thread_id = $1
+       ORDER BY l.received_at ASC`,
+      [threadId],
+    );
+    return rows;
+  }
+
+  /** Fetch many letters by id, preserving the given order. */
+  async getLetters(ids: string[]): Promise<StoredLetterRow[]> {
+    if (ids.length === 0) return [];
+    const { rows } = await this.pool.query<StoredLetterRow>(
+      `SELECT l.*, COALESCE(
+         (SELECT json_agg(json_build_object('frame', f.name, 'value', f.value))
+          FROM letter_frames lf JOIN frames f ON f.id = lf.frame_id
+          WHERE lf.letter_id = l.id), '[]'::json) AS frames
+       FROM letters l
+       WHERE l.id = ANY($1)`,
+      [ids],
+    );
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    return ids.flatMap((id) => {
+      const row = byId.get(id);
+      return row ? [row] : [];
+    });
+  }
+
   /** Pin a letter (explicit house ranking signal). */
   async pinLetter(id: string, pinnedBy: string): Promise<void> {
     await this.pool.query(
