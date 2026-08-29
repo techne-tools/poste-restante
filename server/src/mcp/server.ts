@@ -1,0 +1,395 @@
+/**
+ * The house as an MCP server — the agent-facing protocol face.
+ *
+ * The letter server (server.ts) is the HTTP face; this is the MCP face.
+ * Both speak the same CONTRACT over the same spine (`buildHouse`). An agent
+ * (Hermes, opencode, any MCP client) becomes a resident: it can deliver
+ * letters, read mailboxes, walk the archive, and check the whisper.
+ *
+ * House invariants enforced here:
+ *   * Presence not pressure — every tool is pull-based. The whisper tools
+ *     LIST and take explicit signals (open/dismiss); nothing pushes.
+ *   * The id is derived from the envelope+body; a caller-supplied id is
+ *     ignored (the hash is the identity).
+ *   * Deletion is first-class — delete removes the letter from all tiers.
+ *   * No telemetry. The house logs locally; it never phones home.
+ */
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod";
+import { LETTER_KINDS } from "../types.js";
+import { AddressSchema, LetterSchema, toLetter } from "../schemas.js";
+import { deliverLetter } from "../deliver.js";
+import type { House } from "../house.js";
+import type { RetrievalQuery } from "../retrieval/retrieval.js";
+
+const MAX_LIMIT = 100;
+const DEFAULT_LIMIT = 20;
+
+/** Wrap a result as an MCP tool result. */
+function text(content: unknown) {
+  return {
+    content: [{ type: "text" as const, text: JSON.stringify(content, null, 2) }],
+  };
+}
+
+/** Wrap an error as an MCP tool result. The house stumbles; it says so. */
+function fail(message: string) {
+  return {
+    content: [{ type: "text" as const, text: JSON.stringify({ error: { message } }, null, 2) }],
+    isError: true,
+  };
+}
+
+export interface McpHouseOptions {
+  /** The address that pins letters (the owner). Defaults to the human. */
+  ownerAddress?: string;
+}
+
+export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
+  const owner = options.ownerAddress ?? "you@house";
+  const server = new McpServer(
+    { name: "poste-restante", version: "0.1.0" },
+    { capabilities: { tools: {} } },
+  );
+
+  // ── Letters ──────────────────────────────────────────────────────────────
+
+  // Deliver a letter. Idempotent: the same letter (same envelope+body) is
+  // stored once; the response reports whether it was newly created.
+  server.registerTool(
+    "deliver_letter",
+    {
+      title: "Deliver a letter",
+      description:
+        "Deliver a letter to the house. The id is derived from the envelope+body (sha256) — a caller-supplied id is ignored. Idempotent: the same letter is stored once. A letter of kind 'system' from 'house@house' surfaces in the whisper.",
+      inputSchema: {
+        letter: LetterSchema,
+      },
+    },
+    async ({ letter }) => {
+      try {
+        const { letterId, created } = await deliverLetter(house, letter);
+        return text({ id: letterId, created });
+      } catch (err) {
+        return fail(err instanceof Error ? err.message : "the house stumbled");
+      }
+    },
+  );
+
+  // Retrieval — three paths (exact, full-text, semantic) merged by RRF.
+  // Pull by default; the agent asks. Ranking uses the house's own signals.
+  server.registerTool(
+    "search_letters",
+    {
+      title: "Search the archive",
+      description:
+        "Search the archive. Three paths (exact envelope query, full-text, semantic) merged by reciprocal rank fusion. Filters: text, from, to, thread, kind, frame, pinned. With no filters, browses the archive newest first.",
+      inputSchema: {
+        text: z.string().optional().describe("free-text search across letter bodies"),
+        from: z.string().optional().describe("sender address, e.g. hermes@house"),
+        to: z.string().optional().describe("recipient address"),
+        thread: z.string().optional().describe("thread id, e.g. th_9f2c1"),
+        kind: z.enum(LETTER_KINDS).optional().describe("letter kind"),
+        frame: z.string().optional().describe("frame value, e.g. autumn or tempest-tech-week"),
+        pinned: z.boolean().optional().describe("only pinned letters"),
+        limit: z.number().int().min(1).max(MAX_LIMIT).default(DEFAULT_LIMIT),
+      },
+    },
+    async (args) => {
+      try {
+        const query: RetrievalQuery = { limit: args.limit };
+        if (args.text) query.text = args.text;
+        if (args.from) query.from = args.from;
+        if (args.to) query.to = args.to;
+        if (args.thread) query.thread = args.thread;
+        if (args.kind) query.kind = args.kind;
+        if (args.frame) query.frame = args.frame;
+        if (args.pinned) query.pinned = true;
+
+        const hits = await house.retrieval.search(query);
+        const letters = await house.repo.getLetters(hits.map((h) => h.letterId));
+        return text({
+          hits: hits.map((h) => ({
+            letterId: h.letterId,
+            score: h.score,
+            paths: h.paths,
+            ranks: h.ranks,
+          })),
+          letters: letters.map(toLetter),
+        });
+      } catch (err) {
+        return fail(err instanceof Error ? err.message : "the house stumbled");
+      }
+    },
+  );
+
+  // Fetch one letter.
+  server.registerTool(
+    "get_letter",
+    {
+      title: "Read a letter",
+      description: "Fetch one letter by its id (the sha256 of envelope+body).",
+      inputSchema: {
+        id: z.string().min(1).describe("the letter id"),
+      },
+    },
+    async ({ id }) => {
+      const row = await house.repo.getLetter(id);
+      if (!row) return fail("no such letter");
+      return text(toLetter(row));
+    },
+  );
+
+  // Delete a letter. First-class: gone from postgres, qdrant, and FTS.
+  server.registerTool(
+    "delete_letter",
+    {
+      title: "Delete a letter",
+      description:
+        "Delete a letter. First-class deletion — the archive forgets on request. Removed from postgres, qdrant, and full-text index. No soft delete.",
+      inputSchema: {
+        id: z.string().min(1).describe("the letter id"),
+      },
+    },
+    async ({ id }) => {
+      const removed = await house.pipeline.delete(id);
+      if (!removed) return fail("no such letter");
+      return text({ deleted: true, id });
+    },
+  );
+
+  // Pin / unpin — explicit house ranking signals.
+  server.registerTool(
+    "pin_letter",
+    {
+      title: "Pin a letter",
+      description: "Pin a letter — an explicit house ranking signal. Pinned letters rank higher in retrieval.",
+      inputSchema: {
+        id: z.string().min(1).describe("the letter id"),
+      },
+    },
+    async ({ id }) => {
+      const row = await house.repo.getLetter(id);
+      if (!row) return fail("no such letter");
+      await house.repo.pinLetter(id, owner);
+      return text({ pinned: true, id });
+    },
+  );
+
+  server.registerTool(
+    "unpin_letter",
+    {
+      title: "Unpin a letter",
+      description: "Remove a pin from a letter.",
+      inputSchema: {
+        id: z.string().min(1).describe("the letter id"),
+      },
+    },
+    async ({ id }) => {
+      const row = await house.repo.getLetter(id);
+      if (!row) return fail("no such letter");
+      await house.repo.unpinLetter(id);
+      return text({ pinned: false, id });
+    },
+  );
+
+  // ── Addresses ─────────────────────────────────────────────────────────────
+
+  // The address book — the social graph. Flat, no ranking, no follower counts.
+  server.registerTool(
+    "list_addresses",
+    {
+      title: "List the address book",
+      description: "List the address book — the social graph. Flat, no ranking, no follower counts.",
+      inputSchema: {},
+    },
+    async () => {
+      const addresses = await house.repo.listAddresses();
+      return text({ addresses });
+    },
+  );
+
+  server.registerTool(
+    "get_address",
+    {
+      title: "Read an address",
+      description: "Fetch one address from the address book.",
+      inputSchema: {
+        address: z.string().min(1).describe("the address, e.g. you@house"),
+      },
+    },
+    async ({ address }) => {
+      const row = await house.repo.getAddress(address);
+      if (!row) return fail("no such address");
+      return text(row);
+    },
+  );
+
+  // Correct the address book. The house takes corrections at face value.
+  server.registerTool(
+    "update_address",
+    {
+      title: "Correct an address",
+      description:
+        "Correct an address in the address book. The house takes corrections at face value. Names are a list (a person is a set of names, not first+last); pronouns are free text.",
+      inputSchema: {
+        address: z.string().min(1).describe("the address, e.g. ben@house"),
+        names: z.array(z.string()).default([]).describe("the person's names"),
+        pronouns: z.string().nullable().default(null).describe("free-text pronouns"),
+      },
+    },
+    async ({ address, names, pronouns }) => {
+      const existing = await house.repo.getAddress(address);
+      if (!existing) return fail("no such address");
+      await house.repo.updateAddress(address, names, pronouns);
+      return text(await house.repo.getAddress(address));
+    },
+  );
+
+  // The mailbox — pull by default. Nothing pushes; the letter waits.
+  server.registerTool(
+    "read_mailbox",
+    {
+      title: "Read a mailbox",
+      description:
+        "Read an address's mailbox, newest first. Pull by default — nothing pushes; the letter waits.",
+      inputSchema: {
+        address: z.string().min(1).describe("the address, e.g. you@house"),
+        limit: z.number().int().min(1).max(MAX_LIMIT).default(50),
+      },
+    },
+    async ({ address, limit }) => {
+      const existing = await house.repo.getAddress(address);
+      if (!existing) return fail("no such address");
+      const letters = await house.repo.listMailbox(address, limit);
+      return text({ address, letters: letters.map(toLetter) });
+    },
+  );
+
+  // ── Threads & frames ──────────────────────────────────────────────────────
+
+  // Threads are correspondences. The thread is the unit, not the message.
+  server.registerTool(
+    "read_thread",
+    {
+      title: "Read a thread",
+      description: "Read a correspondence thread, oldest first. The thread is the unit, not the message.",
+      inputSchema: {
+        thread: z.string().min(1).describe("the thread id, e.g. th_9f2c1"),
+      },
+    },
+    async ({ thread }) => {
+      const letters = await house.repo.listThread(thread);
+      if (letters.length === 0) return fail("no such thread");
+      return text({ thread, letters: letters.map(toLetter) });
+    },
+  );
+
+  // Frames — plural time navigation. Queries work in any frame.
+  server.registerTool(
+    "list_frames",
+    {
+      title: "List frames",
+      description:
+        "List all frames — plural time navigation. Frames are the human's way in: production:tempest-2026, season:autumn, islamic:1448-03-15.",
+      inputSchema: {},
+    },
+    async () => {
+      const frames = await house.repo.listFrames();
+      return text({ frames });
+    },
+  );
+
+  // ── The whisper ────────────────────────────────────────────────────────────
+
+  // The whisper — the mailbox for the house's own letters. A GET resource.
+  // Nothing pushes; the agent comes for it.
+  server.registerTool(
+    "list_whispers",
+    {
+      title: "List the whisper",
+      description:
+        "List the whisper — the mailbox for the house's own letters (summaries, questions, gap offers). Presence not pressure: nothing pushes; the agent comes for it. Pass unread=true for only what the house is offering right now.",
+      inputSchema: {
+        unread: z.boolean().default(false).describe("only whispers not yet dismissed"),
+        limit: z.number().int().min(1).max(MAX_LIMIT).default(50),
+      },
+    },
+    async ({ unread, limit }) => {
+      const whispers = unread
+        ? await house.whisper.listUnread(limit)
+        : await house.whisper.list(limit);
+      return text({ whispers });
+    },
+  );
+
+  // The user opened a whisper. A signal, not a notification.
+  server.registerTool(
+    "open_whisper",
+    {
+      title: "Open a whisper",
+      description: "Mark a whisper opened. A signal, not a notification — the house learns you picked it up.",
+      inputSchema: {
+        id: z.string().min(1).describe("the whisper id"),
+      },
+    },
+    async ({ id }) => {
+      const ok = await house.whisper.open(id);
+      if (!ok) return fail("no such whisper");
+      return text({ opened: true, id });
+    },
+  );
+
+  // Explicit dismissal — the strongest negative signal. The house takes
+  // corrections at face value; undismiss is always possible.
+  server.registerTool(
+    "dismiss_whisper",
+    {
+      title: "Dismiss a whisper",
+      description:
+        "Explicitly dismiss a whisper — the strongest negative signal. The house takes corrections at face value; undismiss is always possible.",
+      inputSchema: {
+        id: z.string().min(1).describe("the whisper id"),
+      },
+    },
+    async ({ id }) => {
+      const ok = await house.whisper.dismiss(id);
+      if (!ok) return fail("no such whisper");
+      return text({ dismissed: true, id });
+    },
+  );
+
+  server.registerTool(
+    "undismiss_whisper",
+    {
+      title: "Undismiss a whisper",
+      description: "Undismiss a whisper — the user changed their mind. The house takes corrections at face value.",
+      inputSchema: {
+        id: z.string().min(1).describe("the whisper id"),
+      },
+    },
+    async ({ id }) => {
+      const ok = await house.whisper.undismiss(id);
+      if (!ok) return fail("no such whisper");
+      return text({ dismissed: false, id });
+    },
+  );
+
+  // Gap detection — cheap structural checks (dormant threads, unanswered
+  // questions). Runs on demand; the house never pushes the results.
+  server.registerTool(
+    "detect_gaps",
+    {
+      title: "Look for gaps",
+      description:
+        "Run cheap structural gap detection: dormant threads (quiet 14 days) and unanswered questions (a week old). Postgres queries only — no expensive semantic scans. Runs on demand; the house never pushes the results.",
+      inputSchema: {},
+    },
+    async () => {
+      const created = await house.whisper.detectGaps();
+      return text({ created: created.map((w) => w.id) });
+    },
+  );
+
+  return server;
+}

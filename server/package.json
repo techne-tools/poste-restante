@@ -8,16 +8,18 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && node -e \"require('fs').cpSync('src/db/migrations', 'dist/db/migrations', { recursive: true })\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "NODE_ENV=test vitest run",
     "test:watch": "NODE_ENV=test vitest",
     "test:integration": "NODE_ENV=test POSTE_RESTANTE_INTEGRATION=1 vitest run --no-file-parallelism",
     "migrate": "tsx src/db/migrate.ts",
-    "serve": "tsx src/main.ts"
+    "serve": "tsx src/main.ts",
+    "serve:mcp": "tsx src/mcp/main.ts"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.1",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@qdrant/js-client-rest": "^1.19.0",
     "hono": "^4.13.5",
     "pg": "^8.23.0",

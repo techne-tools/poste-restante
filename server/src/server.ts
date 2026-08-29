@@ -14,82 +14,14 @@
  *   * No telemetry. The house logs locally; it never phones home.
  */
 import { Hono } from "hono";
-import { z } from "zod";
 import { LETTER_KINDS } from "./types.js";
+import { AddressSchema, LetterSchema, toLetter } from "./schemas.js";
+import { deliverLetter } from "./deliver.js";
 import type { House } from "./house.js";
-import type { StoredLetterRow } from "./db/repository.js";
 import type { RetrievalQuery } from "./retrieval/retrieval.js";
-
-const FrameSchema = z.object({
-  frame: z.string().min(1),
-  value: z.string().min(1),
-});
-
-const EnvelopeSchema = z.object({
-  from: z.string().min(1),
-  to: z.array(z.string().min(1)).min(1),
-  cc: z.array(z.string().min(1)).default([]),
-  thread: z.string().min(1),
-  kind: z.enum(LETTER_KINDS),
-  lang: z.string().min(1).default("en-AU"),
-  subject: z.string().default(""),
-});
-
-const TimeSchema = z.object({
-  gregorian: z.string().refine((s) => !Number.isNaN(Date.parse(s)), {
-    message: "gregorian must be an ISO-8601 timestamp",
-  }),
-  frames: z.array(FrameSchema).default([]),
-});
-
-const BodySchema = z.object({
-  format: z.literal("markdown"),
-  content: z.string(),
-});
-
-const LetterSchema = z.object({
-  // The id is derived from the envelope+body. A caller-supplied id is
-  // accepted for contract compatibility but ignored — the hash is the identity.
-  id: z.string().optional(),
-  envelope: EnvelopeSchema,
-  time: TimeSchema,
-  body: BodySchema,
-});
-
-const AddressSchema = z.object({
-  names: z.array(z.string()).default([]),
-  pronouns: z.string().nullable().default(null),
-});
 
 const MAX_LIMIT = 100;
 const DEFAULT_LIMIT = 20;
-
-/** Map a stored row back to the contract letter shape. */
-function toLetter(row: StoredLetterRow) {
-  return {
-    id: row.id,
-    envelope: {
-      from: row.from_addr,
-      to: row.to_addrs,
-      cc: row.cc_addrs,
-      thread: row.thread_id,
-      kind: row.kind,
-      lang: row.lang,
-      subject: row.subject,
-    },
-    time: {
-      gregorian: row.received_at.toISOString(),
-      frames: row.frames,
-    },
-    body: {
-      format: "markdown" as const,
-      content: row.body,
-    },
-    receivedAt: row.received_at.toISOString(),
-    pinnedAt: row.pinned_at?.toISOString() ?? null,
-    pinnedBy: row.pinned_by ?? null,
-  };
-}
 
 export interface LetterServerOptions {
   /** The address that pins letters (the owner). Defaults to the human. */
@@ -143,20 +75,9 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
       );
     }
     // The id is derived from the envelope+body; a caller-supplied id is
-    // ignored (the hash is the identity). Strip it before ingest.
-    const { id: _ignored, ...letter } = parsed.data;
-    const { letterId, created } = await house.pipeline.ingest(letter);
-    // The house's own letters surface in the whisper — correspondence, not
-    // metadata. Quiet when not relevant; the client comes for it.
-    if (created && letter.envelope.kind === "system" && letter.envelope.from === "house@house") {
-      const summary = letter.body.content.slice(0, 200);
-      await house.whisper.surfaceHouseLetter(letterId, letter.envelope.thread, summary);
-    }
-    // Writing back is the strongest signal: a letter in a whispered thread
-    // marks the whisper replied.
-    if (created) {
-      await house.whisper.recordReply(letter.envelope.thread);
-    }
+    // ignored (the hash is the identity). Deliver — ingest, surface house
+    // letters in the whisper, mark whispered threads replied.
+    const { letterId, created } = await deliverLetter(house, parsed.data);
     return c.json({ id: letterId, created }, created ? 201 : 200);
   });
 

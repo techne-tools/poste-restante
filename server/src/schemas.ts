@@ -1,0 +1,82 @@
+/**
+ * The letter contract — shared zod schemas for the house's protocol faces.
+ *
+ * The Hono letter server (server.ts) and the MCP server (mcp/server.ts) both
+ * speak the CONTRACT: envelope + body, plural time, derived identity. These
+ * schemas are the single source of truth so the two faces can't drift.
+ */
+import { z } from "zod";
+import { LETTER_KINDS } from "./types.js";
+import type { StoredLetterRow } from "./db/repository.js";
+
+export const FrameSchema = z.object({
+  frame: z.string().min(1),
+  value: z.string().min(1),
+});
+
+export const EnvelopeSchema = z.object({
+  from: z.string().min(1),
+  to: z.array(z.string().min(1)).min(1),
+  cc: z.array(z.string().min(1)).default([]),
+  thread: z.string().min(1),
+  kind: z.enum(LETTER_KINDS),
+  lang: z.string().min(1).default("en-AU"),
+  subject: z.string().default(""),
+});
+
+export const TimeSchema = z.object({
+  gregorian: z.string().refine((s) => !Number.isNaN(Date.parse(s)), {
+    message: "gregorian must be an ISO-8601 timestamp",
+  }),
+  frames: z.array(FrameSchema).default([]),
+});
+
+export const BodySchema = z.object({
+  format: z.literal("markdown"),
+  content: z.string(),
+});
+
+export const LetterSchema = z.object({
+  // The id is derived from the envelope+body. A caller-supplied id is
+  // accepted for contract compatibility but ignored — the hash is the identity.
+  id: z.string().optional(),
+  envelope: EnvelopeSchema,
+  time: TimeSchema,
+  body: BodySchema,
+});
+
+export const AddressSchema = z.object({
+  names: z.array(z.string()).default([]),
+  pronouns: z.string().nullable().default(null),
+});
+
+export type LetterInput = z.infer<typeof LetterSchema>;
+
+/** Map a stored row back to the contract letter shape. Shared by the Hono
+ * letter server and the MCP server so both protocol faces return the same
+ * letter shape. */
+export function toLetter(row: StoredLetterRow) {
+  return {
+    id: row.id,
+    envelope: {
+      from: row.from_addr,
+      to: row.to_addrs,
+      cc: row.cc_addrs,
+      thread: row.thread_id,
+      kind: row.kind,
+      lang: row.lang,
+      subject: row.subject,
+    },
+    time: {
+      gregorian: row.received_at.toISOString(),
+      frames: row.frames,
+    },
+    body: {
+      format: "markdown" as const,
+      content: row.body,
+    },
+    receivedAt: row.received_at.toISOString(),
+    pinnedAt: row.pinned_at?.toISOString() ?? null,
+    pinnedBy: row.pinned_by ?? null,
+  };
+}
