@@ -106,7 +106,16 @@ export class Retrieval {
     if (query.pinned) {
       conds.push(`l.pinned_at IS NOT NULL`);
     }
-    if (conds.length === 0) return [];
+    // No filters = browse the archive: the latest letters, newest first.
+    // The house is an archive; the client should be able to walk it.
+    if (conds.length === 0) {
+      const { rows } = await this.pool.query<{ id: string }>(
+        `SELECT l.id FROM letters l
+         ORDER BY l.received_at DESC LIMIT $1`,
+        [query.limit ?? DEFAULT_LIMIT],
+      );
+      return rows.map((r) => r.id);
+    }
 
     const where = conds.join(" AND ");
     const { rows } = await this.pool.query<{ id: string }>(

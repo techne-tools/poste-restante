@@ -1,0 +1,418 @@
+/* Poste Restante — design tokens. Callsheet's lineage: calm, neutral,
+   present not pressuring. Quiet by default. Dismissible. No red for errors
+   (ink-secondary grey). The seal wax is the only accent. */
+
+:root {
+  /* Surfaces — paper, not glass. */
+  --surface: oklch(0.97 0.005 60);
+  --surface-raised: oklch(0.99 0.003 60);
+  --surface-sunken: oklch(0.93 0.008 60);
+
+  /* Ink — the house writes in ink. */
+  --ink: oklch(0.25 0.02 60);
+  --ink-secondary: oklch(0.45 0.02 60);
+  --ink-faint: oklch(0.6 0.015 60);
+
+  /* The seal wax — the only accent. */
+  --accent: oklch(52% 0.10 28);
+  --accent-soft: oklch(0.9 0.03 28);
+
+  /* Error — ink-secondary grey, never red. */
+  --error: oklch(0.45 0.02 60);
+
+  /* Hairlines — the house is drawn in pencil. */
+  --hairline: oklch(0.85 0.01 60);
+
+  /* Type — the house reads like a letter. */
+  --font-serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  --font-sans: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+
+  --radius: 6px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--ink);
+  background: var(--surface);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-serif);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+a {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* The house layout: whisper sidebar + the composed space. */
+.house {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  height: 100%;
+}
+
+.whisper {
+  border-right: 1px solid var(--hairline);
+  background: var(--surface-sunken);
+  overflow-y: auto;
+  padding: var(--space-4);
+}
+
+.whisper h2 {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-secondary);
+  margin: 0 0 var(--space-3);
+}
+
+.whisper-card {
+  background: var(--surface-raised);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  margin-bottom: var(--space-3);
+  font-size: 13px;
+}
+
+.whisper-card .kind {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.whisper-card .summary {
+  margin: var(--space-2) 0;
+  color: var(--ink);
+}
+
+.whisper-card .actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.whisper-card.dismissed {
+  opacity: 0.5;
+}
+
+.whisper-card.replied {
+  border-left: 2px solid var(--accent);
+}
+
+/* The composed space. */
+.space {
+  overflow-y: auto;
+  padding: var(--space-5);
+}
+
+.space header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--hairline);
+  padding-bottom: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.space header h1 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.space header .address {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-secondary);
+}
+
+/* The mailbox — a vertical flow of letters. */
+.letter-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.letter-row {
+  background: var(--surface-raised);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  padding: var(--space-3) var(--space-4);
+  cursor: pointer;
+  transition: border-color 120ms ease;
+}
+
+.letter-row:hover {
+  border-color: var(--accent);
+}
+
+.letter-row .subject {
+  font-family: var(--font-serif);
+  font-size: 16px;
+  margin: 0 0 var(--space-1);
+}
+
+.letter-row .meta {
+  font-size: 12px;
+  color: var(--ink-secondary);
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.letter-row .meta .frame {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent);
+}
+
+.letter-row .snippet {
+  font-size: 13px;
+  color: var(--ink-secondary);
+  margin-top: var(--space-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The letter — the whole protocol. */
+.letter {
+  background: var(--surface-raised);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  padding: var(--space-5);
+  max-width: 720px;
+}
+
+.letter .envelope {
+  font-size: 12px;
+  color: var(--ink-secondary);
+  border-bottom: 1px solid var(--hairline);
+  padding-bottom: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.letter .envelope .from {
+  color: var(--ink);
+}
+
+.letter .body {
+  font-family: var(--font-serif);
+  font-size: 16px;
+  line-height: 1.7;
+}
+
+.letter .body h1,
+.letter .body h2,
+.letter .body h3 {
+  font-size: 1.1em;
+}
+
+.letter .body code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: var(--surface-sunken);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.letter .body blockquote {
+  border-left: 2px solid var(--accent);
+  margin-left: 0;
+  padding-left: var(--space-4);
+  color: var(--ink-secondary);
+}
+
+/* The address book — flat, no ranking. */
+.address-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.address-row {
+  background: var(--surface-raised);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  padding: var(--space-3) var(--space-4);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.address-row .addr {
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.address-row .names {
+  color: var(--ink-secondary);
+  font-size: 13px;
+}
+
+/* The Horizon View — plural time as parallel lanes. */
+.horizon {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.horizon .lanes {
+  display: flex;
+  gap: var(--space-3);
+  overflow-x: auto;
+  padding-bottom: var(--space-2);
+}
+
+.horizon .lane {
+  flex: 0 0 auto;
+  min-width: 180px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  padding: var(--space-3);
+}
+
+.horizon .lane h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-secondary);
+  margin: 0 0 var(--space-2);
+}
+
+.horizon .lane .frame-chip {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 999px;
+  padding: 2px 8px;
+  margin: 0 var(--space-1) var(--space-1) 0;
+  cursor: pointer;
+}
+
+.horizon .lane .frame-chip.active {
+  background: var(--accent);
+  color: var(--surface-raised);
+}
+
+/* Controls — quiet, dismissible, no red. */
+button {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--ink-secondary);
+  background: transparent;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: border-color 120ms ease, color 120ms ease;
+}
+
+button:hover {
+  border-color: var(--accent);
+  color: var(--ink);
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--surface-raised);
+}
+
+button.primary:hover {
+  opacity: 0.9;
+}
+
+.search {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.search input {
+  flex: 1;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  color: var(--ink);
+  background: var(--surface-raised);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+}
+
+.search input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* Errors — ink-secondary grey, never red. Dismissible. */
+.error-banner {
+  background: var(--surface-sunken);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  color: var(--error);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+}
+
+.error-banner button {
+  border: none;
+  padding: 0;
+  font-size: 14px;
+}
+
+.empty {
+  color: var(--ink-faint);
+  font-style: italic;
+  padding: var(--space-5);
+  text-align: center;
+}
+
+.nav {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.nav button.active {
+  border-color: var(--accent);
+  color: var(--ink);
+}

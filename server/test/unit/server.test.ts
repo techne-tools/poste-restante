@@ -143,6 +143,16 @@ function fakeHouse(): House {
         return hits;
       },
     },
+    whisper: {
+      list: async () => [],
+      listUnread: async () => [],
+      open: async () => true,
+      dismiss: async () => true,
+      undismiss: async () => true,
+      detectGaps: async () => [],
+      surfaceHouseLetter: async () => {},
+      recordReply: async () => {},
+    },
     close: async () => {},
   } as unknown as House;
 
@@ -333,5 +343,28 @@ describe("letter server (unit)", () => {
       headers: { Upgrade: "websocket", Connection: "Upgrade" },
     });
     expect(upgrade.status).not.toBe(101);
+  });
+
+  it("lists the whisper — the house's own letters, pull-only", async () => {
+    const res = await app.request("/v1/whisper", { method: "GET" });
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { whispers: unknown[] };
+    expect(json.whispers).toEqual([]);
+  });
+
+  it("opens, dismisses, and undismisses a whisper", async () => {
+    const open = await app.request("/v1/whisper/w1/open", { method: "POST" });
+    expect(open.status).toBe(200);
+    const dismiss = await app.request("/v1/whisper/w1/dismiss", { method: "POST" });
+    expect(dismiss.status).toBe(200);
+    const undismiss = await app.request("/v1/whisper/w1/undismiss", { method: "POST" });
+    expect(undismiss.status).toBe(200);
+  });
+
+  it("runs gap detection on demand — never pushed", async () => {
+    const res = await app.request("/v1/whisper/gaps", { method: "POST" });
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { created: unknown[] };
+    expect(json.created).toEqual([]);
   });
 });

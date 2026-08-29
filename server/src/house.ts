@@ -11,6 +11,7 @@ import type { PayloadStore } from "./minio/store.js";
 import type { IngestionPipeline } from "./pipeline/pipeline.js";
 import type { Logger } from "./pipeline/logger.js";
 import type { Retrieval } from "./retrieval/retrieval.js";
+import type { WhisperService } from "./whisper/service.js";
 
 export interface House {
   config: HouseConfig;
@@ -21,6 +22,7 @@ export interface House {
   payloads: PayloadStore;
   pipeline: IngestionPipeline;
   retrieval: Retrieval;
+  whisper: WhisperService;
   log: Logger;
   close(): Promise<void>;
 }

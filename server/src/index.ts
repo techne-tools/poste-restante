@@ -17,6 +17,7 @@ export { IngestionPipeline, type IngestResult } from "./pipeline/pipeline.js";
 export { markdownToText } from "./pipeline/markdown.js";
 export { createLogger, silentLogger, type Logger } from "./pipeline/logger.js";
 export { Retrieval, rrf, type RetrievalQuery, type RetrievalHit } from "./retrieval/retrieval.js";
+export { WhisperService, type Whisper, type WhisperKind } from "./whisper/service.js";
 export type { House } from "./house.js";
 
 import { loadConfig } from "./config.js";
@@ -27,6 +28,7 @@ import { QdrantSemanticStore } from "./qdrant/store.js";
 import { NoopPayloadStore } from "./minio/store.js";
 import { IngestionPipeline } from "./pipeline/pipeline.js";
 import { Retrieval } from "./retrieval/retrieval.js";
+import { WhisperService } from "./whisper/service.js";
 import { createLogger } from "./pipeline/logger.js";
 
 /**
@@ -49,6 +51,7 @@ export async function buildHouse(env: NodeJS.ProcessEnv = process.env) {
   const log = createLogger();
   const pipeline = new IngestionPipeline(repo, semantic, embedder, payloads, log);
   const retrieval = new Retrieval(db.pool, semantic, embedder);
+  const whisper = new WhisperService(db.pool, log);
 
   return {
     config,
@@ -59,6 +62,7 @@ export async function buildHouse(env: NodeJS.ProcessEnv = process.env) {
     payloads,
     pipeline,
     retrieval,
+    whisper,
     log,
     async close() {
       await db.close();

@@ -245,4 +245,118 @@ describe.skipIf(!INTEGRATION)("letter server (integration)", () => {
     );
     expect(fts.some((r) => r.id === id)).toBe(false);
   });
+
+  it("surfaces a house letter in the whisper and records replies", async () => {
+    // A house letter (kind=system, from house@house) surfaces in the whisper.
+    const houseLetter = mkLetter({
+      envelope: {
+        from: "house@house",
+        to: ["you@house"],
+        cc: [],
+        thread: "th_whisper_house",
+        kind: "system",
+        lang: "en-AU",
+        subject: "the archive, summarised",
+      },
+      body: {
+        format: "markdown",
+        content: "I summarised the tempest correspondence. Three threads, one decision.",
+      },
+    });
+    const delivered = await app.request("/v1/letters", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(houseLetter),
+    });
+    expect(delivered.status).toBe(201);
+
+    const whisper = await app.request("/v1/whisper", { method: "GET" });
+    const whisperJson = (await whisper.json()) as {
+      whispers: { kind: string; targetThread: string }[];
+    };
+    const surfaced = whisperJson.whispers.find(
+      (w) => w.kind === "house-letter" && w.targetThread === "th_whisper_house",
+    );
+    expect(surfaced).toBeDefined();
+
+    // Writing back marks the whisper replied.
+    const reply = mkLetter({
+      envelope: {
+        from: "you@house",
+        to: ["house@house"],
+        cc: [],
+        thread: "th_whisper_house",
+        kind: "letter",
+        lang: "en-AU",
+        subject: "re: the archive, summarised",
+      },
+      body: { format: "markdown", content: "Good — keep the decision visible." },
+    });
+    await app.request("/v1/letters", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(reply),
+    });
+
+    const { rows: replied } = await house.db.pool.query(
+      `SELECT replied_at FROM whispers WHERE target_thread = $1`,
+      ["th_whisper_house"],
+    );
+    expect(replied[0]!.replied_at).not.toBeNull();
+  });
+
+  it("detects gaps — dormant threads and unanswered questions", async () => {
+    // A dormant thread: two letters, last one 20 days ago.
+    const old = new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString();
+    const a = mkLetter({
+      envelope: { ...mkLetter().envelope, thread: "th_gap_dormant", subject: "dormant" },
+      time: { gregorian: old, frames: [] },
+      body: { format: "markdown", content: "first letter of a quiet thread" },
+    });
+    const b = mkLetter({
+      envelope: { ...mkLetter().envelope, thread: "th_gap_dormant", subject: "dormant" },
+      time: { gregorian: old, frames: [] },
+      body: { format: "markdown", content: "second letter of a quiet thread" },
+    });
+    await app.request("/v1/letters", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(a),
+    });
+    await app.request("/v1/letters", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(b),
+    });
+
+    // An unanswered question: one letter with a question mark, 10 days old.
+    const q = mkLetter({
+      envelope: { ...mkLetter().envelope, thread: "th_gap_question", subject: "question" },
+      time: { gregorian: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(), frames: [] },
+      body: { format: "markdown", content: "Should we move the tech week to Thursday?" },
+    });
+    await app.request("/v1/letters", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(q),
+    });
+
+    const gaps = await app.request("/v1/whisper/gaps", { method: "POST" });
+    expect(gaps.status).toBe(200);
+    const gapsJson = (await gaps.json()) as { created: string[] };
+    expect(gapsJson.created.some((id) => id.includes("th_gap_dormant"))).toBe(true);
+    expect(gapsJson.created.some((id) => id.includes("th_gap_question"))).toBe(true);
+
+    // Dismissal is the strongest negative signal.
+    const whisper = await app.request("/v1/whisper", { method: "GET" });
+    const whisperJson = (await whisper.json()) as { whispers: { id: string }[] };
+    const dormant = whisperJson.whispers.find((w) => w.id.includes("th_gap_dormant"));
+    expect(dormant).toBeDefined();
+    const dismiss = await app.request(`/v1/whisper/${dormant!.id}/dismiss`, { method: "POST" });
+    expect(dismiss.status).toBe(200);
+
+    const unread = await app.request("/v1/whisper?unread=1", { method: "GET" });
+    const unreadJson = (await unread.json()) as { whispers: { id: string }[] };
+    expect(unreadJson.whispers.some((w) => w.id === dormant!.id)).toBe(false);
+  });
 });

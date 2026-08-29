@@ -146,6 +146,17 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
     // ignored (the hash is the identity). Strip it before ingest.
     const { id: _ignored, ...letter } = parsed.data;
     const { letterId, created } = await house.pipeline.ingest(letter);
+    // The house's own letters surface in the whisper — correspondence, not
+    // metadata. Quiet when not relevant; the client comes for it.
+    if (created && letter.envelope.kind === "system" && letter.envelope.from === "house@house") {
+      const summary = letter.body.content.slice(0, 200);
+      await house.whisper.surfaceHouseLetter(letterId, letter.envelope.thread, summary);
+    }
+    // Writing back is the strongest signal: a letter in a whispered thread
+    // marks the whisper replied.
+    if (created) {
+      await house.whisper.recordReply(letter.envelope.thread);
+    }
     return c.json({ id: letterId, created }, created ? 201 : 200);
   });
 
@@ -337,6 +348,65 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
   app.get("/v1/frames", async (c) => {
     const frames = await house.repo.listFrames();
     return c.json({ frames });
+  });
+
+  // ── The whisper ────────────────────────────────────────────────────────────
+
+  // The whisper — the mailbox for the house's own letters. A GET resource.
+  // Nothing pushes; the client comes for it. `?unread=1` shows only what the
+  // house is offering right now.
+  app.get("/v1/whisper", async (c) => {
+    const unread = c.req.query("unread") === "1" || c.req.query("unread") === "true";
+    const limitRaw = c.req.query("limit");
+    let limit = 50;
+    if (limitRaw) {
+      limit = Number.parseInt(limitRaw, 10);
+      if (Number.isNaN(limit) || limit < 1) {
+        return c.json(
+          { error: { code: "invalid_limit", message: "limit must be a positive integer" } },
+          400,
+        );
+      }
+      limit = Math.min(limit, MAX_LIMIT);
+    }
+    const whispers = unread
+      ? await house.whisper.listUnread(limit)
+      : await house.whisper.list(limit);
+    return c.json({ whispers });
+  });
+
+  // The user opened a whisper. A signal, not a notification.
+  app.post("/v1/whisper/:id/open", async (c) => {
+    const ok = await house.whisper.open(c.req.param("id"));
+    if (!ok) {
+      return c.json({ error: { code: "not_found", message: "no such whisper" } }, 404);
+    }
+    return c.json({ opened: true, id: c.req.param("id") });
+  });
+
+  // Explicit dismissal — the strongest negative signal. The house takes
+  // corrections at face value; undismiss is always possible.
+  app.post("/v1/whisper/:id/dismiss", async (c) => {
+    const ok = await house.whisper.dismiss(c.req.param("id"));
+    if (!ok) {
+      return c.json({ error: { code: "not_found", message: "no such whisper" } }, 404);
+    }
+    return c.json({ dismissed: true, id: c.req.param("id") });
+  });
+
+  app.post("/v1/whisper/:id/undismiss", async (c) => {
+    const ok = await house.whisper.undismiss(c.req.param("id"));
+    if (!ok) {
+      return c.json({ error: { code: "not_found", message: "no such whisper" } }, 404);
+    }
+    return c.json({ dismissed: false, id: c.req.param("id") });
+  });
+
+  // Gap detection — cheap structural checks (dormant threads, unanswered
+  // questions). Runs on demand; the house never pushes the results.
+  app.post("/v1/whisper/gaps", async (c) => {
+    const created = await house.whisper.detectGaps();
+    return c.json({ created: created.map((w) => w.id) });
   });
 
   return app;
