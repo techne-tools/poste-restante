@@ -42,7 +42,7 @@ Privacy as schema, anti-hierarchy as capability, queer/indigenous/global-majorit
 | Bridges | IMAP/SMTP (primary), Matrix + ActivityPub (optional) |
 | Reference client | Tauri v2 + React (callsheet lineage) |
 | Agent integration | MCP server |
-| Deployment | docker-compose on horza, tailscale |
+| Deployment | docker-compose, tailscale for access |
 
 ## What this is not
 

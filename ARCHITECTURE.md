@@ -66,7 +66,7 @@ Callsheet's ghost cards scaled from daily to conversational. The sidebar is the 
 | Bridges | IMAP/SMTP (primary), Matrix + ActivityPub (optional) |
 | Reference client | Tauri v2 + React (callsheet lineage) |
 | Agent integration | MCP server |
-| Deployment | docker-compose on horza, tailscale |
+| Deployment | docker-compose, tailscale for access |
 
 ### The buildable first slice
 

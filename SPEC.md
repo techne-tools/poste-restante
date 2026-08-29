@@ -136,7 +136,7 @@ The house has no UI of its own. It has a protocol and primitives — letters, th
 |---|---|---|
 | **Letter server** | **TypeScript + Hono**, dockerised | Hackable by the owner (the whole philosophy). First-class MCP SDK. Fast iteration. Boring on purpose. *Alternative: Go (mu's choice) if single-binary distribution ever matters more than hackability — not the call for v0.1.* |
 | **Letters/addresses/threads/frames** | **postgres 16** | The archive's spine. FTS built in. JSONB for envelope. |
-| **Semantic layer** | **qdrant** | Self-hosted, in the compose file. Already in Chris's recall architecture. |
+| **Semantic layer** | **qdrant** | Self-hosted, in the compose file. Already in the owner's recall architecture. |
 | **Raw payloads** | **minio** (S3-compatible) | Audio, video, images. The letter points at the file; whisper transcribes it into a *new letter*. |
 | **Ingestion queue** | **redis** | Ephemeral state, queue, pub/sub for the whisper. |
 | **Local brain** | **ollama** | Local embeddings + local models. Cloud (OpenAI-compatible endpoint) as an explicit opt-in bridge — one env var. |
@@ -144,9 +144,9 @@ The house has no UI of its own. It has a protocol and primitives — letters, th
 | **Bridges** | IMAP/SMTP bridge (primary), Matrix + ActivityPub (optional) | The house speaks IMAP so any mail client works. |
 | **Reference client** | **Tauri v2 + React** (callsheet lineage) | The house is headless; the Tauri app is the reference client where the whisper lives by default. Any client works — the house speaks a protocol, not a UI. |
 | **Agent integration** | **MCP server** exposing the house's tools | Hermes and other agents are residents; the house is their address. |
-| **Deployment** | **docker-compose on horza**, tailscale for access | The compose file is the floor plan. The house is the hallway, the rooms are yours. |
+| **Deployment** | **docker-compose**, tailscale for access | The compose file is the floor plan. The house is the hallway, the rooms are yours. |
 
-### 3.2 The rooms (the owner's stack, already running or planned on horza)
+### 3.2 The rooms (the owner's stack, already running or planned)
 
 ```
 postgres        — the archive
@@ -203,7 +203,7 @@ The framework is the product; the software is a reference implementation. In two
   "id": "sha256-of-envelope+body",
   "envelope": {
     "from": "hermes@house",
-    "to": ["chris@house"],
+    "to": ["you@house"],
     "cc": [],
     "thread": "th_9f2c1",
     "kind": "letter | feed | system | audio | note | task",

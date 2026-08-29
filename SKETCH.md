@@ -28,7 +28,7 @@ Every thing in your life gets an address, every address receives letters, every 
 
 ## The design constraint (the floppy disk)
 
-Pre-IRC, Chris and Ben exchanged floppy disks with text files on them as letters. They were 14. The principle still holds: **technology enables users to communicate on their own terms — or it should.**
+Pre-IRC, two teenagers exchanged floppy disks with text files on them as letters. They were 14. The principle still holds: **technology enables users to communicate on their own terms — or it should.**
 
 The floppy worked because 1.44MB forced you to *choose* — you couldn't carry everything, so you carried what mattered. The house's constraint isn't 1.44MB, it's **asynchrony**: the letter waits. That's the design limit that shapes everything else.
 
@@ -84,7 +84,7 @@ Why not email as the spine: it's mailbox-shaped. Why not Matrix: it's chat-shape
   "id": "sha256-of-envelope+body",
   "envelope": {
     "from": "hermes@house",
-    "to": ["chris@house"],
+    "to": ["you@house"],
     "cc": [],
     "thread": "th_9f2c1",
     "kind": "letter | feed | system | audio | note | task",
@@ -207,7 +207,7 @@ Values as architecture, not decoration. Every value has a schema consequence; if
 
 ## 5. The stack
 
-Self-hosted, docker-compose, owner hooks in their own stack. The house is a *spine*, not a product. For horza:
+Self-hosted, docker-compose, owner hooks in their own stack. The house is a *spine*, not a product. The rooms:
 
 ```
 postgres        — the archive (letters, addresses, threads)
