@@ -5,8 +5,8 @@
   "description": "Poste Restante — a house where everything is mail. Root package delegating to the server package.",
   "workspaces": ["server", "client"],
   "scripts": {
-    "build": "npm run build --workspace server",
-    "test": "npm run test --workspace server",
-    "typecheck": "npm run typecheck --workspace server"
+    "build": "npm run build --workspace server && npm run build --workspace client",
+    "test": "npm run test --workspace server && npm run test --workspace client",
+    "typecheck": "npm run typecheck --workspace server && npm run typecheck --workspace client"
   }
 }

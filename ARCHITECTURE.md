@@ -4,7 +4,57 @@
 
 ## Current Code Reality
 
-**No production code yet.** This repo is the working document for the Open Design phase (2 months, granted 2026-08-29). The framework is the product; the software is a reference implementation.
+**The house is built.** Phase 4 complete (2026-08-29): the archive spine, the letter server, the whisper, the reference client, and the MCP face are all implemented and verified. The framework is still the product; the software is the reference implementation.
+
+### What exists
+
+```
+server/   — the house. TypeScript, Hono, postgres 15 + qdrant + FTS.
+  src/
+    index.ts        — buildHouse(): wires db, qdrant, pipeline, retrieval, whisper
+    server.ts       — the letter server (Hono, /v1/*)
+    main.ts         — entry point
+    schemas.ts      — the letter contract (zod) — shared by HTTP + MCP faces
+    deliver.ts      — deliverLetter(): shared delivery logic (ingest → whisper → reply)
+    types.ts        — envelope, frame, kinds (letter | feed | system | audio | note | task)
+    id.ts           — letterId: sha256 of canonical envelope+body → deterministic UUID for qdrant
+    db/             — postgres repository + migrations (001–005)
+    qdrant/         — semantic store (768-dim ollama embeddings)
+    embed/          — embedder (ollama local, OpenAI-compatible opt-in)
+    pipeline/       — ingestion pipeline (row → embed → index → link), markdown→text, logger
+    retrieval/      — three paths (exact, FTS, semantic) merged by RRF (k=60)
+    whisper/        — the house's own letters: list/open/dismiss/undismiss, gap detection
+    mcp/            — the MCP face (17 tools) — agents become residents
+client/   — the reference client. Vite + React, calm design tokens (seal wax, no red).
+  src/
+    api.ts          — the house protocol as a client (POST deliver, GET mailbox)
+    App.tsx         — shell: mailbox / archive / addresses / compose + whisper sidebar
+    Mailbox.tsx, LetterView.tsx, Archive.tsx (Horizon View), AddressBook.tsx,
+    Compose.tsx, WhisperSidebar.tsx
+```
+
+### The protocol faces
+
+The house speaks one contract (CONTRACT.md) through two faces that cannot drift — both share `schemas.ts` and `deliver.ts`:
+
+- **HTTP** — the letter server (`/v1/letters`, `/v1/addresses/:addr/inbox`, `/v1/threads/:id`, `/v1/frames`, `/v1/whisper`). Pull by default; there is no push channel.
+- **MCP** — 17 tools (deliver, search, mailbox, whisper, gaps). Registered with Hermes as `poste-restante`.
+
+### Identity
+
+`letterId` is a SHA256 of the canonical envelope + body. Qdrant requires UUIDs, so the first 32 hex chars map to a deterministic UUID. A caller-supplied id is ignored — the hash is the identity. Ingestion is idempotent.
+
+### Retrieval
+
+Three paths, merged by RRF (k=60): exact (postgres envelope), full-text (postgres FTS), semantic (qdrant). Ranking uses the house's own signals — recency (gentle decay), thread weight, correspondent weight, frame match, explicit pins. Never engagement, virality, or "you might also like."
+
+### The whisper
+
+The mailbox for the house's own letters. House letters (kind `system` from `house@house`) surface on ingest; gap detection (dormant threads, unanswered questions) runs on demand via cheap postgres queries. The learning loop: opening (signal) > ignoring (decay) > explicit dismissal (strongest negative); writing back is the strongest positive. Presence not pressure — the whisper is a GET resource.
+
+### Deletion
+
+First-class and cascading. `ON DELETE CASCADE` across letters → letter_addresses, letter_frames, whispers. No soft delete. The archive forgets on request.
 
 ## Target Architecture (from SPEC.md)
 

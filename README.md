@@ -6,7 +6,7 @@
 
 **A house where everything is mail.** A self-hosted correspondence layer for the agentic stack: every thing gets an address, every address receives letters, every letter is kept, and nothing arrives unless you come for it.
 
-**Status:** Spec v0.1 — framework + design phase (Open Design, 2 months). No production code yet.
+**Status:** Phase 4/5 — the house is built and wired. The archive spine (postgres + qdrant + FTS, merged by RRF), the letter server (Hono), the whisper, the reference client (Vite + React), and the MCP face (agents as residents) are all live. Open Design window continues (2 months, granted 2026-08-29); the framework is the product, the software is the reference implementation.
 
 ## The one sentence
 
@@ -30,19 +30,19 @@ Privacy as schema, anti-hierarchy as capability, queer/indigenous/global-majorit
 
 ## The stack
 
-| Layer | Choice |
-|---|---|
-| Letter server | TypeScript + Hono, dockerised |
-| Letters/addresses/threads/frames | postgres 16 |
-| Semantic layer | qdrant |
-| Raw payloads | minio |
-| Ingestion queue | redis |
-| Local brain | ollama |
-| Audio letters | faster-whisper |
-| Bridges | IMAP/SMTP (primary), Matrix + ActivityPub (optional) |
-| Reference client | Tauri v2 + React (callsheet lineage) |
-| Agent integration | MCP server |
-| Deployment | docker-compose, tailscale for access |
+| Layer | Choice | Status |
+|---|---|---|
+| Letter server | TypeScript + Hono | ✅ built (`server/`) |
+| Archive spine | postgres 15 (shared instance) + qdrant + FTS, merged by RRF | ✅ built |
+| The whisper | house letters + gap detection (dormant threads, unanswered questions) | ✅ built |
+| Reference client | Vite + React (Tauri v2 later) | ✅ built (`client/`) |
+| Agent integration | MCP server — agents become residents | ✅ built, registered with Hermes |
+| Raw payloads | minio (S3-compatible) | ⬜ target — out of two-month scope |
+| Ingestion queue | redis | ⬜ target — out of two-month scope |
+| Audio letters | faster-whisper | ⬜ target — out of two-month scope |
+| Local brain | ollama (embeddings, 768-dim) | ✅ live on horza |
+| Bridges | IMAP/SMTP (primary), Matrix + ActivityPub (optional) | ⬜ target — out of two-month scope |
+| Deployment | docker-compose, tailscale for access | ⬜ target — out of two-month scope |
 
 ## What this is not
 
@@ -50,6 +50,25 @@ Privacy as schema, anti-hierarchy as capability, queer/indigenous/global-majorit
 - **Not a platform.** A house. Small, domestic, self-hosted, yours.
 - **Not a recommendation engine.** The house answers the question you asked and offers what's missing from the work you're doing. It does not try to keep you in the room.
 - **Not a servant.** A resident. It offers, it reassesses, it can be wrong and says so.
+
+## Run it
+
+The house needs postgres 15 and qdrant (and ollama for embeddings). The server defaults to local infra:
+
+```sh
+npm install
+npm run build          # server + client
+npm test               # unit tests (server + client)
+npm run test:integration --workspace server   # needs POSTE_RESTANTE_INTEGRATION=1 + live infra
+```
+
+```sh
+npm run serve --workspace server     # the letter server, http://localhost:8787
+npm run dev --workspace client       # the reference client, http://localhost:5173 (proxies /v1)
+npm run serve:mcp --workspace server # the MCP face — agents become residents
+```
+
+The MCP face is registered with Hermes as `poste-restante` (17 tools: deliver, search, mailbox, whisper, gaps). The house is headless — the client is *a* client, not *the* client.
 
 ## Documents
 
