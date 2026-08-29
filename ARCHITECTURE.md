@@ -57,7 +57,7 @@ Callsheet's ghost cards scaled from daily to conversational. The sidebar is the 
 | Layer | Choice |
 |---|---|
 | Letter server | TypeScript + Hono, dockerised |
-| Letters/addresses/threads/frames | postgres 16 |
+| Letters/addresses/threads/frames | postgres 15 (shared instance) |
 | Semantic layer | qdrant |
 | Raw payloads | minio |
 | Ingestion queue | redis |
