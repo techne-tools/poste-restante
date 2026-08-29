@@ -1,0 +1,12 @@
+{
+  "name": "poste-restante",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Poste Restante — a house where everything is mail. Root package delegating to the server package.",
+  "workspaces": ["server"],
+  "scripts": {
+    "build": "npm run build --workspace server",
+    "test": "npm run test --workspace server",
+    "typecheck": "npm run typecheck --workspace server"
+  }
+}

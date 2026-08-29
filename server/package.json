@@ -1,0 +1,29 @@
+{
+  "name": "@poste-restante/server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Poste Restante — the archive spine. Postgres letters, qdrant semantic layer, ingestion pipeline, RRF retrieval.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "NODE_ENV=test vitest run",
+    "test:watch": "NODE_ENV=test vitest",
+    "migrate": "tsx src/db/migrate.ts"
+  },
+  "dependencies": {
+    "@qdrant/js-client-rest": "^1.19.0",
+    "pg": "^8.23.0",
+    "zod": "^4.5.2"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "@types/pg": "^8.23.1",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
+  }
+}
