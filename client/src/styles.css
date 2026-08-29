@@ -1,40 +1,50 @@
-/* Poste Restante — design tokens. Callsheet's lineage: calm, neutral,
-   present not pressuring. Quiet by default. Dismissible. No red for errors
-   (ink-secondary grey). The seal wax is the only accent. */
+/* Poste Restante — design tokens. Bound spec: .impeccable/design.json
+   (schema poste-restante/design-tokens/1). Warm paper, warm ink, one seal.
+   Calm, neutral, present not pressuring. No red for errors. The seal wax
+   (--accent) is the only accent, ≤2 uses per surface. */
 
 :root {
-  /* Surfaces — paper, not glass. */
-  --surface: oklch(0.97 0.005 60);
-  --surface-raised: oklch(0.99 0.003 60);
-  --surface-sunken: oklch(0.93 0.008 60);
+  /* Material — warm paper, warm ink, one seal. */
+  --bg: oklch(98% 0.004 95);        /* paper — the page */
+  --surface: oklch(100% 0.002 95);  /* sheet — the letter, the card */
+  --fg: oklch(20% 0.018 70);        /* ink — primary text */
+  --muted: oklch(48% 0.012 70);     /* faded ink — secondary text, metadata */
+  --border: oklch(90% 0.006 95);    /* the fold — hairlines, rules */
+  --accent: oklch(52% 0.10 28);     /* seal wax — the single accent, ≤2 uses per surface */
 
-  /* Ink — the house writes in ink. */
-  --ink: oklch(0.25 0.02 60);
-  --ink-secondary: oklch(0.45 0.02 60);
-  --ink-faint: oklch(0.6 0.015 60);
+  /* Derived aliases (documented, not in the bound spec). */
+  --surface-raised: var(--surface); /* cards on paper */
+  --surface-sunken: var(--bg);      /* recessed areas — sidebar, code, banners */
+  --ink-faint: oklch(60% 0.01 70);  /* quietest text — empty states, kickers */
+  --error: var(--muted);            /* errors are ink-secondary grey, never red */
+  --accent-soft: oklch(90% 0.03 28);/* a whisper of the seal — reserved, rare */
 
-  /* The seal wax — the only accent. */
-  --accent: oklch(52% 0.10 28);
-  --accent-soft: oklch(0.9 0.03 28);
+  /* Three voices. Serif is the letter; sans is the reading; mono is the machine. */
+  --font-display: "Iowan Old Style", "Charter", Georgia, "Times New Roman", serif;
+  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Menlo", "Consolas", monospace;
 
-  /* Error — ink-secondary grey, never red. */
-  --error: oklch(0.45 0.02 60);
+  /* Type scale (bound). */
+  --step-0: 0.875rem;
+  --step-1: 1rem;
+  --step-2: 1.25rem;
+  --step-3: 1.75rem;
+  --step-4: 2.5rem;
+  --step-5: 3.5rem;
 
-  /* Hairlines — the house is drawn in pencil. */
-  --hairline: oklch(0.85 0.01 60);
+  /* Space (bound). */
+  --space-1: 0.5rem;
+  --space-2: 1rem;
+  --space-3: 1.5rem;
+  --space-4: 2.5rem;
+  --space-5: 4rem;
+  --space-6: 6rem;
 
-  /* Type — the house reads like a letter. */
-  --font-serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
-  --font-sans: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+  /* Rules (bound). */
+  --rule: 1px solid var(--border);
+  --rule-strong: 1px solid var(--fg);
 
   --radius: 6px;
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 24px;
-  --space-6: 32px;
 }
 
 * {
@@ -49,29 +59,35 @@ body,
 }
 
 body {
-  font-family: var(--font-sans);
+  font-family: var(--font-body);
   font-size: 15px;
   line-height: 1.55;
-  color: var(--ink);
-  background: var(--surface);
+  color: var(--fg);
+  background: var(--bg);
   -webkit-font-smoothing: antialiased;
 }
 
 h1,
 h2,
 h3 {
-  font-family: var(--font-serif);
+  font-family: var(--font-display);
   font-weight: 500;
   letter-spacing: -0.01em;
 }
 
 a {
-  color: var(--ink);
+  color: var(--fg);
   text-decoration: none;
 }
 
 a:hover {
   text-decoration: underline;
+}
+
+/* Focus — every focusable element has a clear accent ring. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /* The house layout: whisper sidebar + the composed space. */
@@ -82,7 +98,7 @@ a:hover {
 }
 
 .whisper {
-  border-right: 1px solid var(--hairline);
+  border-right: var(--rule);
   background: var(--surface-sunken);
   overflow-y: auto;
   padding: var(--space-4);
@@ -92,13 +108,13 @@ a:hover {
   font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--ink-secondary);
+  color: var(--muted);
   margin: 0 0 var(--space-3);
 }
 
 .whisper-card {
   background: var(--surface-raised);
-  border: 1px solid var(--hairline);
+  border: var(--rule);
   border-radius: var(--radius);
   padding: var(--space-3);
   margin-bottom: var(--space-3);
@@ -115,7 +131,15 @@ a:hover {
 
 .whisper-card .summary {
   margin: var(--space-2) 0;
-  color: var(--ink);
+  color: var(--fg);
+}
+
+.whisper-card .reasoning {
+  font-size: 12px;
+  color: var(--muted);
+  border-left: 2px solid var(--border);
+  padding-left: var(--space-2);
+  margin: var(--space-2) 0;
 }
 
 .whisper-card .actions {
@@ -141,7 +165,7 @@ a:hover {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  border-bottom: 1px solid var(--hairline);
+  border-bottom: var(--rule);
   padding-bottom: var(--space-3);
   margin-bottom: var(--space-4);
 }
@@ -154,7 +178,7 @@ a:hover {
 .space header .address {
   font-family: var(--font-mono);
   font-size: 12px;
-  color: var(--ink-secondary);
+  color: var(--muted);
 }
 
 /* The mailbox — a vertical flow of letters. */
@@ -166,26 +190,28 @@ a:hover {
 
 .letter-row {
   background: var(--surface-raised);
-  border: 1px solid var(--hairline);
+  border: var(--rule);
   border-radius: var(--radius);
   padding: var(--space-3) var(--space-4);
   cursor: pointer;
+  text-align: left;
+  width: 100%;
   transition: border-color 120ms ease;
 }
 
 .letter-row:hover {
-  border-color: var(--accent);
+  border-color: var(--fg);
 }
 
 .letter-row .subject {
-  font-family: var(--font-serif);
+  font-family: var(--font-display);
   font-size: 16px;
   margin: 0 0 var(--space-1);
 }
 
 .letter-row .meta {
   font-size: 12px;
-  color: var(--ink-secondary);
+  color: var(--muted);
   display: flex;
   gap: var(--space-3);
   flex-wrap: wrap;
@@ -194,12 +220,12 @@ a:hover {
 .letter-row .meta .frame {
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--accent);
+  color: var(--muted);
 }
 
 .letter-row .snippet {
   font-size: 13px;
-  color: var(--ink-secondary);
+  color: var(--muted);
   margin-top: var(--space-2);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -209,7 +235,7 @@ a:hover {
 /* The letter — the whole protocol. */
 .letter {
   background: var(--surface-raised);
-  border: 1px solid var(--hairline);
+  border: var(--rule);
   border-radius: var(--radius);
   padding: var(--space-5);
   max-width: 720px;
@@ -217,18 +243,40 @@ a:hover {
 
 .letter .envelope {
   font-size: 12px;
-  color: var(--ink-secondary);
-  border-bottom: 1px solid var(--hairline);
+  color: var(--muted);
+  border-bottom: var(--rule);
   padding-bottom: var(--space-3);
   margin-bottom: var(--space-4);
 }
 
 .letter .envelope .from {
-  color: var(--ink);
+  color: var(--fg);
+}
+
+.letter .envelope details {
+  margin-top: var(--space-2);
+}
+
+.letter .envelope details summary {
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.letter .envelope details summary:hover {
+  color: var(--fg);
+}
+
+.letter .envelope .details-body {
+  margin-top: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
 }
 
 .letter .body {
-  font-family: var(--font-serif);
+  font-family: var(--font-display);
   font-size: 16px;
   line-height: 1.7;
 }
@@ -248,10 +296,10 @@ a:hover {
 }
 
 .letter .body blockquote {
-  border-left: 2px solid var(--accent);
+  border-left: 2px solid var(--muted);
   margin-left: 0;
   padding-left: var(--space-4);
-  color: var(--ink-secondary);
+  color: var(--muted);
 }
 
 /* The address book — flat, no ranking. */
@@ -263,12 +311,20 @@ a:hover {
 
 .address-row {
   background: var(--surface-raised);
-  border: 1px solid var(--hairline);
+  border: var(--rule);
   border-radius: var(--radius);
   padding: var(--space-3) var(--space-4);
   display: flex;
   justify-content: space-between;
   align-items: center;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: border-color 120ms ease;
+}
+
+.address-row:hover {
+  border-color: var(--fg);
 }
 
 .address-row .addr {
@@ -277,65 +333,115 @@ a:hover {
 }
 
 .address-row .names {
-  color: var(--ink-secondary);
+  color: var(--muted);
   font-size: 13px;
 }
 
-/* The Horizon View — plural time as parallel lanes. */
+/* The Horizon View — plural time as a transit diagram. */
 .horizon {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
 }
 
-.horizon .lanes {
-  display: flex;
-  gap: var(--space-3);
-  overflow-x: auto;
-  padding-bottom: var(--space-2);
+.horizon-body {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: var(--space-4);
+  align-items: start;
 }
 
-.horizon .lane {
-  flex: 0 0 auto;
-  min-width: 180px;
-  border: 1px solid var(--hairline);
+/* The frame rail — parallel lines flanking the letter flow. */
+.frame-rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  position: sticky;
+  top: 0;
+}
+
+.frame-line {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  border: var(--rule);
   border-radius: var(--radius);
   background: var(--surface-raised);
-  padding: var(--space-3);
-}
-
-.horizon .lane h3 {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--ink-secondary);
-  margin: 0 0 var(--space-2);
-}
-
-.horizon .lane .frame-chip {
-  display: inline-block;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--accent);
-  background: var(--accent-soft);
-  border-radius: 999px;
-  padding: 2px 8px;
-  margin: 0 var(--space-1) var(--space-1) 0;
+  text-align: left;
   cursor: pointer;
+  transition: border-color 120ms ease;
 }
 
-.horizon .lane .frame-chip.active {
+.frame-line:hover {
+  border-color: var(--fg);
+}
+
+.frame-line.active {
+  border-color: var(--accent);
+}
+
+.frame-line .frame-name {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.frame-line .frame-value {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--fg);
+}
+
+/* The transit line itself — dots at each letter the frame carries. */
+.frame-rail-line {
+  position: absolute;
+  left: -14px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--border);
+}
+
+.frame-line.active .frame-rail-line {
   background: var(--accent);
-  color: var(--surface-raised);
+}
+
+.frame-rail-line i {
+  position: absolute;
+  left: -2px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.frame-line.active .frame-rail-line i {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Dimming, not filtering — the intersection stays visible. */
+.letter-row.dimmed {
+  opacity: 0.35;
+}
+
+.letter-row.dimmed:hover {
+  opacity: 0.6;
 }
 
 /* Controls — quiet, dismissible, no red. */
 button {
-  font-family: var(--font-sans);
+  font-family: var(--font-body);
   font-size: 12px;
-  color: var(--ink-secondary);
+  color: var(--muted);
   background: transparent;
-  border: 1px solid var(--hairline);
+  border: var(--rule);
   border-radius: var(--radius);
   padding: 4px 10px;
   cursor: pointer;
@@ -343,18 +449,20 @@ button {
 }
 
 button:hover {
-  border-color: var(--accent);
-  color: var(--ink);
+  border-color: var(--fg);
+  color: var(--fg);
 }
 
 button.primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: var(--surface-raised);
+  color: var(--surface);
 }
 
 button.primary:hover {
-  opacity: 0.9;
+  background: var(--fg);
+  border-color: var(--fg);
+  color: var(--bg);
 }
 
 .search {
@@ -365,24 +473,19 @@ button.primary:hover {
 
 .search input {
   flex: 1;
-  font-family: var(--font-sans);
+  font-family: var(--font-body);
   font-size: 14px;
-  color: var(--ink);
+  color: var(--fg);
   background: var(--surface-raised);
-  border: 1px solid var(--hairline);
+  border: var(--rule);
   border-radius: var(--radius);
   padding: 8px 12px;
-}
-
-.search input:focus {
-  outline: none;
-  border-color: var(--accent);
 }
 
 /* Errors — ink-secondary grey, never red. Dismissible. */
 .error-banner {
   background: var(--surface-sunken);
-  border: 1px solid var(--hairline);
+  border: var(--rule);
   border-radius: var(--radius);
   color: var(--error);
   padding: var(--space-3) var(--space-4);
@@ -414,5 +517,5 @@ button.primary:hover {
 
 .nav button.active {
   border-color: var(--accent);
-  color: var(--ink);
+  color: var(--fg);
 }

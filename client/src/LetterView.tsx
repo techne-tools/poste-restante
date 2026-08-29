@@ -65,18 +65,23 @@ export default function LetterView({ letter, onBack }: Props) {
             <span className="from">{letter.envelope.from}</span>
             {" → "}
             {letter.envelope.to.join(", ")}
-            {letter.envelope.cc.length > 0 && ` (cc: ${letter.envelope.cc.join(", ")})`}
           </div>
           <div>
-            {new Date(letter.receivedAt).toLocaleString("en-AU")} · {letter.envelope.thread}
+            {new Date(letter.receivedAt).toLocaleString("en-AU")} · {letter.envelope.kind}
           </div>
-          <div>
-            {letter.time.frames.map((f) => (
-              <span key={`${f.frame}:${f.value}`} className="frame">
-                {f.frame}:{f.value}{" "}
-              </span>
-            ))}
-          </div>
+          <details>
+            <summary>envelope</summary>
+            <div className="details-body">
+              {letter.envelope.cc.length > 0 && <span>cc: {letter.envelope.cc.join(", ")}</span>}
+              <span>thread: {letter.envelope.thread}</span>
+              <span>lang: {letter.envelope.lang}</span>
+              {letter.time.frames.map((f) => (
+                <span key={`${f.frame}:${f.value}`} className="frame">
+                  {f.frame}:{f.value}
+                </span>
+              ))}
+            </div>
+          </details>
         </div>
         <h1 style={{ marginTop: 0 }}>{letter.envelope.subject || "(no subject)"}</h1>
         <div className="body">{renderMarkdown(letter.body.content)}</div>

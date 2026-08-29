@@ -4,13 +4,15 @@ import { house } from "./api";
 interface Props {
   onError: (msg: string) => void;
   onDelivered: () => void;
+  initialTo?: string;
+  initialThread?: string;
 }
 
-export default function Compose({ onError, onDelivered }: Props) {
-  const [to, setTo] = useState("you@house");
+export default function Compose({ onError, onDelivered, initialTo, initialThread }: Props) {
+  const [to, setTo] = useState(initialTo ?? "you@house");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
-  const [thread, setThread] = useState("");
+  const [thread, setThread] = useState(initialThread ?? "");
   const [frame, setFrame] = useState("");
   const [sending, setSending] = useState(false);
 
@@ -89,10 +91,10 @@ export default function Compose({ onError, onDelivered }: Props) {
         rows={12}
         style={{
           width: "100%",
-          fontFamily: "var(--font-serif)",
+          fontFamily: "var(--font-display)",
           fontSize: 16,
           lineHeight: 1.7,
-          border: "1px solid var(--hairline)",
+          border: "1px solid var(--border)",
           borderRadius: "var(--radius)",
           padding: "var(--space-3)",
           resize: "vertical",

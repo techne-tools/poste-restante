@@ -38,6 +38,7 @@ export interface Whisper {
   kind: "house-letter" | "gap-dormant-thread" | "gap-unanswered-question";
   targetThread: string | null;
   summary: string;
+  reasoning: string | null;
   createdAt: string;
   openedAt: string | null;
   dismissedAt: string | null;

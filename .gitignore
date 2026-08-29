@@ -44,6 +44,7 @@ PLAN-*.md
 BRIEF-*.md
 RECON.md
 TASK.md
+REVIEW-*.md
 
 # agent-orchestrator station output captures
 .ao-capture/

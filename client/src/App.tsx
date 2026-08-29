@@ -6,13 +6,16 @@ import Mailbox from "./Mailbox";
 import Archive from "./Archive";
 import AddressBook from "./AddressBook";
 import Compose from "./Compose";
+import Pub from "./Pub";
 
-type View = "mailbox" | "archive" | "addresses" | "compose";
+type View = "mailbox" | "archive" | "addresses" | "compose" | "pub";
 
 export default function App() {
   const [view, setView] = useState<View>("mailbox");
   const [whispers, setWhispers] = useState<Whisper[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [composeTo, setComposeTo] = useState<string | undefined>(undefined);
+  const [composeThread, setComposeThread] = useState<string | undefined>(undefined);
 
   const refreshWhisper = useCallback(async () => {
     try {
@@ -51,6 +54,23 @@ export default function App() {
     [refreshWhisper],
   );
 
+  const writeBack = useCallback(
+    (w: Whisper) => {
+      // The correction is a letter; the reply is a letter. Address it to the
+      // house, on the whisper's thread — the strongest signal.
+      setComposeTo("you@house");
+      setComposeThread(w.targetThread ?? undefined);
+      setView("compose");
+    },
+    [],
+  );
+
+  const composeToAddress = useCallback((address: string) => {
+    setComposeTo(address);
+    setComposeThread(undefined);
+    setView("compose");
+  }, []);
+
   return (
     <div className="house">
       <WhisperSidebar
@@ -62,6 +82,7 @@ export default function App() {
           await house.detectGaps();
           refreshWhisper();
         }}
+        onWriteBack={writeBack}
       />
       <main className="space">
         {error && (
@@ -81,6 +102,9 @@ export default function App() {
           <button className={view === "archive" ? "active" : ""} onClick={() => setView("archive")}>
             Archive
           </button>
+          <button className={view === "pub" ? "active" : ""} onClick={() => setView("pub")}>
+            Pub
+          </button>
           <button className={view === "addresses" ? "active" : ""} onClick={() => setView("addresses")}>
             Addresses
           </button>
@@ -90,8 +114,16 @@ export default function App() {
         </nav>
         {view === "mailbox" && <Mailbox onError={setError} />}
         {view === "archive" && <Archive onError={setError} />}
-        {view === "addresses" && <AddressBook onError={setError} />}
-        {view === "compose" && <Compose onError={setError} onDelivered={() => setView("mailbox")} />}
+        {view === "pub" && <Pub onError={setError} />}
+        {view === "addresses" && <AddressBook onError={setError} onCompose={composeToAddress} />}
+        {view === "compose" && (
+          <Compose
+            onError={setError}
+            onDelivered={() => setView("mailbox")}
+            initialTo={composeTo}
+            initialThread={composeThread}
+          />
+        )}
       </main>
     </div>
   );

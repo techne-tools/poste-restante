@@ -7,17 +7,23 @@ interface Props {
   onError: (msg: string) => void;
 }
 
-export default function Mailbox({ onError }: Props) {
+/**
+ * The pub — the house's public letters. Shaped like a channel, operates like
+ * a pub: letters posted whole, read at leisure, no reactions, no presence,
+ * no unread counts. The pub is an address (pub@house), not a separate
+ * mechanism — everything is mail.
+ */
+export default function Pub({ onError }: Props) {
   const [letters, setLetters] = useState<Letter[]>([]);
   const [selected, setSelected] = useState<Letter | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     try {
-      const res = await house.inbox("you@house");
+      const res = await house.inbox("pub@house");
       setLetters(res.letters);
     } catch (err) {
-      onError(err instanceof Error ? err.message : "the mailbox is empty");
+      onError(err instanceof Error ? err.message : "the pub is quiet");
     } finally {
       setLoading(false);
     }
@@ -27,7 +33,7 @@ export default function Mailbox({ onError }: Props) {
     load();
   }, [load]);
 
-  if (loading) return <p className="empty">Opening the mailbox…</p>;
+  if (loading) return <p className="empty">Opening the pub…</p>;
 
   return (
     <div>
@@ -35,7 +41,9 @@ export default function Mailbox({ onError }: Props) {
         <LetterView letter={selected} onBack={() => setSelected(null)} />
       ) : (
         <div className="letter-list">
-          {letters.length === 0 && <p className="empty">No letters yet. The house holds.</p>}
+          {letters.length === 0 && (
+            <p className="empty">The pub is quiet — no letters posted yet.</p>
+          )}
           {letters.map((l) => (
             <div key={l.id} className="letter-row" onClick={() => setSelected(l)}>
               <p className="subject">{l.envelope.subject || "(no subject)"}</p>
@@ -48,7 +56,6 @@ export default function Mailbox({ onError }: Props) {
                     {f.frame}:{f.value}
                   </span>
                 ))}
-                {l.pinnedAt && <span className="frame">pinned</span>}
               </div>
               <div className="snippet">{l.body.content.replace(/[#*`>]/g, "").slice(0, 120)}</div>
             </div>

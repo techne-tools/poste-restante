@@ -8,9 +8,10 @@ interface Props {
 }
 
 /**
- * The archive — the Horizon View. A vertical flow of letters flanked by
- * parallel lanes for each frame (like a transit diagram). Selecting a frame
- * brings its letters to the foreground. Plural time, made visible.
+ * The archive — the Horizon View. A single vertical flow of letters, flanked
+ * by parallel frame lines (like a transit diagram). Selecting a frame line
+ * brings its letters to the foreground and dims the rest — the intersection
+ * of contexts stays visible, nothing is removed. Plural time, made visible.
  */
 export default function Archive({ onError }: Props) {
   const [letters, setLetters] = useState<Letter[]>([]);
@@ -48,13 +49,33 @@ export default function Archive({ onError }: Props) {
     }
   }, [query, onError]);
 
-  const visible = useMemo(() => {
-    if (!activeFrame) return letters;
-    const [name, value] = activeFrame.split(":");
-    return letters.filter((l) =>
-      l.time.frames.some((f) => f.frame === name && f.value === value),
-    );
-  }, [letters, activeFrame]);
+  const inFrame = useCallback(
+    (l: Letter, frameId: string) => {
+      const [name, value] = frameId.split(":");
+      return l.time.frames.some((f) => f.frame === name && f.value === value);
+    },
+    [],
+  );
+
+  /** Letters in the active frame stay full; the rest dim. Nothing is removed. */
+  const dimmed = useMemo(() => {
+    if (!activeFrame) return new Set<string>();
+    return new Set(letters.filter((l) => !inFrame(l, activeFrame)).map((l) => l.id));
+  }, [letters, activeFrame, inFrame]);
+
+  /** For the transit rail: each frame line gets a dot per letter it carries. */
+  const railDots = useMemo(() => {
+    const map = new Map<string, number[]>();
+    frames.forEach((f) => {
+      const id = `${f.name}:${f.value}`;
+      const positions: number[] = [];
+      letters.forEach((l, i) => {
+        if (inFrame(l, id)) positions.push(i);
+      });
+      map.set(id, positions);
+    });
+    return map;
+  }, [frames, letters, inFrame]);
 
   if (loading) return <p className="empty">Opening the archive…</p>;
 
@@ -70,46 +91,63 @@ export default function Archive({ onError }: Props) {
         <button onClick={search}>Search</button>
       </div>
 
-      <div className="lanes">
-        {frames.map((f) => {
-          const id = `${f.name}:${f.value}`;
-          return (
-            <div key={id} className="lane">
-              <h3>{f.name}</h3>
-              <span
-                className={`frame-chip${activeFrame === id ? " active" : ""}`}
-                onClick={() => setActiveFrame(activeFrame === id ? null : id)}
+      <div className="horizon-body">
+        <div className="frame-rail" aria-label="Frames">
+          {frames.length === 0 && (
+            <p className="empty">No frames yet — time is still singular.</p>
+          )}
+          {frames.map((f) => {
+            const id = `${f.name}:${f.value}`;
+            const active = activeFrame === id;
+            const dots = railDots.get(id) ?? [];
+            return (
+              <button
+                key={id}
+                className={`frame-line${active ? " active" : ""}`}
+                onClick={() => setActiveFrame(active ? null : id)}
+                aria-pressed={active}
+                title={`${f.name}:${f.value} — ${dots.length} letter${dots.length === 1 ? "" : "s"}`}
               >
-                {f.value}
-              </span>
-            </div>
-          );
-        })}
-        {frames.length === 0 && <p className="empty">No frames yet — time is still singular.</p>}
-      </div>
-
-      {selected ? (
-        <LetterView letter={selected} onBack={() => setSelected(null)} />
-      ) : (
-        <div className="letter-list">
-          {visible.length === 0 && <p className="empty">Nothing here. The house holds.</p>}
-          {visible.map((l) => (
-            <div key={l.id} className="letter-row" onClick={() => setSelected(l)}>
-              <p className="subject">{l.envelope.subject || "(no subject)"}</p>
-              <div className="meta">
-                <span>{l.envelope.from}</span>
-                <span>{new Date(l.receivedAt).toLocaleString("en-AU")}</span>
-                {l.time.frames.map((f) => (
-                  <span key={`${f.frame}:${f.value}`} className="frame">
-                    {f.frame}:{f.value}
-                  </span>
-                ))}
-              </div>
-              <div className="snippet">{l.body.content.replace(/[#*`>]/g, "").slice(0, 120)}</div>
-            </div>
-          ))}
+                <span className="frame-name">{f.name}</span>
+                <span className="frame-value">{f.value}</span>
+                <span className="frame-rail-line" aria-hidden="true">
+                  {dots.map((d) => (
+                    <i key={d} style={{ top: `${(d / Math.max(letters.length - 1, 1)) * 100}%` }} />
+                  ))}
+                </span>
+              </button>
+            );
+          })}
         </div>
-      )}
+
+        {selected ? (
+          <LetterView letter={selected} onBack={() => setSelected(null)} />
+        ) : (
+          <div className="letter-list">
+            {letters.length === 0 && <p className="empty">Nothing here. The house holds.</p>}
+            {letters.map((l) => (
+              <div
+                key={l.id}
+                className={`letter-row${dimmed.has(l.id) ? " dimmed" : ""}`}
+                onClick={() => setSelected(l)}
+              >
+                <p className="subject">{l.envelope.subject || "(no subject)"}</p>
+                <div className="meta">
+                  <span className="kind">{l.envelope.kind}</span>
+                  <span>{l.envelope.from}</span>
+                  <span>{new Date(l.receivedAt).toLocaleString("en-AU")}</span>
+                  {l.time.frames.map((f) => (
+                    <span key={`${f.frame}:${f.value}`} className="frame">
+                      {f.frame}:{f.value}
+                    </span>
+                  ))}
+                </div>
+                <div className="snippet">{l.body.content.replace(/[#*`>]/g, "").slice(0, 120)}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

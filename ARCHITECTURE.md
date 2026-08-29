@@ -4,7 +4,7 @@
 
 ## Current Code Reality
 
-**The house is built.** Phase 4 complete (2026-08-29): the archive spine, the letter server, the whisper, the reference client, and the MCP face are all implemented and verified. The framework is still the product; the software is the reference implementation.
+**The house is built.** Phase 4 complete (2026-08-29): the archive spine, the letter server, the whisper, the reference client, and the MCP face are all implemented and verified. Phase 7 fix pass (2026-08-29) applied the design-review findings: bound design tokens, a11y pass, whisper reasoning, pub view, and the Horizon View re-sketch. The framework is still the product; the software is the reference implementation.
 
 ### What exists
 
@@ -18,19 +18,20 @@ server/   — the house. TypeScript, Hono, postgres 15 + qdrant + FTS.
     deliver.ts      — deliverLetter(): shared delivery logic (ingest → whisper → reply)
     types.ts        — envelope, frame, kinds (letter | feed | system | audio | note | task)
     id.ts           — letterId: sha256 of canonical envelope+body → deterministic UUID for qdrant
-    db/             — postgres repository + migrations (001–005)
+    db/             — postgres repository + migrations (001–006)
     qdrant/         — semantic store (768-dim ollama embeddings)
     embed/          — embedder (ollama local, OpenAI-compatible opt-in)
     pipeline/       — ingestion pipeline (row → embed → index → link), markdown→text, logger
     retrieval/      — three paths (exact, FTS, semantic) merged by RRF (k=60)
-    whisper/        — the house's own letters: list/open/dismiss/undismiss, gap detection
+    whisper/        — the house's own letters: list/open/dismiss/undismiss, gap detection with visible reasoning
     mcp/            — the MCP face (17 tools) — agents become residents
-client/   — the reference client. Vite + React, calm design tokens (seal wax, no red).
+client/   — the reference client. Vite + React, calm design tokens bound to .impeccable/design.json (seal wax, no red).
   src/
     api.ts          — the house protocol as a client (POST deliver, GET mailbox)
-    App.tsx         — shell: mailbox / archive / addresses / compose + whisper sidebar
-    Mailbox.tsx, LetterView.tsx, Archive.tsx (Horizon View), AddressBook.tsx,
-    Compose.tsx, WhisperSidebar.tsx
+    App.tsx         — shell: mailbox / archive / addresses / compose / pub + whisper sidebar
+    Mailbox.tsx, LetterView.tsx (envelope details toggle), Archive.tsx (Horizon View — transit diagram),
+    AddressBook.tsx (one-tap compose), Compose.tsx (correction path), Pub.tsx (pub@house),
+    WhisperSidebar.tsx (reasoning disclosure + write back)
 ```
 
 ### The protocol faces
@@ -50,7 +51,11 @@ Three paths, merged by RRF (k=60): exact (postgres envelope), full-text (postgre
 
 ### The whisper
 
-The mailbox for the house's own letters. House letters (kind `system` from `house@house`) surface on ingest; gap detection (dormant threads, unanswered questions) runs on demand via cheap postgres queries. The learning loop: opening (signal) > ignoring (decay) > explicit dismissal (strongest negative); writing back is the strongest positive. Presence not pressure — the whisper is a GET resource.
+The mailbox for the house's own letters. House letters (kind `system` from `house@house`) surface on ingest; gap detection (dormant threads, unanswered questions) runs on demand via cheap postgres queries and carries **visible reasoning** — the house shows why it is offering a gap ("the last letter arrived more than 14 days ago…"). The learning loop: opening (signal) > ignoring (decay) > explicit dismissal (strongest negative); writing back is the strongest positive. Presence not pressure — the whisper is a GET resource.
+
+### The reference client
+
+Calm by contract: design tokens bound to `.impeccable/design.json` (OKLch hue 95 paper, hue 70 ink, seal wax accent), no red for errors, no pings or badges. The **Horizon View** renders plural time as a transit diagram — a sticky frame rail with parallel lines, letters as dots on their frames, and dimming (not filtering) of non-matching letters. The **pub** is a view of the public address `pub@house` — the pub is an address, not a schema. The **whisper sidebar** shows the house's reasoning behind each gap offer and offers **Write back** as the primary action. The correction path pre-addresses Compose to the house: "the house is wrong" is a letter.
 
 ### Deletion
 

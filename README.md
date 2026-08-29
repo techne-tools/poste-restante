@@ -6,7 +6,7 @@
 
 **A house where everything is mail.** A self-hosted correspondence layer for the agentic stack: every thing gets an address, every address receives letters, every letter is kept, and nothing arrives unless you come for it.
 
-**Status:** Phase 4/5 — the house is built and wired. The archive spine (postgres + qdrant + FTS, merged by RRF), the letter server (Hono), the whisper, the reference client (Vite + React), and the MCP face (agents as residents) are all live. Open Design window continues (2 months, granted 2026-08-29); the framework is the product, the software is the reference implementation.
+**Status:** Phase 4/5 — the house is built and wired; Phase 7 fix pass applied. The archive spine (postgres + qdrant + FTS, merged by RRF), the letter server (Hono), the whisper (with visible reasoning), the reference client (Vite + React, Horizon View as a transit diagram, pub view), and the MCP face (agents as residents) are all live. Open Design window continues (2 months, granted 2026-08-29); the framework is the product, the software is the reference implementation.
 
 ## The one sentence
 
@@ -34,7 +34,7 @@ Privacy as schema, anti-hierarchy as capability, queer/indigenous/global-majorit
 |---|---|---|
 | Letter server | TypeScript + Hono | ✅ built (`server/`) |
 | Archive spine | postgres 15 (shared instance) + qdrant + FTS, merged by RRF | ✅ built |
-| The whisper | house letters + gap detection (dormant threads, unanswered questions) | ✅ built |
+| The whisper | house letters + gap detection (dormant threads, unanswered questions), visible reasoning | ✅ built |
 | Reference client | Vite + React (Tauri v2 later) | ✅ built (`client/`) |
 | Agent integration | MCP server — agents become residents | ✅ built, registered with Hermes |
 | Raw payloads | minio (S3-compatible) | ⬜ target — out of two-month scope |

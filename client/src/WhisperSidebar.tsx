@@ -6,6 +6,7 @@ interface Props {
   onDismiss: (id: string) => void;
   onUndismiss: (id: string) => void;
   onGaps: () => void;
+  onWriteBack: (w: Whisper) => void;
 }
 
 const KIND_LABEL: Record<Whisper["kind"], string> = {
@@ -14,7 +15,14 @@ const KIND_LABEL: Record<Whisper["kind"], string> = {
   "gap-unanswered-question": "a waiting question",
 };
 
-export default function WhisperSidebar({ whispers, onOpen, onDismiss, onUndismiss, onGaps }: Props) {
+export default function WhisperSidebar({
+  whispers,
+  onOpen,
+  onDismiss,
+  onUndismiss,
+  onGaps,
+  onWriteBack,
+}: Props) {
   const unread = whispers.filter((w) => !w.dismissedAt);
   return (
     <aside className="whisper">
@@ -27,7 +35,16 @@ export default function WhisperSidebar({ whispers, onOpen, onDismiss, onUndismis
         >
           <div className="kind">{KIND_LABEL[w.kind]}</div>
           <div className="summary">{w.summary}</div>
+          {w.reasoning && (
+            <details className="reasoning">
+              <summary>here&rsquo;s what I was seeing</summary>
+              <div className="details-body">{w.reasoning}</div>
+            </details>
+          )}
           <div className="actions">
+            <button className="primary" onClick={() => onWriteBack(w)}>
+              Write back
+            </button>
             <button onClick={() => onOpen(w.id)}>Open</button>
             {w.dismissedAt ? (
               <button onClick={() => onUndismiss(w.id)}>Keep</button>

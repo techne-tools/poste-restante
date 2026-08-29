@@ -27,6 +27,7 @@ export interface Whisper {
   kind: WhisperKind;
   targetThread: string | null;
   summary: string;
+  reasoning: string | null;
   createdAt: Date;
   openedAt: Date | null;
   dismissedAt: Date | null;
@@ -39,6 +40,7 @@ export interface WhisperRow {
   kind: WhisperKind;
   target_thread: string | null;
   summary: string;
+  reasoning: string | null;
   created_at: Date;
   opened_at: Date | null;
   dismissed_at: Date | null;
@@ -51,6 +53,7 @@ const toWhisper = (r: WhisperRow): Whisper => ({
   kind: r.kind,
   targetThread: r.target_thread,
   summary: r.summary,
+  reasoning: r.reasoning,
   createdAt: r.created_at,
   openedAt: r.opened_at,
   dismissedAt: r.dismissed_at,
@@ -122,15 +125,21 @@ export class WhisperService {
 
   /**
    * Surface a house letter in the whisper. Called when a letter of kind
-   * `system` from the house's own address is ingested.
+   * `system` from the house's own address is ingested. The summary is the
+   * lede; the reasoning is the letter itself — the offer shows its work.
    */
-  async surfaceHouseLetter(letterId: string, threadId: string, summary: string): Promise<void> {
+  async surfaceHouseLetter(
+    letterId: string,
+    threadId: string,
+    summary: string,
+    reasoning: string | null = null,
+  ): Promise<void> {
     const id = `house:${letterId}`;
     await this.pool.query(
-      `INSERT INTO whispers (id, letter_id, kind, target_thread, summary)
-       VALUES ($1, $2, 'house-letter', $3, $4)
+      `INSERT INTO whispers (id, letter_id, kind, target_thread, summary, reasoning)
+       VALUES ($1, $2, 'house-letter', $3, $4, $5)
        ON CONFLICT (id) DO NOTHING`,
-      [id, letterId, threadId, summary],
+      [id, letterId, threadId, summary, reasoning],
     );
     this.log.info("whisper:surfaced", { id, kind: "house-letter" });
   }
@@ -162,11 +171,12 @@ export class WhisperService {
     );
     for (const row of dormant.rows) {
       const id = `gap-dormant:${row.thread_id}`;
+      const reasoning = `The last letter in ${row.thread_id} arrived more than 14 days ago, and the thread has at least two letters — a correspondence, not a one-off. The house holds it, quietly.`;
       await this.pool.query(
-        `INSERT INTO whispers (id, kind, target_thread, summary)
-         VALUES ($1, 'gap-dormant-thread', $2, $3)
+        `INSERT INTO whispers (id, kind, target_thread, summary, reasoning)
+         VALUES ($1, 'gap-dormant-thread', $2, $3, $4)
          ON CONFLICT (id) DO NOTHING`,
-        [id, row.thread_id, `A thread has gone quiet — ${row.thread_id} hasn't heard from you in a while.`],
+        [id, row.thread_id, `A thread has gone quiet — ${row.thread_id} hasn't heard from you in a while.`, reasoning],
       );
       created.push({
         id,
@@ -174,6 +184,7 @@ export class WhisperService {
         kind: "gap-dormant-thread",
         targetThread: row.thread_id,
         summary: `A thread has gone quiet — ${row.thread_id} hasn't heard from you in a while.`,
+        reasoning,
         createdAt: now,
         openedAt: null,
         dismissedAt: null,
@@ -202,11 +213,12 @@ export class WhisperService {
     );
     for (const row of questions.rows) {
       const id = `gap-question:${row.thread_id}`;
+      const reasoning = `The most recent letter in ${row.thread_id} ends with a question, and nothing has been written back in 7 days. The house is not answering for you — it is holding the question open.`;
       await this.pool.query(
-        `INSERT INTO whispers (id, kind, target_thread, summary)
-         VALUES ($1, 'gap-unanswered-question', $2, $3)
+        `INSERT INTO whispers (id, kind, target_thread, summary, reasoning)
+         VALUES ($1, 'gap-unanswered-question', $2, $3, $4)
          ON CONFLICT (id) DO NOTHING`,
-        [id, row.thread_id, `A question is waiting in ${row.thread_id} — unanswered for a week.`],
+        [id, row.thread_id, `A question is waiting in ${row.thread_id} — unanswered for a week.`, reasoning],
       );
       created.push({
         id,
@@ -214,6 +226,7 @@ export class WhisperService {
         kind: "gap-unanswered-question",
         targetThread: row.thread_id,
         summary: `A question is waiting in ${row.thread_id} — unanswered for a week.`,
+        reasoning,
         createdAt: now,
         openedAt: null,
         dismissedAt: null,

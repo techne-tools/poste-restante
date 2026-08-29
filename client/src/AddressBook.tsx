@@ -4,9 +4,10 @@ import type { Address } from "./api";
 
 interface Props {
   onError: (msg: string) => void;
+  onCompose: (address: string) => void;
 }
 
-export default function AddressBook({ onError }: Props) {
+export default function AddressBook({ onError, onCompose }: Props) {
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -33,12 +34,17 @@ export default function AddressBook({ onError }: Props) {
         <p className="empty">The address book is empty — the house knows no one yet.</p>
       )}
       {addresses.map((a) => (
-        <div key={a.id} className="address-row">
+        <button
+          key={a.id}
+          className="address-row"
+          onClick={() => onCompose(a.id)}
+          title={`Write to ${a.id}`}
+        >
           <span className="addr">{a.id}</span>
           <span className="names">
             {a.names.length > 0 ? a.names.join(", ") : a.pronouns ?? ""}
           </span>
-        </div>
+        </button>
       ))}
     </div>
   );

@@ -42,3 +42,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Client unit tests** — the protocol client (`client/src/api.ts`) covered with a mocked fetch: deliver, search, mailbox, whisper, delete, error handling. (`client/src/api.test.ts`)
 - **Root scripts** — `npm test` and `npm run build` now cover both workspaces; CI runs the full suite.
 - **Docs brought current** — README status/stack/run-it, ARCHITECTURE current code reality, CHANGELOG, PIPELINE/TASK phase gates.
+
+### Fixed — Phase 7 fix pass (2026-08-29)
+
+- **Token pass** — `styles.css` rewritten to consume the bound tokens from `.impeccable/design.json` (OKLch hue 95 paper, hue 70 ink); primary buttons invert to ink on hover; accent usage audited to ≤2 per surface; envelope metadata collapsed behind a quiet `<details>` toggle. (`client/src/styles.css`, `client/src/LetterView.tsx`)
+- **Accessibility** — global `:focus-visible` ring using the accent; frame chips and letter rows converted from `div`/`span` to real `<button>`s with `aria-pressed` on the frame rail. (`client/src/Archive.tsx`, `client/src/styles.css`)
+- **Whisper reasoning** — migration `006_whisper_reasoning.sql` adds a `reasoning` column; gap whispers now carry visible reasoning ("the last letter arrived more than 14 days ago…"); the client renders it in an expandable disclosure with a **Write back** action. (`server/src/db/migrations/006_whisper_reasoning.sql`, `server/src/whisper/service.ts`, `client/src/WhisperSidebar.tsx`)
+- **Surfaces** — address rows get one-tap compose; the correction path pre-addresses Compose to the house; quiet mono kind kickers on letter rows; **Pub view** implemented as the inbox of `pub@house` — the pub is an address, no schema change. (`client/src/AddressBook.tsx`, `client/src/Compose.tsx`, `client/src/Mailbox.tsx`, `client/src/Pub.tsx`, `client/src/App.tsx`)
+- **Horizon View re-sketch** — the archive now renders the transit-diagram metaphor from DESIGN.md: a sticky frame rail with parallel lines, letters as dots on their frames, and dimming (not filtering) of non-matching letters. (`client/src/Archive.tsx`, `client/src/styles.css`)
