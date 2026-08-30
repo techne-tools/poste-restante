@@ -14,6 +14,9 @@
     "test:watch": "NODE_ENV=test vitest",
     "test:integration": "NODE_ENV=test POSTE_RESTANTE_INTEGRATION=1 vitest run --no-file-parallelism",
     "migrate": "tsx src/db/migrate.ts",
+    "auth:add": "tsx src/auth/cli.ts add",
+    "auth:list": "tsx src/auth/cli.ts list",
+    "auth:remove": "tsx src/auth/cli.ts remove",
     "serve": "tsx src/main.ts",
     "serve:mcp": "tsx src/mcp/main.ts"
   },
@@ -22,6 +25,7 @@
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@qdrant/js-client-rest": "^1.19.0",
     "hono": "^4.13.5",
+    "jose": "^6.2.10",
     "pg": "^8.23.0",
     "zod": "^4.5.2"
   },

@@ -97,6 +97,34 @@ Active context is defined by a dynamic semantic cloud:
 
 The house writes letters too: summaries, questions, observations, gap offers. They are correspondence, not metadata. The whisper is the mailbox for the house's own letters — surfaced when relevant, quiet when not. The strongest signal is writing back.
 
+## Authentication & Authorization
+
+**Authentication is mandatory.** The house does not know you until you prove who you are. Identity = address: a credential is a capability to act as a specific address. There is no separate user table, no admin class, no roles.
+
+### Modes
+
+| Mode | Mechanism | Use |
+|---|---|---|
+| `basic` | `Authorization: Basic base64(address:password)` — scrypt-hashed, stateless | local/trusted networks, single resident |
+| `oidc` | OpenID Connect Relying Party — authorization code + PKCE, `client_secret_post` | multi-user, homelab identity providers |
+| `both` | either | the general case |
+| `none` | no authentication | **development only** — never in production |
+
+Set `AUTH_MODE` in the environment. The owner issues credentials via the CLI (`npm run auth:add -- <address>`); the house never auto-creates identities. No self-signup.
+
+### The Rules
+
+- **Private by default.** A letter is visible to an address iff that address is a participant (from/to/cc) — or the letter is public (`pub@house` is a participant). Visibility is derived from the schema (`letter_addresses`), never from a runtime check.
+- **Absence is silence.** A caller who cannot see a thing gets **404 Not Found**, never 403 — the house never confirms existence.
+- **No forging.** The envelope's `from` must be the caller's own address. A letter claiming another address is refused (403).
+- **The pub is public.** `pub@house` is the schema-level public exception: its mailbox is readable without a credential. Everything else requires one.
+- **Deletion is first-class but scoped.** Only participants may delete.
+- **Agents authenticate with a bearer token.** MCP clients cannot do interactive login over stdio; they present `POSTE_RESTANTE_TOKEN` (issued by `npm run auth:add -- <address> --token`). No token → fail closed: every tool refuses to act.
+
+### What the House Never Stores
+
+Only hashes. A password is stored as a scrypt hash; a bearer token as a sha256 hash; an OIDC binding as the provider's `sub`. The house never holds a password, a token, or an id_token. Credentials live in a separate table from the social graph — the secrets and the addresses never share a table.
+
 ## Constraints
 
 - **Async by default.** The letter waits. Nothing pushes. *Presence not pressure — hold, never ping; visible not sent.*

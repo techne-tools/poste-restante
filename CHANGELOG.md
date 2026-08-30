@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added — authentication & authorization (2026-08-30)
+
+- **Authentication is mandatory** — `AUTH_MODE=basic | oidc | both | none` (none is development only). Identity = address: a credential is a capability to act as a specific address. No user table, no admin class, no roles. (`server/src/auth/service.ts`, `server/src/config.ts`)
+- **Basic auth** — stateless scrypt over `Authorization: Basic base64(address:password)`. Only a scrypt hash is stored; the house never holds a password. (`server/src/auth/service.ts`)
+- **OIDC** — the house is a Relying Party: authorization code + PKCE, `client_secret_post`, JWKS-verified id_tokens. First login binds the provider `sub` to the owner address. (`server/src/auth/service.ts`, `server/src/server.ts`)
+- **Credentials schema** — `credentials` table (migration 007) decoupled from the social graph; password hashes, bearer-token hashes, and OIDC subject bindings. (`server/src/db/migrations/007_credentials.sql`)
+- **Auth CLI** — `npm run auth:add -- <address>` (password), `--token` (bearer), `auth:list`, `auth:remove`. The owner issues credentials; no self-signup. (`server/src/auth/cli.ts`)
+- **Private by default** — every read and mutation is scoped to the caller's address via `isVisibleTo` (participant from/to/cc, or public via `pub@house`). Absence is silence: unauthorized reads return 404, never 403. (`server/src/auth/visibility.ts`)
+- **No forging** — the envelope's `from` must be the caller's own address; a letter claiming another address is refused (403).
+- **Agent auth** — the MCP face authenticates with `POSTE_RESTANTE_TOKEN`; no token → fail closed. (`server/src/mcp/server.ts`, `server/src/mcp/main.ts`)
+- **The pub is public** — `pub@house` is the schema-level public exception; its mailbox is readable unauthenticated.
+- **Client login** — the reference client gates on a login view (basic + OIDC), persists the credential locally, and uses the authenticated address everywhere. (`client/src/Login.tsx`, `client/src/api.ts`, `client/src/App.tsx`)
+- **Tests** — 18 auth unit tests (scrypt, tokens, mode gating, visibility) and 10 auth integration tests (auth required, scoping, pub, forging) against live infra. 98/98 passing.
+
 ### Added (2026-08-29)
 
 - **The sketch** — the manifesto: address space, mailbox protocol, archive with plural time, constitution, retrieval layer, the resident. (`SKETCH.md`)

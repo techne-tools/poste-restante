@@ -7,6 +7,7 @@
  * is read from `EMBEDDING_API_KEY` if the operator chooses to set it.
  */
 import { z } from "zod";
+import type { AuthConfig } from "./auth/service.js";
 
 const boolFromEnv = (v: string | undefined, dflt: boolean): boolean => {
   if (v === undefined) return dflt;
@@ -45,7 +46,23 @@ export interface HouseConfig {
   minioEndpoint: string;
   /** Whether to run integration tests against live infra. */
   integration: boolean;
+  /** Authentication configuration. */
+  auth: AuthConfig;
 }
+
+const AuthConfigSchema = z.object({
+  /** 'basic' | 'oidc' | 'both' | 'none' (none = development only). */
+  mode: z.enum(["basic", "oidc", "both", "none"]).default("none"),
+  oidc: z
+    .object({
+      issuer: z.string().url(),
+      clientId: z.string().min(1),
+      clientSecret: z.string().min(1),
+      redirectUri: z.string().url(),
+      ownerAddress: z.string().min(1),
+    })
+    .optional(),
+});
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): HouseConfig {
   const embedding = EmbeddingConfigSchema.parse({
@@ -53,6 +70,20 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): HouseConfig {
     dimension: intFromEnv(env.EMBEDDING_DIMENSION, 768),
     baseUrl: env.EMBEDDING_BASE_URL || undefined,
     apiKey: env.EMBEDDING_API_KEY || undefined,
+  });
+
+  const auth = AuthConfigSchema.parse({
+    mode: env.AUTH_MODE ?? "none",
+    oidc:
+      env.OIDC_ISSUER && env.OIDC_CLIENT_ID && env.OIDC_CLIENT_SECRET && env.OIDC_REDIRECT_URI
+        ? {
+            issuer: env.OIDC_ISSUER,
+            clientId: env.OIDC_CLIENT_ID,
+            clientSecret: env.OIDC_CLIENT_SECRET,
+            redirectUri: env.OIDC_REDIRECT_URI,
+            ownerAddress: env.OIDC_OWNER_ADDRESS ?? "you@house",
+          }
+        : undefined,
   });
 
   return {
@@ -64,5 +95,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): HouseConfig {
     embedding,
     minioEndpoint: env.MINIO_ENDPOINT ?? "http://localhost:9000",
     integration: boolFromEnv(env.POSTE_RESTANTE_INTEGRATION, false),
+    auth,
   };
 }

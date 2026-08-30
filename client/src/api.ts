@@ -65,9 +65,43 @@ export interface SearchResponse {
 
 const BASE = "/v1";
 
+// The authenticated address, set by the login view. Persisted in
+// localStorage so a refresh keeps the session (the house is stateless; the
+// credential lives with the client, never with the house).
+const AUTH_KEY = "poste-restante.auth";
+
+export interface AuthState {
+  address: string;
+  /** The Authorization header value, e.g. "Basic …" or "Bearer …". */
+  header: string;
+}
+
+export function loadAuth(): AuthState | null {
+  try {
+    const raw = localStorage.getItem(AUTH_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as AuthState;
+    if (!parsed.address || !parsed.header) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export function saveAuth(state: AuthState): void {
+  localStorage.setItem(AUTH_KEY, JSON.stringify(state));
+}
+
+export function clearAuth(): void {
+  localStorage.removeItem(AUTH_KEY);
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const auth = loadAuth();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (auth) headers.Authorization = auth.header;
   const res = await fetch(`${BASE}${path}`, {
-    headers: { "Content-Type": "application/json" },
+    headers,
     ...init,
   });
   if (!res.ok) {
@@ -169,5 +203,10 @@ export const house = {
   /** Gap detection — cheap structural checks, on demand. */
   detectGaps() {
     return request<{ created: string[] }>("/whisper/gaps", { method: "POST" });
+  },
+
+  /** Start the OIDC dance. Returns the provider URL to redirect to. */
+  oidcStart() {
+    return request<{ url: string; state: string }>("/auth/oidc/start");
   },
 };

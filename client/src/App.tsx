@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { house } from "./api";
+import { house, loadAuth, clearAuth } from "./api";
 import type { Whisper } from "./api";
+import Login from "./Login";
 import WhisperSidebar from "./WhisperSidebar";
 import Mailbox from "./Mailbox";
 import Archive from "./Archive";
@@ -11,6 +12,7 @@ import Pub from "./Pub";
 type View = "mailbox" | "archive" | "addresses" | "compose" | "pub";
 
 export default function App() {
+  const [auth, setAuth] = useState(() => loadAuth());
   const [view, setView] = useState<View>("mailbox");
   const [whispers, setWhispers] = useState<Whisper[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -27,8 +29,8 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    refreshWhisper();
-  }, [refreshWhisper]);
+    if (auth) refreshWhisper();
+  }, [auth, refreshWhisper]);
 
   const dismiss = useCallback(
     async (id: string) => {
@@ -80,6 +82,18 @@ export default function App() {
     setView(v);
   }, []);
 
+  const signOut = useCallback(() => {
+    clearAuth();
+    setAuth(null);
+    setWhispers([]);
+    setError(null);
+    setView("mailbox");
+  }, []);
+
+  if (!auth) {
+    return <Login onAuthed={() => setAuth(loadAuth())} />;
+  }
+
   return (
     <div className="house">
       <WhisperSidebar
@@ -102,7 +116,10 @@ export default function App() {
         )}
         <header>
           <h1>Poste Restante</h1>
-          <span className="address">you@house</span>
+          <span className="address">{auth.address}</span>
+          <button className="signout" onClick={signOut} aria-label="sign out">
+            leave
+          </button>
         </header>
         <nav className="nav">
           <button className={view === "mailbox" ? "active" : ""} onClick={() => navigate("mailbox")}>
@@ -121,7 +138,7 @@ export default function App() {
             Write
           </button>
         </nav>
-        {view === "mailbox" && <Mailbox onError={setError} />}
+        {view === "mailbox" && <Mailbox onError={setError} address={auth.address} />}
         {view === "archive" && <Archive onError={setError} />}
         {view === "pub" && <Pub onError={setError} />}
         {view === "addresses" && <AddressBook onError={setError} onCompose={composeToAddress} />}
@@ -131,6 +148,7 @@ export default function App() {
             onDelivered={() => setView("mailbox")}
             initialTo={composeTo}
             initialThread={composeThread}
+            from={auth.address}
           />
         )}
       </main>

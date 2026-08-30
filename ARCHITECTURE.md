@@ -4,7 +4,7 @@
 
 ## Current Code Reality
 
-**The house is built.** Phase 4 complete (2026-08-29): the archive spine, the letter server, the whisper, the reference client, and the MCP face are all implemented and verified. Phase 7 fix pass (2026-08-29) applied the design-review findings: bound design tokens, a11y pass, whisper reasoning, pub view, and the Horizon View re-sketch. The framework is still the product; the software is the reference implementation.
+**The house is built.** Phase 4 complete (2026-08-29): the archive spine, the letter server, the whisper, the reference client, and the MCP face are all implemented and verified. Phase 7 fix pass (2026-08-29) applied the design-review findings: bound design tokens, a11y pass, whisper reasoning, pub view, and the Horizon View re-sketch. The auth layer (2026-08-30) made authentication mandatory: basic (scrypt) and OIDC (PKCE) modes, participant-scoped authorization, and token auth for agents. The framework is still the product; the software is the reference implementation.
 
 ### What exists
 
@@ -18,12 +18,13 @@ server/   — the house. TypeScript, Hono, postgres 15 + qdrant + FTS.
     deliver.ts      — deliverLetter(): shared delivery logic (ingest → whisper → reply)
     types.ts        — envelope, frame, kinds (letter | feed | system | audio | note | task)
     id.ts           — letterId: sha256 of canonical envelope+body → deterministic UUID for qdrant
-    db/             — postgres repository + migrations (001–006)
+    db/             — postgres repository + migrations (001–007)
     qdrant/         — semantic store (768-dim ollama embeddings)
     embed/          — embedder (ollama local, OpenAI-compatible opt-in)
     pipeline/       — ingestion pipeline (row → embed → index → link), markdown→text, logger
     retrieval/      — three paths (exact, FTS, semantic) merged by RRF (k=60)
     whisper/        — the house's own letters: list/open/dismiss/undismiss, gap detection with visible reasoning
+    auth/           — AuthService (scrypt, bearer tokens, OIDC RP), visibility rule, auth CLI
     mcp/            — the MCP face (17 tools) — agents become residents
 client/   — the reference client. Vite + React, calm design tokens bound to .impeccable/design.json (seal wax, no red).
   src/
@@ -44,6 +45,17 @@ The house speaks one contract (CONTRACT.md) through two faces that cannot drift 
 ### Identity
 
 `letterId` is a SHA256 of the canonical envelope + body. Qdrant requires UUIDs, so the first 32 hex chars map to a deterministic UUID. A caller-supplied id is ignored — the hash is the identity. Ingestion is idempotent.
+
+### Authentication & authorization
+
+**Identity = address.** There is no user table: a credential is a capability to act as an address. Credentials live in a separate `credentials` table (migration 007) — the secrets and the social graph never share a table, and only hashes are stored (scrypt for passwords, sha256 for bearer tokens, the provider `sub` for OIDC bindings).
+
+- **Modes** — `AUTH_MODE=basic | oidc | both | none` (none is development only). Basic is stateless scrypt over `Authorization: Basic`; OIDC is a Relying Party (authorization code + PKCE, `client_secret_post`) with JWKS-verified id_tokens.
+- **The owner issues credentials** via `npm run auth:add -- <address>` (password) or `--token` (bearer). No self-signup; the house never auto-creates identities.
+- **Private by default** — every read and mutation is scoped to the caller's address via `isVisibleTo` (participant from/to/cc, or public via `pub@house`). Absence is silence: unauthorized reads return 404, never 403.
+- **No forging** — the envelope's `from` must be the caller's own address (403 otherwise).
+- **Agents** — the MCP face authenticates with `POSTE_RESTANTE_TOKEN`; no token → fail closed.
+- **The pub** — `pub@house` is the schema-level public exception; its mailbox is readable unauthenticated.
 
 ### Retrieval
 

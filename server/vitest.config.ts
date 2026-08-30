@@ -12,5 +12,9 @@ export default defineConfig({
     env: {
       NODE_ENV: "test",
     },
+    // Integration tests share one postgres test database and one qdrant
+    // collection — they must not run in parallel or they race on
+    // createCollection / TRUNCATE.
+    fileParallelism: false,
   },
 });

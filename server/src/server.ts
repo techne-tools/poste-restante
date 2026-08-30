@@ -12,6 +12,11 @@
  *   * The envelope has exactly the fields a letter needs. The id is derived
  *     from the envelope+body; a caller-supplied id is ignored.
  *   * No telemetry. The house logs locally; it never phones home.
+ *   * Authentication is mandatory (AUTH_MODE). Identity = address: a
+ *     credential is a capability to act as an address. Basic (scrypt) and
+ *     OIDC (authorization code + PKCE) are both options.
+ *   * Private by default: you read what you are party to. pub@house is the
+ *     schema-level public exception. Absence is silence — 404, never 403.
  */
 import { Hono } from "hono";
 import { LETTER_KINDS } from "./types.js";
@@ -19,18 +24,29 @@ import { AddressSchema, LetterSchema, toLetter } from "./schemas.js";
 import { deliverLetter } from "./deliver.js";
 import type { House } from "./house.js";
 import type { RetrievalQuery } from "./retrieval/retrieval.js";
+import type { AuthService, Authenticated } from "./auth/service.js";
+import { isVisibleTo, visibleToSql, PUB_ADDRESS } from "./auth/visibility.js";
 
 const MAX_LIMIT = 100;
 const DEFAULT_LIMIT = 20;
 
 export interface LetterServerOptions {
-  /** The address that pins letters (the owner). Defaults to the human. */
-  ownerAddress?: string;
+  /** The auth service. When omitted, the house runs unauthenticated (development only). */
+  auth?: AuthService;
+}
+
+/** The OIDC PKCE verifier + state, held in memory for the callback. */
+interface OidcPending {
+  verifier: string;
+  state: string;
+  expiresAt: number;
 }
 
 export function createLetterServer(house: House, options: LetterServerOptions = {}) {
-  const owner = options.ownerAddress ?? "you@house";
+  const auth = options.auth;
   const app = new Hono();
+  const oidcPending = new Map<string, OidcPending>();
+  const OIDC_TTL_MS = 10 * 60 * 1000;
 
   app.onError((err, c) => {
     house.log.error("server:error", { message: err.message });
@@ -44,14 +60,64 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
     c.json({ error: { code: "not_found", message: "no such thing in the house" } }, 404),
   );
 
-  // Health — the house is awake.
+  // Health — the house is awake. Public: a health check must not need a key.
   app.get("/v1/health", (c) => c.json({ status: "awake" }));
+
+  // ── Authentication ────────────────────────────────────────────────────────
+
+  // Resolve the caller. Returns the authenticated address, or null when the
+  // request is not authenticated. When auth is disabled (development), the
+  // caller is the default owner.
+  async function caller(c: { req: { header(name: string): string | undefined } }): Promise<Authenticated | null> {
+    if (!auth) return { address: "you@house", method: "password" };
+    return auth.authenticate(c.req.header("Authorization"));
+  }
+
+  // ── OIDC routes ────────────────────────────────────────────────────────────
+
+  // Start the OIDC dance. Returns the provider URL; the client redirects.
+  app.get("/v1/auth/oidc/start", async (c) => {
+    if (!auth || !auth.oidcEnabled) {
+      return c.json({ error: { code: "oidc_disabled", message: "OIDC is not configured" } }, 400);
+    }
+    const { url, verifier, state } = await auth.oidcStart();
+    oidcPending.set(state, { verifier, state, expiresAt: Date.now() + OIDC_TTL_MS });
+    return c.json({ url, state });
+  });
+
+  // The provider redirects here with ?code=&state=. Exchange, verify, resolve.
+  app.get("/v1/auth/oidc/callback", async (c) => {
+    const code = c.req.query("code");
+    const state = c.req.query("state");
+    if (!code || !state) {
+      return c.json({ error: { code: "oidc_missing", message: "the provider did not return a code" } }, 400);
+    }
+    const pending = oidcPending.get(state);
+    if (!pending || pending.expiresAt < Date.now()) {
+      return c.json({ error: { code: "oidc_expired", message: "this sign-in attempt has expired — start again" } }, 400);
+    }
+    oidcPending.delete(state);
+    if (!auth) {
+      return c.json({ error: { code: "oidc_disabled", message: "OIDC is not configured" } }, 400);
+    }
+    try {
+      const { address } = await auth.oidcCallback(code, pending.verifier);
+      return c.json({ address });
+    } catch (err) {
+      house.log.warn("oidc:callback-failed", { message: err instanceof Error ? err.message : String(err) });
+      return c.json({ error: { code: "oidc_failed", message: "the house could not verify this identity" } }, 401);
+    }
+  });
 
   // ── Letters ──────────────────────────────────────────────────────────────
 
   // Deliver a letter. Idempotent: the same letter (same envelope+body) is
-  // stored once; the response reports whether it was newly created.
+  // stored once; the response reports whether it was newly created. The
+  // sender must be the caller — no forging.
   app.post("/v1/letters", async (c) => {
+    const who = await caller(c);
+    if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
+
     let body: unknown;
     try {
       body = await c.req.json();
@@ -74,6 +140,14 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
         400,
       );
     }
+    // No forging: the envelope's from must be the caller's own address.
+    // (Only enforced when authentication is on — dev mode trusts the caller.)
+    if (auth && parsed.data.envelope.from !== who.address) {
+      return c.json(
+        { error: { code: "forged", message: "a letter's from must be your own address" } },
+        403,
+      );
+    }
     // The id is derived from the envelope+body; a caller-supplied id is
     // ignored (the hash is the identity). Deliver — ingest, surface house
     // letters in the whisper, mark whispered threads replied.
@@ -83,7 +157,11 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
 
   // Retrieval — three paths (exact, full-text, semantic) merged by RRF.
   // Pull by default; the client asks. Ranking uses the house's own signals.
+  // Private by default: results are scoped to the caller's participation.
   app.get("/v1/letters", async (c) => {
+    const who = await caller(c);
+    if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
+
     const query: RetrievalQuery = {};
 
     const text = c.req.query("text");
@@ -130,29 +208,42 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
 
     const hits = await house.retrieval.search(query);
     const letters = await house.repo.getLetters(hits.map((h) => h.letterId));
+    // Private by default: only letters the caller is party to (or public).
+    const visible = letters.filter((l) => isVisibleTo(l, who.address));
+    const visibleIds = new Set(visible.map((l) => l.id));
     return c.json({
-      hits: hits.map((h) => ({
+      hits: hits.filter((h) => visibleIds.has(h.letterId)).map((h) => ({
         letterId: h.letterId,
         score: h.score,
         paths: h.paths,
         ranks: h.ranks,
       })),
-      letters: letters.map(toLetter),
+      letters: visible.map(toLetter),
     });
   });
 
-  // Fetch one letter.
+  // Fetch one letter. Absence is silence: a letter the caller cannot see is
+  // 404, never 403.
   app.get("/v1/letters/:id", async (c) => {
+    const who = await caller(c);
+    if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
     const row = await house.repo.getLetter(c.req.param("id"));
-    if (!row) {
+    if (!row || !isVisibleTo(row, who.address)) {
       return c.json({ error: { code: "not_found", message: "no such letter" } }, 404);
     }
     return c.json(toLetter(row));
   });
 
   // Delete a letter. First-class: gone from postgres, qdrant, and FTS.
+  // Only participants may delete (sender or recipient — the CONTRACT).
   app.delete("/v1/letters/:id", async (c) => {
+    const who = await caller(c);
+    if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
     const id = c.req.param("id");
+    const row = await house.repo.getLetter(id);
+    if (!row || !isVisibleTo(row, who.address)) {
+      return c.json({ error: { code: "not_found", message: "no such letter" } }, 404);
+    }
     const removed = await house.pipeline.delete(id);
     if (!removed) {
       return c.json({ error: { code: "not_found", message: "no such letter" } }, 404);
@@ -160,21 +251,25 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
     return c.json({ deleted: true, id });
   });
 
-  // Pin / unpin — explicit house ranking signals.
+  // Pin / unpin — explicit house ranking signals. Only participants may pin.
   app.post("/v1/letters/:id/pin", async (c) => {
+    const who = await caller(c);
+    if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
     const id = c.req.param("id");
     const row = await house.repo.getLetter(id);
-    if (!row) {
+    if (!row || !isVisibleTo(row, who.address)) {
       return c.json({ error: { code: "not_found", message: "no such letter" } }, 404);
     }
-    await house.repo.pinLetter(id, owner);
+    await house.repo.pinLetter(id, who.address);
     return c.json({ pinned: true, id });
   });
 
   app.delete("/v1/letters/:id/pin", async (c) => {
+    const who = await caller(c);
+    if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
     const id = c.req.param("id");
     const row = await house.repo.getLetter(id);
-    if (!row) {
+    if (!row || !isVisibleTo(row, who.address)) {
       return c.json({ error: { code: "not_found", message: "no such letter" } }, 404);
     }
     await house.repo.unpinLetter(id);
@@ -184,12 +279,17 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
   // ── Addresses ─────────────────────────────────────────────────────────────
 
   // The address book — the social graph. Flat, no ranking, no follower counts.
+  // Authenticated residents may read it; the pub is public.
   app.get("/v1/addresses", async (c) => {
+    const who = await caller(c);
+    if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
     const addresses = await house.repo.listAddresses();
     return c.json({ addresses });
   });
 
   app.get("/v1/addresses/:address", async (c) => {
+    const who = await caller(c);
+    if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
     const address = await house.repo.getAddress(c.req.param("address"));
     if (!address) {
       return c.json({ error: { code: "not_found", message: "no such address" } }, 404);
@@ -198,8 +298,14 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
   });
 
   // Correct the address book. The house takes corrections at face value.
+  // Only the address itself may correct its own entry.
   app.patch("/v1/addresses/:address", async (c) => {
+    const who = await caller(c);
+    if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
     const address = c.req.param("address");
+    if (address !== who.address) {
+      return c.json({ error: { code: "forbidden", message: "you may only correct your own address" } }, 403);
+    }
     const existing = await house.repo.getAddress(address);
     if (!existing) {
       return c.json({ error: { code: "not_found", message: "no such address" } }, 404);
@@ -231,8 +337,18 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
   });
 
   // The mailbox — pull by default. Nothing pushes; the letter waits.
+  // Private by default: you may read your own mailbox, or the pub.
   app.get("/v1/addresses/:address/inbox", async (c) => {
     const address = c.req.param("address");
+    // The pub is the house's public face — readable without a credential.
+    // Everything else is private by default: you may read your own mailbox.
+    if (address !== PUB_ADDRESS) {
+      const who = await caller(c);
+      if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
+      if (address !== who.address) {
+        return c.json({ error: { code: "not_found", message: "no such address" } }, 404);
+      }
+    }
     const existing = await house.repo.getAddress(address);
     if (!existing) {
       return c.json({ error: { code: "not_found", message: "no such address" } }, 404);
@@ -256,17 +372,23 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
   // ── Threads & frames ──────────────────────────────────────────────────────
 
   // Threads are correspondences. The thread is the unit, not the message.
+  // Private by default: only participants may read a thread.
   app.get("/v1/threads/:id", async (c) => {
+    const who = await caller(c);
+    if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
     const threadId = c.req.param("id");
     const letters = await house.repo.listThread(threadId);
-    if (letters.length === 0) {
+    const visible = letters.filter((l) => isVisibleTo(l, who.address));
+    if (visible.length === 0) {
       return c.json({ error: { code: "not_found", message: "no such thread" } }, 404);
     }
-    return c.json({ thread: threadId, letters: letters.map(toLetter) });
+    return c.json({ thread: threadId, letters: visible.map(toLetter) });
   });
 
   // Frames — plural time navigation. Queries work in any frame.
   app.get("/v1/frames", async (c) => {
+    const who = await caller(c);
+    if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
     const frames = await house.repo.listFrames();
     return c.json({ frames });
   });
@@ -275,9 +397,11 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
 
   // The whisper — the mailbox for the house's own letters. A GET resource.
   // Nothing pushes; the client comes for it. `?unread=1` shows only what the
-  // house is offering right now. Scoped to the owner address: the house only
-  // whispers about correspondence the owner is party to.
+  // house is offering right now. Scoped to the caller: the house only
+  // whispers about correspondence the caller is party to.
   app.get("/v1/whisper", async (c) => {
+    const who = await caller(c);
+    if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
     const unread = c.req.query("unread") === "1" || c.req.query("unread") === "true";
     const limitRaw = c.req.query("limit");
     let limit = 50;
@@ -292,15 +416,17 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
       limit = Math.min(limit, MAX_LIMIT);
     }
     const whispers = unread
-      ? await house.whisper.listUnread(owner, limit)
-      : await house.whisper.list(owner, limit);
+      ? await house.whisper.listUnread(who.address, limit)
+      : await house.whisper.list(who.address, limit);
     return c.json({ whispers });
   });
 
   // The user opened a whisper. A signal, not a notification. Scoped: you can
   // only open a whisper about a thread you are party to.
   app.post("/v1/whisper/:id/open", async (c) => {
-    const ok = await house.whisper.open(c.req.param("id"), owner);
+    const who = await caller(c);
+    if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
+    const ok = await house.whisper.open(c.req.param("id"), who.address);
     if (!ok) {
       return c.json({ error: { code: "not_found", message: "no such whisper" } }, 404);
     }
@@ -310,7 +436,9 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
   // Explicit dismissal — the strongest negative signal. The house takes
   // corrections at face value; undismiss is always possible. Scoped.
   app.post("/v1/whisper/:id/dismiss", async (c) => {
-    const ok = await house.whisper.dismiss(c.req.param("id"), owner);
+    const who = await caller(c);
+    if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
+    const ok = await house.whisper.dismiss(c.req.param("id"), who.address);
     if (!ok) {
       return c.json({ error: { code: "not_found", message: "no such whisper" } }, 404);
     }
@@ -318,7 +446,9 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
   });
 
   app.post("/v1/whisper/:id/undismiss", async (c) => {
-    const ok = await house.whisper.undismiss(c.req.param("id"), owner);
+    const who = await caller(c);
+    if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
+    const ok = await house.whisper.undismiss(c.req.param("id"), who.address);
     if (!ok) {
       return c.json({ error: { code: "not_found", message: "no such whisper" } }, 404);
     }
@@ -327,9 +457,11 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
 
   // Gap detection — cheap structural checks (dormant threads, unanswered
   // questions). Runs on demand; the house never pushes the results. Scoped
-  // to the owner: gaps are only offered for threads the owner is party to.
+  // to the caller: gaps are only offered for threads the caller is party to.
   app.post("/v1/whisper/gaps", async (c) => {
-    const created = await house.whisper.detectGaps(owner);
+    const who = await caller(c);
+    if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
+    const created = await house.whisper.detectGaps(who.address);
     return c.json({ created: created.map((w) => w.id) });
   });
 

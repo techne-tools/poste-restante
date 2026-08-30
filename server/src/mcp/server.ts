@@ -21,6 +21,8 @@ import { AddressSchema, LetterSchema, toLetter } from "../schemas.js";
 import { deliverLetter } from "../deliver.js";
 import type { House } from "../house.js";
 import type { RetrievalQuery } from "../retrieval/retrieval.js";
+import type { AuthService, Authenticated } from "../auth/service.js";
+import { isVisibleTo, PUB_ADDRESS } from "../auth/visibility.js";
 
 const MAX_LIMIT = 100;
 const DEFAULT_LIMIT = 20;
@@ -41,16 +43,39 @@ function fail(message: string) {
 }
 
 export interface McpHouseOptions {
-  /** The address that pins letters (the owner). Defaults to the human. */
-  ownerAddress?: string;
+  /** The auth service. When omitted, the house runs unauthenticated (development only). */
+  auth?: AuthService;
+  /** The bearer token this MCP client authenticates with. */
+  token?: string;
 }
 
 export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
-  const owner = options.ownerAddress ?? "you@house";
+  const auth = options.auth;
+  const token = options.token;
   const server = new McpServer(
     { name: "poste-restante", version: "0.1.0" },
     { capabilities: { tools: {} } },
   );
+
+  // Resolve the caller. Agents authenticate with a bearer token from the
+  // environment (POSTE_RESTANTE_TOKEN). No token → fail closed: every tool
+  // returns an error rather than acting anonymously.
+  async function caller(): Promise<Authenticated | null> {
+    if (!auth) return { address: "you@house", method: "token" };
+    if (!token) return null;
+    return auth.authenticate(`Bearer ${token}`);
+  }
+
+  // Wrap a tool handler with authentication. Every tool requires a caller.
+  function authed<T extends unknown[], R>(
+    fn: (who: Authenticated, ...args: T) => Promise<R>,
+  ) {
+    return async (...args: T): Promise<R> => {
+      const who = await caller();
+      if (!who) return fail("the house does not know you — set POSTE_RESTANTE_TOKEN") as R;
+      return fn(who, ...args);
+    };
+  }
 
   // ── Letters ──────────────────────────────────────────────────────────────
 
@@ -68,6 +93,13 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
     },
     async ({ letter }) => {
       try {
+        const who = await caller();
+        if (!who) return fail("the house does not know you — set POSTE_RESTANTE_TOKEN");
+        // No forging: the envelope's from must be the caller's own address.
+        // (Only enforced when authentication is on — dev mode trusts the caller.)
+        if (auth && letter.envelope.from !== who.address) {
+          return fail("a letter's from must be your own address");
+        }
         const { letterId, created } = await deliverLetter(house, letter);
         return text({ id: letterId, created });
       } catch (err) {
@@ -97,6 +129,8 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
     },
     async (args) => {
       try {
+        const who = await caller();
+        if (!who) return fail("the house does not know you — set POSTE_RESTANTE_TOKEN");
         const query: RetrievalQuery = { limit: args.limit };
         if (args.text) query.text = args.text;
         if (args.from) query.from = args.from;
@@ -108,14 +142,17 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
 
         const hits = await house.retrieval.search(query);
         const letters = await house.repo.getLetters(hits.map((h) => h.letterId));
+        // Private by default: only letters the caller is party to (or public).
+        const visible = letters.filter((l) => isVisibleTo(l, who.address));
+        const visibleIds = new Set(visible.map((l) => l.id));
         return text({
-          hits: hits.map((h) => ({
+          hits: hits.filter((h) => visibleIds.has(h.letterId)).map((h) => ({
             letterId: h.letterId,
             score: h.score,
             paths: h.paths,
             ranks: h.ranks,
           })),
-          letters: letters.map(toLetter),
+          letters: visible.map(toLetter),
         });
       } catch (err) {
         return fail(err instanceof Error ? err.message : "the house stumbled");
@@ -134,8 +171,10 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
       },
     },
     async ({ id }) => {
+      const who = await caller();
+      if (!who) return fail("the house does not know you — set POSTE_RESTANTE_TOKEN");
       const row = await house.repo.getLetter(id);
-      if (!row) return fail("no such letter");
+      if (!row || !isVisibleTo(row, who.address)) return fail("no such letter");
       return text(toLetter(row));
     },
   );
@@ -152,6 +191,10 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
       },
     },
     async ({ id }) => {
+      const who = await caller();
+      if (!who) return fail("the house does not know you — set POSTE_RESTANTE_TOKEN");
+      const row = await house.repo.getLetter(id);
+      if (!row || !isVisibleTo(row, who.address)) return fail("no such letter");
       const removed = await house.pipeline.delete(id);
       if (!removed) return fail("no such letter");
       return text({ deleted: true, id });
@@ -169,9 +212,11 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
       },
     },
     async ({ id }) => {
+      const who = await caller();
+      if (!who) return fail("the house does not know you — set POSTE_RESTANTE_TOKEN");
       const row = await house.repo.getLetter(id);
-      if (!row) return fail("no such letter");
-      await house.repo.pinLetter(id, owner);
+      if (!row || !isVisibleTo(row, who.address)) return fail("no such letter");
+      await house.repo.pinLetter(id, who.address);
       return text({ pinned: true, id });
     },
   );
@@ -186,8 +231,10 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
       },
     },
     async ({ id }) => {
+      const who = await caller();
+      if (!who) return fail("the house does not know you — set POSTE_RESTANTE_TOKEN");
       const row = await house.repo.getLetter(id);
-      if (!row) return fail("no such letter");
+      if (!row || !isVisibleTo(row, who.address)) return fail("no such letter");
       await house.repo.unpinLetter(id);
       return text({ pinned: false, id });
     },
@@ -204,6 +251,8 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
       inputSchema: {},
     },
     async () => {
+      const who = await caller();
+      if (!who) return fail("the house does not know you — set POSTE_RESTANTE_TOKEN");
       const addresses = await house.repo.listAddresses();
       return text({ addresses });
     },
@@ -219,6 +268,8 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
       },
     },
     async ({ address }) => {
+      const who = await caller();
+      if (!who) return fail("the house does not know you — set POSTE_RESTANTE_TOKEN");
       const row = await house.repo.getAddress(address);
       if (!row) return fail("no such address");
       return text(row);
@@ -226,12 +277,13 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
   );
 
   // Correct the address book. The house takes corrections at face value.
+  // Only the address itself may correct its own entry.
   server.registerTool(
     "update_address",
     {
       title: "Correct an address",
       description:
-        "Correct an address in the address book. The house takes corrections at face value. Names are a list (a person is a set of names, not first+last); pronouns are free text.",
+        "Correct an address in the address book. The house takes corrections at face value. Names are a list (a person is a set of names, not first+last); pronouns are free text. You may only correct your own address.",
       inputSchema: {
         address: z.string().min(1).describe("the address, e.g. ben@house"),
         names: z.array(z.string()).default([]).describe("the person's names"),
@@ -239,6 +291,9 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
       },
     },
     async ({ address, names, pronouns }) => {
+      const who = await caller();
+      if (!who) return fail("the house does not know you — set POSTE_RESTANTE_TOKEN");
+      if (address !== who.address) return fail("you may only correct your own address");
       const existing = await house.repo.getAddress(address);
       if (!existing) return fail("no such address");
       await house.repo.updateAddress(address, names, pronouns);
@@ -247,18 +302,22 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
   );
 
   // The mailbox — pull by default. Nothing pushes; the letter waits.
+  // Private by default: you may read your own mailbox, or the pub.
   server.registerTool(
     "read_mailbox",
     {
       title: "Read a mailbox",
       description:
-        "Read an address's mailbox, newest first. Pull by default — nothing pushes; the letter waits.",
+        "Read an address's mailbox, newest first. Pull by default — nothing pushes; the letter waits. You may read your own mailbox, or the pub (pub@house).",
       inputSchema: {
         address: z.string().min(1).describe("the address, e.g. you@house"),
         limit: z.number().int().min(1).max(MAX_LIMIT).default(50),
       },
     },
     async ({ address, limit }) => {
+      const who = await caller();
+      if (!who) return fail("the house does not know you — set POSTE_RESTANTE_TOKEN");
+      if (address !== who.address && address !== PUB_ADDRESS) return fail("no such address");
       const existing = await house.repo.getAddress(address);
       if (!existing) return fail("no such address");
       const letters = await house.repo.listMailbox(address, limit);
@@ -279,9 +338,12 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
       },
     },
     async ({ thread }) => {
+      const who = await caller();
+      if (!who) return fail("the house does not know you — set POSTE_RESTANTE_TOKEN");
       const letters = await house.repo.listThread(thread);
-      if (letters.length === 0) return fail("no such thread");
-      return text({ thread, letters: letters.map(toLetter) });
+      const visible = letters.filter((l) => isVisibleTo(l, who.address));
+      if (visible.length === 0) return fail("no such thread");
+      return text({ thread, letters: visible.map(toLetter) });
     },
   );
 
@@ -295,6 +357,8 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
       inputSchema: {},
     },
     async () => {
+      const who = await caller();
+      if (!who) return fail("the house does not know you — set POSTE_RESTANTE_TOKEN");
       const frames = await house.repo.listFrames();
       return text({ frames });
     },
@@ -303,23 +367,25 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
   // ── The whisper ────────────────────────────────────────────────────────────
 
   // The whisper — the mailbox for the house's own letters. A GET resource.
-  // Nothing pushes; the agent comes for it. Scoped to the owner address:
-  // the house only whispers about correspondence the owner is party to.
+  // Nothing pushes; the agent comes for it. Scoped to the caller: the house
+  // only whispers about correspondence the caller is party to.
   server.registerTool(
     "list_whispers",
     {
       title: "List the whisper",
       description:
-        "List the whisper — the mailbox for the house's own letters (summaries, questions, gap offers). Presence not pressure: nothing pushes; the agent comes for it. Pass unread=true for only what the house is offering right now. Scoped to the owner address: the house only whispers about correspondence the owner is party to.",
+        "List the whisper — the mailbox for the house's own letters (summaries, questions, gap offers). Presence not pressure: nothing pushes; the agent comes for it. Pass unread=true for only what the house is offering right now. Scoped to the caller: the house only whispers about correspondence the caller is party to.",
       inputSchema: {
         unread: z.boolean().default(false).describe("only whispers not yet dismissed"),
         limit: z.number().int().min(1).max(MAX_LIMIT).default(50),
       },
     },
     async ({ unread, limit }) => {
+      const who = await caller();
+      if (!who) return fail("the house does not know you — set POSTE_RESTANTE_TOKEN");
       const whispers = unread
-        ? await house.whisper.listUnread(owner, limit)
-        : await house.whisper.list(owner, limit);
+        ? await house.whisper.listUnread(who.address, limit)
+        : await house.whisper.list(who.address, limit);
       return text({ whispers });
     },
   );
@@ -330,13 +396,15 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
     "open_whisper",
     {
       title: "Open a whisper",
-      description: "Mark a whisper opened. A signal, not a notification — the house learns you picked it up. Scoped to the owner address: you can only open a whisper about a thread you are party to.",
+      description: "Mark a whisper opened. A signal, not a notification — the house learns you picked it up. Scoped to the caller: you can only open a whisper about a thread you are party to.",
       inputSchema: {
         id: z.string().min(1).describe("the whisper id"),
       },
     },
     async ({ id }) => {
-      const ok = await house.whisper.open(id, owner);
+      const who = await caller();
+      if (!who) return fail("the house does not know you — set POSTE_RESTANTE_TOKEN");
+      const ok = await house.whisper.open(id, who.address);
       if (!ok) return fail("no such whisper");
       return text({ opened: true, id });
     },
@@ -349,13 +417,15 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
     {
       title: "Dismiss a whisper",
       description:
-        "Explicitly dismiss a whisper — the strongest negative signal. The house takes corrections at face value; undismiss is always possible. Scoped to the owner address: you can only dismiss a whisper about a thread you are party to.",
+        "Explicitly dismiss a whisper — the strongest negative signal. The house takes corrections at face value; undismiss is always possible. Scoped to the caller: you can only dismiss a whisper about a thread you are party to.",
       inputSchema: {
         id: z.string().min(1).describe("the whisper id"),
       },
     },
     async ({ id }) => {
-      const ok = await house.whisper.dismiss(id, owner);
+      const who = await caller();
+      if (!who) return fail("the house does not know you — set POSTE_RESTANTE_TOKEN");
+      const ok = await house.whisper.dismiss(id, who.address);
       if (!ok) return fail("no such whisper");
       return text({ dismissed: true, id });
     },
@@ -371,7 +441,9 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
       },
     },
     async ({ id }) => {
-      const ok = await house.whisper.undismiss(id, owner);
+      const who = await caller();
+      if (!who) return fail("the house does not know you — set POSTE_RESTANTE_TOKEN");
+      const ok = await house.whisper.undismiss(id, who.address);
       if (!ok) return fail("no such whisper");
       return text({ dismissed: false, id });
     },
@@ -379,17 +451,19 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
 
   // Gap detection — cheap structural checks (dormant threads, unanswered
   // questions). Runs on demand; the house never pushes the results. Scoped
-  // to the owner: gaps are only offered for threads the owner is party to.
+  // to the caller: gaps are only offered for threads the caller is party to.
   server.registerTool(
     "detect_gaps",
     {
       title: "Look for gaps",
       description:
-        "Run cheap structural gap detection: dormant threads (quiet 14 days) and unanswered questions (a week old). Postgres queries only — no expensive semantic scans. Runs on demand; the house never pushes the results. Scoped to the owner address: gaps are only offered for threads the owner is party to.",
+        "Run cheap structural gap detection: dormant threads (quiet 14 days) and unanswered questions (a week old). Postgres queries only — no expensive semantic scans. Runs on demand; the house never pushes the results. Scoped to the caller: gaps are only offered for threads the caller is party to.",
       inputSchema: {},
     },
     async () => {
-      const created = await house.whisper.detectGaps(owner);
+      const who = await caller();
+      if (!who) return fail("the house does not know you — set POSTE_RESTANTE_TOKEN");
+      const created = await house.whisper.detectGaps(who.address);
       return text({ created: created.map((w) => w.id) });
     },
   );

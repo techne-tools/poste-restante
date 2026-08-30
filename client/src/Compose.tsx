@@ -6,9 +6,10 @@ interface Props {
   onDelivered: () => void;
   initialTo?: string;
   initialThread?: string;
+  from: string;
 }
 
-export default function Compose({ onError, onDelivered, initialTo, initialThread }: Props) {
+export default function Compose({ onError, onDelivered, initialTo, initialThread, from }: Props) {
   const [to, setTo] = useState(initialTo ?? "you@house");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
@@ -30,7 +31,7 @@ export default function Compose({ onError, onDelivered, initialTo, initialThread
         });
       await house.deliver({
         envelope: {
-          from: "you@house",
+          from,
           to: [to.trim() || "you@house"],
           cc: [],
           thread: thread.trim() || `th_${Date.now().toString(36)}`,

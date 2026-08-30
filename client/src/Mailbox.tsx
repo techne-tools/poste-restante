@@ -5,23 +5,24 @@ import LetterView from "./LetterView";
 
 interface Props {
   onError: (msg: string) => void;
+  address: string;
 }
 
-export default function Mailbox({ onError }: Props) {
+export default function Mailbox({ onError, address }: Props) {
   const [letters, setLetters] = useState<Letter[]>([]);
   const [selected, setSelected] = useState<Letter | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     try {
-      const res = await house.inbox("you@house");
+      const res = await house.inbox(address);
       setLetters(res.letters);
     } catch (err) {
       onError(err instanceof Error ? err.message : "the mailbox is empty");
     } finally {
       setLoading(false);
     }
-  }, [onError]);
+  }, [onError, address]);
 
   useEffect(() => {
     load();

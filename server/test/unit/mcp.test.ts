@@ -341,13 +341,15 @@ describe("mcp house", () => {
     const addresses = await call(client, "list_addresses");
     expect(addresses.addresses.map((a: { id: string }) => a.id)).toContain("hermes@house");
 
+    // Only the address itself may correct its own entry — the dev-mode
+    // caller is you@house, so that is the address it can correct.
     const corrected = await call(client, "update_address", {
-      address: "hermes@house",
-      names: ["Hermes", "the stage manager"],
-      pronouns: "it/its",
+      address: "you@house",
+      names: ["You", "the resident"],
+      pronouns: "they/them",
     });
-    expect(corrected.names).toEqual(["Hermes", "the stage manager"]);
-    expect(corrected.pronouns).toBe("it/its");
+    expect(corrected.names).toEqual(["You", "the resident"]);
+    expect(corrected.pronouns).toBe("they/them");
   });
 
   it("lists frames", async () => {
