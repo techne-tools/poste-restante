@@ -55,52 +55,45 @@ export default function Compose({ onError, onDelivered, initialTo, initialThread
   };
 
   return (
-    <div className="letter">
-      <div className="envelope">
-        <div>
-          <label>To: </label>
-          <input value={to} onChange={(e) => setTo(e.target.value)} style={{ width: 200 }} />
-        </div>
-        <div>
-          <label>Subject: </label>
-          <input value={subject} onChange={(e) => setSubject(e.target.value)} style={{ width: 300 }} />
-        </div>
-        <div>
-          <label>Thread: </label>
-          <input
-            value={thread}
-            onChange={(e) => setThread(e.target.value)}
-            placeholder="th_… (blank = new)"
-            style={{ width: 200 }}
-          />
-        </div>
-        <div>
-          <label>Frames: </label>
-          <input
-            value={frame}
-            onChange={(e) => setFrame(e.target.value)}
-            placeholder="season:autumn, production:tempest"
-            style={{ width: 260 }}
-          />
+    <div className="letter compose">
+      <div className="compose-fields">
+        <label className="compose-field">
+          <span className="compose-label">To</span>
+          <input value={to} onChange={(e) => setTo(e.target.value)} />
+        </label>
+        <label className="compose-field">
+          <span className="compose-label">Subject</span>
+          <input value={subject} onChange={(e) => setSubject(e.target.value)} />
+        </label>
+        <div className="compose-row">
+          <label className="compose-field">
+            <span className="compose-label">Thread</span>
+            <input
+              value={thread}
+              onChange={(e) => setThread(e.target.value)}
+              placeholder="th_… (blank = new)"
+            />
+          </label>
+          <label className="compose-field">
+            <span className="compose-label">Frames</span>
+            <input
+              value={frame}
+              onChange={(e) => setFrame(e.target.value)}
+              placeholder="season:autumn, production:tempest"
+            />
+          </label>
         </div>
       </div>
-      <textarea
-        value={body}
-        onChange={(e) => setBody(e.target.value)}
-        placeholder="Write a letter…"
-        rows={12}
-        style={{
-          width: "100%",
-          fontFamily: "var(--font-display)",
-          fontSize: 16,
-          lineHeight: 1.7,
-          border: "1px solid var(--border)",
-          borderRadius: "var(--radius)",
-          padding: "var(--space-3)",
-          resize: "vertical",
-        }}
-      />
-      <div style={{ marginTop: "var(--space-3)" }}>
+      <label className="compose-field compose-body">
+        <span className="compose-label">Letter</span>
+        <textarea
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          placeholder="Write a letter…"
+          rows={12}
+        />
+      </label>
+      <div className="compose-actions">
         <button className="primary" onClick={send} disabled={sending || !body.trim()}>
           {sending ? "Posting…" : "Post the letter"}
         </button>

@@ -60,6 +60,7 @@ export default function App() {
       // house, on the whisper's thread — the strongest signal.
       setComposeTo("you@house");
       setComposeThread(w.targetThread ?? undefined);
+      setError(null);
       setView("compose");
     },
     [],
@@ -68,7 +69,15 @@ export default function App() {
   const composeToAddress = useCallback((address: string) => {
     setComposeTo(address);
     setComposeThread(undefined);
+    setError(null);
     setView("compose");
+  }, []);
+
+  // The error banner is view-scoped feedback, not app-global state — a
+  // failure in one view must not follow the user into the next.
+  const navigate = useCallback((v: View) => {
+    setError(null);
+    setView(v);
   }, []);
 
   return (
@@ -96,19 +105,19 @@ export default function App() {
           <span className="address">you@house</span>
         </header>
         <nav className="nav">
-          <button className={view === "mailbox" ? "active" : ""} onClick={() => setView("mailbox")}>
+          <button className={view === "mailbox" ? "active" : ""} onClick={() => navigate("mailbox")}>
             Mailbox
           </button>
-          <button className={view === "archive" ? "active" : ""} onClick={() => setView("archive")}>
+          <button className={view === "archive" ? "active" : ""} onClick={() => navigate("archive")}>
             Archive
           </button>
-          <button className={view === "pub" ? "active" : ""} onClick={() => setView("pub")}>
+          <button className={view === "pub" ? "active" : ""} onClick={() => navigate("pub")}>
             Pub
           </button>
-          <button className={view === "addresses" ? "active" : ""} onClick={() => setView("addresses")}>
+          <button className={view === "addresses" ? "active" : ""} onClick={() => navigate("addresses")}>
             Addresses
           </button>
-          <button className={view === "compose" ? "active" : ""} onClick={() => setView("compose")}>
+          <button className={view === "compose" ? "active" : ""} onClick={() => navigate("compose")}>
             Write
           </button>
         </nav>

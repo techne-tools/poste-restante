@@ -154,7 +154,17 @@ export class Retrieval {
     const limit = query.limit ?? DEFAULT_LIMIT;
 
     const rankedLists: { path: string; ids: string[] }[] = [];
-    rankedLists.push({ path: "exact", ids: await this.exact(query) });
+    // The exact path is a filter on envelope fields — or, with no filters at
+    // all, a browse of the latest letters. When a free-text query is present
+    // and there are no envelope filters, the exact path has nothing to filter
+    // on and must not fall back to browse mode: that would merge the whole
+    // archive into the RRF and drown the text results.
+    const hasEnvelopeFilters = Boolean(
+      query.from || query.to || query.thread || query.kind || query.frame || query.pinned,
+    );
+    if (hasEnvelopeFilters || !query.text) {
+      rankedLists.push({ path: "exact", ids: await this.exact(query) });
+    }
     if (query.text) {
       rankedLists.push({ path: "fulltext", ids: await this.fullText(query.text, limit) });
       rankedLists.push({ path: "semantic", ids: await this.semanticPath(query.text, limit) });

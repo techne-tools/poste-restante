@@ -173,6 +173,38 @@ describe.skipIf(!INTEGRATION)("archive spine (integration)", () => {
     expect(hit!.paths.length).toBeGreaterThanOrEqual(2);
   });
 
+  it("does not merge the whole archive into a free-text search", async () => {
+    // Regression: with a text query and no envelope filters, the exact path
+    // used to fall back to browse mode and return every letter, drowning the
+    // RRF merge. A text-only search must not return letters that match
+    // neither FTS nor semantic.
+    const a = await house.pipeline.ingest(
+      mkLetter({
+        envelope: { ...mkLetter().envelope, thread: "th_text_only_a", subject: "the tempest" },
+        body: { format: "markdown", content: "the tempest and the sound design" },
+      }),
+    );
+    const b = await house.pipeline.ingest(
+      mkLetter({
+        envelope: { ...mkLetter().envelope, thread: "th_text_only_b", subject: "unrelated" },
+        body: { format: "markdown", content: "completely unrelated grocery list" },
+      }),
+    );
+
+    const res = await house.retrieval.search({ text: "tempest sound" });
+    const ids = res.map((h) => h.letterId);
+    expect(ids).toContain(a.letterId);
+    // The unrelated letter must not come back via the exact path — that is
+    // the regression: the exact path used to browse the whole archive and
+    // merge every letter into the RRF. (It may still appear via semantic on
+    // a tiny corpus — qdrant returns nearest neighbours even when nothing
+    // is genuinely similar — but never as an exact-path hit.)
+    const bHit = res.find((h) => h.letterId === b.letterId);
+    if (bHit) {
+      expect(bHit.paths).not.toContain("exact");
+    }
+  });
+
   it("ranks a pinned letter above an unpinned one", async () => {
     const a = mkLetter({
       envelope: { ...mkLetter().envelope, thread: "th_pin_a", subject: "pinned letter" },

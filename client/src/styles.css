@@ -144,6 +144,7 @@ a:hover {
 
 .whisper-card .actions {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2);
 }
 
@@ -300,6 +301,80 @@ a:hover {
   margin-left: 0;
   padding-left: var(--space-4);
   color: var(--muted);
+}
+
+/* The composer — a letter being written. Labels above, fields full-width,
+   one quiet column. The letter is the protocol; the form is the desk. */
+.letter.compose {
+  padding: var(--space-4);
+}
+
+.compose-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  border-bottom: var(--rule);
+  padding-bottom: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.compose-row {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.compose-row .compose-field {
+  flex: 1;
+}
+
+.compose-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.compose-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.compose-field input,
+.compose-field textarea {
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--fg);
+  background: var(--surface-sunken);
+  border: var(--rule);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-2);
+  width: 100%;
+  transition: border-color 120ms ease;
+}
+
+.compose-field input:focus,
+.compose-field textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.compose-field input::placeholder,
+.compose-field textarea::placeholder {
+  color: var(--ink-faint);
+}
+
+.compose-body textarea {
+  font-family: var(--font-display);
+  font-size: 16px;
+  line-height: 1.7;
+  resize: vertical;
+  min-height: 240px;
+}
+
+.compose-actions {
+  margin-top: var(--space-3);
 }
 
 /* The address book — flat, no ranking. */
