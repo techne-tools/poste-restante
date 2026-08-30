@@ -28,8 +28,10 @@ server/   — the house. TypeScript, Hono, postgres 15 + qdrant + FTS.
     mcp/            — the MCP face (17 tools) — agents become residents
 client/   — the reference client. Vite + React, calm design tokens bound to .impeccable/design.json (seal wax, no red).
   src/
-    api.ts          — the house protocol as a client (POST deliver, GET mailbox)
-    App.tsx         — shell: mailbox / archive / addresses / compose / pub + whisper sidebar
+    api.ts          — the house protocol as a client (POST deliver, GET mailbox); auth-gated, attaches the
+                    Authorization header from persisted AuthState, plus the OIDC start/callback routes
+    Login.tsx       — login view (basic + OIDC); persists AuthState (address + header) to localStorage
+    App.tsx         — shell: mailbox / archive / addresses / compose / pub + whisper sidebar, gated on login
     Mailbox.tsx, LetterView.tsx (envelope details toggle), Archive.tsx (Horizon View — transit diagram),
     AddressBook.tsx (one-tap compose), Compose.tsx (correction path), Pub.tsx (pub@house),
     WhisperSidebar.tsx (reasoning disclosure + write back)
