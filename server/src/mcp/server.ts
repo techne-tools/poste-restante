@@ -303,13 +303,14 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
   // ── The whisper ────────────────────────────────────────────────────────────
 
   // The whisper — the mailbox for the house's own letters. A GET resource.
-  // Nothing pushes; the agent comes for it.
+  // Nothing pushes; the agent comes for it. Scoped to the owner address:
+  // the house only whispers about correspondence the owner is party to.
   server.registerTool(
     "list_whispers",
     {
       title: "List the whisper",
       description:
-        "List the whisper — the mailbox for the house's own letters (summaries, questions, gap offers). Presence not pressure: nothing pushes; the agent comes for it. Pass unread=true for only what the house is offering right now.",
+        "List the whisper — the mailbox for the house's own letters (summaries, questions, gap offers). Presence not pressure: nothing pushes; the agent comes for it. Pass unread=true for only what the house is offering right now. Scoped to the owner address: the house only whispers about correspondence the owner is party to.",
       inputSchema: {
         unread: z.boolean().default(false).describe("only whispers not yet dismissed"),
         limit: z.number().int().min(1).max(MAX_LIMIT).default(50),
@@ -317,43 +318,44 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
     },
     async ({ unread, limit }) => {
       const whispers = unread
-        ? await house.whisper.listUnread(limit)
-        : await house.whisper.list(limit);
+        ? await house.whisper.listUnread(owner, limit)
+        : await house.whisper.list(owner, limit);
       return text({ whispers });
     },
   );
 
-  // The user opened a whisper. A signal, not a notification.
+  // The user opened a whisper. A signal, not a notification. Scoped: you can
+  // only open a whisper about a thread you are party to.
   server.registerTool(
     "open_whisper",
     {
       title: "Open a whisper",
-      description: "Mark a whisper opened. A signal, not a notification — the house learns you picked it up.",
+      description: "Mark a whisper opened. A signal, not a notification — the house learns you picked it up. Scoped to the owner address: you can only open a whisper about a thread you are party to.",
       inputSchema: {
         id: z.string().min(1).describe("the whisper id"),
       },
     },
     async ({ id }) => {
-      const ok = await house.whisper.open(id);
+      const ok = await house.whisper.open(id, owner);
       if (!ok) return fail("no such whisper");
       return text({ opened: true, id });
     },
   );
 
   // Explicit dismissal — the strongest negative signal. The house takes
-  // corrections at face value; undismiss is always possible.
+  // corrections at face value; undismiss is always possible. Scoped.
   server.registerTool(
     "dismiss_whisper",
     {
       title: "Dismiss a whisper",
       description:
-        "Explicitly dismiss a whisper — the strongest negative signal. The house takes corrections at face value; undismiss is always possible.",
+        "Explicitly dismiss a whisper — the strongest negative signal. The house takes corrections at face value; undismiss is always possible. Scoped to the owner address: you can only dismiss a whisper about a thread you are party to.",
       inputSchema: {
         id: z.string().min(1).describe("the whisper id"),
       },
     },
     async ({ id }) => {
-      const ok = await house.whisper.dismiss(id);
+      const ok = await house.whisper.dismiss(id, owner);
       if (!ok) return fail("no such whisper");
       return text({ dismissed: true, id });
     },
@@ -369,24 +371,25 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
       },
     },
     async ({ id }) => {
-      const ok = await house.whisper.undismiss(id);
+      const ok = await house.whisper.undismiss(id, owner);
       if (!ok) return fail("no such whisper");
       return text({ dismissed: false, id });
     },
   );
 
   // Gap detection — cheap structural checks (dormant threads, unanswered
-  // questions). Runs on demand; the house never pushes the results.
+  // questions). Runs on demand; the house never pushes the results. Scoped
+  // to the owner: gaps are only offered for threads the owner is party to.
   server.registerTool(
     "detect_gaps",
     {
       title: "Look for gaps",
       description:
-        "Run cheap structural gap detection: dormant threads (quiet 14 days) and unanswered questions (a week old). Postgres queries only — no expensive semantic scans. Runs on demand; the house never pushes the results.",
+        "Run cheap structural gap detection: dormant threads (quiet 14 days) and unanswered questions (a week old). Postgres queries only — no expensive semantic scans. Runs on demand; the house never pushes the results. Scoped to the owner address: gaps are only offered for threads the owner is party to.",
       inputSchema: {},
     },
     async () => {
-      const created = await house.whisper.detectGaps();
+      const created = await house.whisper.detectGaps(owner);
       return text({ created: created.map((w) => w.id) });
     },
   );

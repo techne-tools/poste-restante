@@ -359,4 +359,95 @@ describe.skipIf(!INTEGRATION)("letter server (integration)", () => {
     const unreadJson = (await unread.json()) as { whispers: { id: string }[] };
     expect(unreadJson.whispers.some((w) => w.id === dormant!.id)).toBe(false);
   });
+
+  it("does not surface private correspondence to other addresses", async () => {
+    // A private thread between you@house and hermes@house — ben@house is not
+    // party to it. The house must not whisper about it to ben.
+    const privateThread = "th_private_ben";
+    const a = mkLetter({
+      envelope: {
+        from: "hermes@house",
+        to: ["you@house"],
+        cc: [],
+        thread: privateThread,
+        kind: "letter",
+        lang: "en-AU",
+        subject: "private planning",
+      },
+      time: { gregorian: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString(), frames: [] },
+      body: { format: "markdown", content: "first private letter" },
+    });
+    const b = mkLetter({
+      envelope: {
+        from: "you@house",
+        to: ["hermes@house"],
+        cc: [],
+        thread: privateThread,
+        kind: "letter",
+        lang: "en-AU",
+        subject: "private planning",
+      },
+      time: { gregorian: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString(), frames: [] },
+      body: { format: "markdown", content: "second private letter" },
+    });
+    await app.request("/v1/letters", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(a),
+    });
+    await app.request("/v1/letters", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(b),
+    });
+
+    // A house letter in that private thread surfaces in the whisper. It is
+    // also old, so the thread stays dormant and gap detection fires too.
+    const houseLetter = mkLetter({
+      envelope: {
+        from: "house@house",
+        to: ["you@house"],
+        cc: [],
+        thread: privateThread,
+        kind: "system",
+        lang: "en-AU",
+        subject: "the house, quietly",
+      },
+      time: { gregorian: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString(), frames: [] },
+      body: { format: "markdown", content: "I noticed the private planning thread." },
+    });
+    await app.request("/v1/letters", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(houseLetter),
+    });
+
+    // Gap detection for the owner surfaces the dormant private thread.
+    const gaps = await app.request("/v1/whisper/gaps", { method: "POST" });
+    const gapsJson = (await gaps.json()) as { created: string[] };
+    expect(gapsJson.created.some((id) => id.includes(privateThread))).toBe(true);
+
+    // you@house sees the whisper.
+    const youWhisper = await app.request("/v1/whisper", { method: "GET" });
+    const youJson = (await youWhisper.json()) as { whispers: { id: string; targetThread: string | null }[] };
+    const youSee = youJson.whispers.find((w) => w.targetThread === privateThread);
+    expect(youSee).toBeDefined();
+
+    // ben@house — a different server instance, different owner — must NOT see
+    // the whisper, and must not be able to open or dismiss it.
+    const benApp = createLetterServer(house, { ownerAddress: "ben@house" });
+    const benWhisper = await benApp.request("/v1/whisper", { method: "GET" });
+    const benJson = (await benWhisper.json()) as { whispers: { id: string; targetThread: string | null }[] };
+    expect(benJson.whispers.some((w) => w.targetThread === privateThread)).toBe(false);
+
+    const benOpen = await benApp.request(`/v1/whisper/${youSee!.id}/open`, { method: "POST" });
+    expect(benOpen.status).toBe(404);
+    const benDismiss = await benApp.request(`/v1/whisper/${youSee!.id}/dismiss`, { method: "POST" });
+    expect(benDismiss.status).toBe(404);
+
+    // ben's gap detection must not offer the private thread either.
+    const benGaps = await benApp.request("/v1/whisper/gaps", { method: "POST" });
+    const benGapsJson = (await benGaps.json()) as { created: string[] };
+    expect(benGapsJson.created.some((id) => id.includes(privateThread))).toBe(false);
+  });
 });

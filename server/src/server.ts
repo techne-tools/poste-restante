@@ -275,7 +275,8 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
 
   // The whisper — the mailbox for the house's own letters. A GET resource.
   // Nothing pushes; the client comes for it. `?unread=1` shows only what the
-  // house is offering right now.
+  // house is offering right now. Scoped to the owner address: the house only
+  // whispers about correspondence the owner is party to.
   app.get("/v1/whisper", async (c) => {
     const unread = c.req.query("unread") === "1" || c.req.query("unread") === "true";
     const limitRaw = c.req.query("limit");
@@ -291,14 +292,15 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
       limit = Math.min(limit, MAX_LIMIT);
     }
     const whispers = unread
-      ? await house.whisper.listUnread(limit)
-      : await house.whisper.list(limit);
+      ? await house.whisper.listUnread(owner, limit)
+      : await house.whisper.list(owner, limit);
     return c.json({ whispers });
   });
 
-  // The user opened a whisper. A signal, not a notification.
+  // The user opened a whisper. A signal, not a notification. Scoped: you can
+  // only open a whisper about a thread you are party to.
   app.post("/v1/whisper/:id/open", async (c) => {
-    const ok = await house.whisper.open(c.req.param("id"));
+    const ok = await house.whisper.open(c.req.param("id"), owner);
     if (!ok) {
       return c.json({ error: { code: "not_found", message: "no such whisper" } }, 404);
     }
@@ -306,9 +308,9 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
   });
 
   // Explicit dismissal — the strongest negative signal. The house takes
-  // corrections at face value; undismiss is always possible.
+  // corrections at face value; undismiss is always possible. Scoped.
   app.post("/v1/whisper/:id/dismiss", async (c) => {
-    const ok = await house.whisper.dismiss(c.req.param("id"));
+    const ok = await house.whisper.dismiss(c.req.param("id"), owner);
     if (!ok) {
       return c.json({ error: { code: "not_found", message: "no such whisper" } }, 404);
     }
@@ -316,7 +318,7 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
   });
 
   app.post("/v1/whisper/:id/undismiss", async (c) => {
-    const ok = await house.whisper.undismiss(c.req.param("id"));
+    const ok = await house.whisper.undismiss(c.req.param("id"), owner);
     if (!ok) {
       return c.json({ error: { code: "not_found", message: "no such whisper" } }, 404);
     }
@@ -324,9 +326,10 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
   });
 
   // Gap detection — cheap structural checks (dormant threads, unanswered
-  // questions). Runs on demand; the house never pushes the results.
+  // questions). Runs on demand; the house never pushes the results. Scoped
+  // to the owner: gaps are only offered for threads the owner is party to.
   app.post("/v1/whisper/gaps", async (c) => {
-    const created = await house.whisper.detectGaps();
+    const created = await house.whisper.detectGaps(owner);
     return c.json({ created: created.map((w) => w.id) });
   });
 

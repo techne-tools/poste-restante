@@ -12,6 +12,13 @@
  *   writing back             → strongest positive (replied)
  *
  * Presence not pressure: the whisper is a GET resource. Nothing pushes.
+ *
+ * Multi-user privacy: the whisper is scoped to an address. A whisper is
+ * visible to an address iff that address is a participant in the whisper's
+ * target thread (derived from letter_addresses — the social graph). The
+ * house never gossips about correspondence you are not party to, and you
+ * cannot open, dismiss, or undismiss a whisper about someone else's thread.
+ * This is privacy as schema: the visibility rule is derived, not a policy.
  */
 import type pg from "pg";
 import type { Logger } from "../pipeline/logger.js";
@@ -60,56 +67,76 @@ const toWhisper = (r: WhisperRow): Whisper => ({
   repliedAt: r.replied_at,
 });
 
+/**
+ * The visibility predicate. A whisper is visible to an address iff the
+ * address is a participant in the whisper's thread. `w` is the whispers
+ * alias; `$1` is the address. Every whisper kind sets target_thread, so a
+ * whisper with a NULL thread is visible to no one (it cannot exist in
+ * practice — the invariant is enforced by the writers).
+ */
+const VISIBLE_TO = `
+  w.target_thread IS NOT NULL
+  AND EXISTS (
+    SELECT 1 FROM letters l
+    JOIN letter_addresses la ON la.letter_id = l.id
+    WHERE l.thread_id = w.target_thread
+      AND la.address_id = $1
+  )`;
+
 export class WhisperService {
   constructor(
     private readonly pool: pg.Pool,
     private readonly log: Logger,
   ) {}
 
-  /** The whisper — the house's own letters, newest first. */
-  async list(limit = 50): Promise<Whisper[]> {
+  /** The whisper — the house's own letters, newest first, scoped to an address. */
+  async list(address: string, limit = 50): Promise<Whisper[]> {
     const { rows } = await this.pool.query<WhisperRow>(
-      `SELECT * FROM whispers ORDER BY created_at DESC LIMIT $1`,
-      [limit],
+      `SELECT w.* FROM whispers w
+       WHERE ${VISIBLE_TO}
+       ORDER BY w.created_at DESC LIMIT $2`,
+      [address, limit],
     );
     return rows.map(toWhisper);
   }
 
-  /** The unread whisper — what the house is offering right now. */
-  async listUnread(limit = 20): Promise<Whisper[]> {
+  /** The unread whisper — what the house is offering this address right now. */
+  async listUnread(address: string, limit = 20): Promise<Whisper[]> {
     const { rows } = await this.pool.query<WhisperRow>(
-      `SELECT * FROM whispers
-       WHERE dismissed_at IS NULL
-       ORDER BY created_at DESC LIMIT $1`,
-      [limit],
+      `SELECT w.* FROM whispers w
+       WHERE ${VISIBLE_TO} AND w.dismissed_at IS NULL
+       ORDER BY w.created_at DESC LIMIT $2`,
+      [address, limit],
     );
     return rows.map(toWhisper);
   }
 
-  /** The user opened a whisper. A signal, not a notification. */
-  async open(id: string): Promise<boolean> {
+  /** The user opened a whisper. A signal, not a notification. Scoped: you can only open what you can see. */
+  async open(id: string, address: string): Promise<boolean> {
     const res = await this.pool.query(
-      `UPDATE whispers SET opened_at = COALESCE(opened_at, now())
-       WHERE id = $1 AND dismissed_at IS NULL`,
-      [id],
+      `UPDATE whispers w SET opened_at = COALESCE(opened_at, now())
+       WHERE w.id = $2 AND w.dismissed_at IS NULL AND ${VISIBLE_TO}`,
+      [address, id],
     );
     return (res.rowCount ?? 0) > 0;
   }
 
-  /** Explicit dismissal — the strongest negative signal. */
-  async dismiss(id: string): Promise<boolean> {
+  /** Explicit dismissal — the strongest negative signal. Scoped: you can only dismiss what you can see. */
+  async dismiss(id: string, address: string): Promise<boolean> {
     const res = await this.pool.query(
-      `UPDATE whispers SET dismissed_at = now() WHERE id = $1`,
-      [id],
+      `UPDATE whispers w SET dismissed_at = now()
+       WHERE w.id = $2 AND ${VISIBLE_TO}`,
+      [address, id],
     );
     return (res.rowCount ?? 0) > 0;
   }
 
-  /** Undismiss — the user changed their mind. The house takes corrections at face value. */
-  async undismiss(id: string): Promise<boolean> {
+  /** Undismiss — the user changed their mind. The house takes corrections at face value. Scoped. */
+  async undismiss(id: string, address: string): Promise<boolean> {
     const res = await this.pool.query(
-      `UPDATE whispers SET dismissed_at = NULL WHERE id = $1`,
-      [id],
+      `UPDATE whispers w SET dismissed_at = NULL
+       WHERE w.id = $2 AND ${VISIBLE_TO}`,
+      [address, id],
     );
     return (res.rowCount ?? 0) > 0;
   }
@@ -148,13 +175,17 @@ export class WhisperService {
    * Cheap structural gap detection (SPEC §2.4): dormant threads and
    * unanswered questions. Postgres queries only — no expensive semantic
    * scans. Runs on demand; the house never pushes the results.
+   *
+   * Scoped to an address: gaps are only offered for threads the address
+   * participates in. The house does not whisper about other people's mail.
    */
-  async detectGaps(now = new Date()): Promise<Whisper[]> {
+  async detectGaps(address: string, now = new Date()): Promise<Whisper[]> {
     const created: Whisper[] = [];
 
     // Dormant thread: a correspondence with letters, none in the last 14
     // days, that the house hasn't whispered about recently (7 days — a
     // dismissal is respected; the house doesn't re-offer immediately).
+    // Only threads the address participates in.
     const dormant = await this.pool.query<{ thread_id: string }>(
       `SELECT t.id AS thread_id
        FROM threads t
@@ -166,8 +197,17 @@ export class WhisperService {
            WHERE w.target_thread = t.id
              AND w.kind = 'gap-dormant-thread'
              AND w.created_at > $2
+         )
+         AND EXISTS (
+           SELECT 1 FROM letters l2
+           JOIN letter_addresses la ON la.letter_id = l2.id
+           WHERE l2.thread_id = t.id AND la.address_id = $3
          )`,
-      [new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000), new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)],
+      [
+        new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000),
+        new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000),
+        address,
+      ],
     );
     for (const row of dormant.rows) {
       const id = `gap-dormant:${row.thread_id}`;
@@ -193,10 +233,11 @@ export class WhisperService {
     }
 
     // Unanswered question: a letter with a question mark, no reply in 7 days.
+    // Only threads the address participates in.
     const questions = await this.pool.query<{ thread_id: string }>(
       `SELECT DISTINCT l.thread_id
        FROM letters l
-       WHERE l.body_text ~ '\\?'
+       WHERE l.body_text ~ '\\\\?'
          AND l.received_at < $1
          AND NOT EXISTS (
            SELECT 1 FROM letters l2
@@ -208,8 +249,13 @@ export class WhisperService {
            WHERE w.target_thread = l.thread_id
              AND w.kind = 'gap-unanswered-question'
              AND w.dismissed_at IS NULL
+         )
+         AND EXISTS (
+           SELECT 1 FROM letters l3
+           JOIN letter_addresses la ON la.letter_id = l3.id
+           WHERE l3.thread_id = l.thread_id AND la.address_id = $2
          )`,
-      [new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)],
+      [new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000), address],
     );
     for (const row of questions.rows) {
       const id = `gap-question:${row.thread_id}`;
