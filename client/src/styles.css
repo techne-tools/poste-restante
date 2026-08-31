@@ -421,27 +421,28 @@ a:hover {
 
 .horizon-body {
   display: grid;
-  grid-template-columns: 220px 1fr;
-  gap: var(--space-4);
-  align-items: start;
+  grid-template-columns: 170px 48px 1fr;
+  gap: var(--space-3);
+  align-items: stretch;
 }
 
-/* The frame rail — parallel lines flanking the letter flow. */
-.frame-rail {
+/* The frame legend — the transit board labels. */
+.frame-legend {
   display: flex;
   flex-direction: column;
+  gap: var(--space-1);
+  align-self: start;
+}
+
+.frame-legend .empty {
+  padding: var(--space-2);
+}
+
+.frame-label {
+  display: flex;
+  align-items: baseline;
   gap: var(--space-2);
-  position: sticky;
-  top: 0;
-}
-
-.frame-line {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-1) var(--space-2);
   border: var(--rule);
   border-radius: var(--radius);
   background: var(--surface-raised);
@@ -450,15 +451,15 @@ a:hover {
   transition: border-color 120ms ease;
 }
 
-.frame-line:hover {
+.frame-label:hover {
   border-color: var(--fg);
 }
 
-.frame-line.active {
+.frame-label.active {
   border-color: var(--accent);
 }
 
-.frame-line .frame-name {
+.frame-label .frame-name {
   font-family: var(--font-mono);
   font-size: 10px;
   text-transform: uppercase;
@@ -466,27 +467,32 @@ a:hover {
   color: var(--muted);
 }
 
-.frame-line .frame-value {
+.frame-label .frame-value {
   font-family: var(--font-mono);
   font-size: 12px;
   color: var(--fg);
 }
 
-/* The transit line itself — dots at each letter the frame carries. */
-.frame-rail-line {
+/* The transit lines — the flanking layer, one per frame, running the full
+   height of the flow. Ticks mark where the frame carries a letter. */
+.frame-lines {
+  position: relative;
+  align-self: stretch;
+}
+
+.frame-line {
   position: absolute;
-  left: -14px;
   top: 0;
   bottom: 0;
   width: 2px;
   background: var(--border);
 }
 
-.frame-line.active .frame-rail-line {
+.frame-line.active {
   background: var(--accent);
 }
 
-.frame-rail-line i {
+.frame-line i {
   position: absolute;
   left: -2px;
   width: 6px;
@@ -496,18 +502,44 @@ a:hover {
   border: 1px solid var(--border);
 }
 
-.frame-line.active .frame-rail-line i {
+.frame-line.active i {
   background: var(--accent);
   border-color: var(--accent);
 }
 
-/* Dimming, not filtering — the intersection stays visible. */
-.letter-row.dimmed {
-  opacity: 0.35;
+/* The letter flow — the single vertical axis. */
+.letter-flow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
 }
 
-.letter-row.dimmed:hover {
+.horizon-hint {
+  color: var(--ink-faint);
+  font-size: 13px;
+  padding: 0 var(--space-1) var(--space-1);
+}
+
+.horizon-hint .door-link {
+  font-size: 13px;
+}
+
+/* The ∩ semantics — full stays, partial mid-dims, dim falls back. */
+.letter-row.partial {
   opacity: 0.6;
+}
+
+.letter-row.partial:hover {
+  opacity: 0.8;
+}
+
+.letter-row.dim {
+  opacity: 0.3;
+}
+
+.letter-row.dim:hover {
+  opacity: 0.55;
 }
 
 /* Controls — quiet, dismissible, no red. */

@@ -17,6 +17,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **SPEC §5.7 open question resolved (2026-08-31): in scope, built.** CONTRACT documents the invitation-only membership contract.
 - **Reference client redemption UI** — the door has a quiet third way in: "A resident invited you? Enter with your invitation" flips Login between sign-in and redemption. The guest presents address + one-time code + the password they choose; redemption persists the credential and walks them in — no second door. Fail closed in the client too: a 404 maps to the same single answer. (`client/src/Redeem.tsx`, `client/src/Login.tsx`, `client/src/api.ts`)
 - **Client redeem unit tests** — prove `redeemInvite` never attaches an Authorization header even with a stale resident session (the guest redeems as themselves), and maps every negative path to the one absence answer. 8/8 client, 125/125 suite. (`client/src/api.test.ts`)
+- **Horizon View, real** — the plural-time archive browser (SPEC §6, DESIGN.md "the unit and the frame"). The letter flow is now a single vertical axis; frame lines flank it full-height like a transit diagram. Multi-frame selection brings the *intersection* forward: letters in every selected frame stay full, in some mid-dim, in none dim — nothing is removed. (`client/src/Archive.tsx`, `client/src/frameUtils.ts`)
+- **Dev-mode fix** — `AUTH_MODE=*** actually disables auth now: the server previously always wired in the AuthService, so `none` never reached the routes. (`server/src/main.ts`)
 
 ### Added — authentication & authorization (2026-08-30)
 

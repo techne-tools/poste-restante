@@ -22,7 +22,13 @@ const PORT = Number.parseInt(process.env.PORT ?? "8787", 10);
 const house = await buildHouse();
 const auth = new AuthService(house.db.pool, house.log, house.config.auth);
 const invites = new InviteService(house.db.pool, house.pipeline, auth);
-const app = createLetterServer(house, { auth, invites });
+const app = createLetterServer(house, {
+  // AUTH_MODE=none is development only: the house runs unauthenticated and
+  // the caller is the default owner. The invite service still gets the
+  // AuthService for its own checks (hasCredential).
+  auth: auth.enabled ? auth : undefined,
+  invites,
+});
 
 serve({ fetch: app.fetch, port: PORT }, (info) => {
   house.log.info("server:listening", {
