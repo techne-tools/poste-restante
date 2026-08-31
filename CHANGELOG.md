@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added — invitation-only membership, the invite letter (2026-08-31)
+
+- **The join flow is a letter** — a resident mints a dormant address and writes a `kind: "invite"` letter to it; the voucher edge (`owner@house wrote to guest@house`) *is* the social graph. (`server/src/invites/service.ts`)
+- **`invite` letter kind** — added to `LETTER_KINDS`; `letters_kind_check` re-added with the new value. First-class: redemption is one-time state, and it is a capability granted by a peer. (`server/src/types.ts`, `server/src/db/migrations/008_invites.sql`)
+- **Schema** — one new table, five columns: `invites (letter_id PK→letters CASCADE, created_by→addresses, code_hash, expires_at nullable, redeemed_at nullable, redeemed_by→addresses)`. Only `code_hash` is stored, never the code; revocation is just deletion of the letter. (`server/src/db/migrations/008_invites.sql`)
+- **Mint CLI** — `npm run invite:new -- <owner> <guest>`: the owner vouches, the code is printed once (human-typable `XXXX-XXXX-XXXX`), shown to the guest out of band. (`server/src/invites/cli.ts`)
+- **Redeem route** — `POST /v1/invites/redeem` (public, like health: the guest has no credential yet). Proves possession of the letter + the code; the claim is atomic (`UPDATE ... WHERE redeemed_at IS NULL` + credential grant in one transaction), so exactly one redemption wins. Fail closed: every negative path answers 404 — absence is silence. (`server/src/server.ts`)
+- **Tests** — 12 invite unit tests (code generation, hashing, mint, redeem happy + wrong code / wrong address / spent / expired / already-resident / short password) and 7 integration tests (full mint → redeem → authenticate arc, one-time, all negatives) against live infra. 117/117 passing.
+- **SPEC §5.7 open question resolved (2026-08-31): in scope, built.** CONTRACT documents the invitation-only membership contract.
+
 ### Added — authentication & authorization (2026-08-30)
 
 - **Authentication is mandatory** — `AUTH_MODE=basic | oidc | both | none` (none is development only). Identity = address: a credential is a capability to act as a specific address. No user table, no admin class, no roles. (`server/src/auth/service.ts`, `server/src/config.ts`)

@@ -17,6 +17,7 @@
     "auth:add": "tsx src/auth/cli.ts add",
     "auth:list": "tsx src/auth/cli.ts list",
     "auth:remove": "tsx src/auth/cli.ts remove",
+    "invite:new": "tsx src/invites/cli.ts new",
     "serve": "tsx src/main.ts",
     "serve:mcp": "tsx src/mcp/main.ts"
   },

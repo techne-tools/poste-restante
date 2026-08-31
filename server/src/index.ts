@@ -18,6 +18,14 @@ export { markdownToText } from "./pipeline/markdown.js";
 export { createLogger, silentLogger, type Logger } from "./pipeline/logger.js";
 export { Retrieval, rrf, type RetrievalQuery, type RetrievalHit } from "./retrieval/retrieval.js";
 export { WhisperService, type Whisper, type WhisperKind } from "./whisper/service.js";
+export {
+  InviteService,
+  generateInviteCode,
+  hashInviteCode,
+  type MintedInvite,
+  type RedeemInput,
+} from "./invites/service.js";
+export { RedeemSchema } from "./schemas.js";
 export type { House } from "./house.js";
 
 import { loadConfig } from "./config.js";

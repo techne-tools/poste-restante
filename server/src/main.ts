@@ -15,12 +15,14 @@ import { serve } from "@hono/node-server";
 import { buildHouse } from "./index.js";
 import { createLetterServer } from "./server.js";
 import { AuthService } from "./auth/service.js";
+import { InviteService } from "./invites/service.js";
 
 const PORT = Number.parseInt(process.env.PORT ?? "8787", 10);
 
 const house = await buildHouse();
 const auth = new AuthService(house.db.pool, house.log, house.config.auth);
-const app = createLetterServer(house, { auth });
+const invites = new InviteService(house.db.pool, house.pipeline, auth);
+const app = createLetterServer(house, { auth, invites });
 
 serve({ fetch: app.fetch, port: PORT }, (info) => {
   house.log.info("server:listening", {

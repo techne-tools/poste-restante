@@ -13,6 +13,7 @@ export const LETTER_KINDS = [
   "audio",
   "note",
   "task",
+  "invite",
 ] as const;
 
 export type LetterKind = (typeof LETTER_KINDS)[number];

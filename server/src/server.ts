@@ -20,12 +20,13 @@
  */
 import { Hono } from "hono";
 import { LETTER_KINDS } from "./types.js";
-import { AddressSchema, LetterSchema, toLetter } from "./schemas.js";
+import { AddressSchema, LetterSchema, RedeemSchema, toLetter } from "./schemas.js";
 import { deliverLetter } from "./deliver.js";
 import type { House } from "./house.js";
 import type { RetrievalQuery } from "./retrieval/retrieval.js";
 import type { AuthService, Authenticated } from "./auth/service.js";
 import { isVisibleTo, visibleToSql, PUB_ADDRESS } from "./auth/visibility.js";
+import type { InviteService } from "./invites/service.js";
 
 const MAX_LIMIT = 100;
 const DEFAULT_LIMIT = 20;
@@ -33,6 +34,8 @@ const DEFAULT_LIMIT = 20;
 export interface LetterServerOptions {
   /** The auth service. When omitted, the house runs unauthenticated (development only). */
   auth?: AuthService;
+  /** The invite service — invitation-only membership. When omitted, redemption is unavailable. */
+  invites?: InviteService;
 }
 
 /** The OIDC PKCE verifier + state, held in memory for the callback. */
@@ -44,6 +47,7 @@ interface OidcPending {
 
 export function createLetterServer(house: House, options: LetterServerOptions = {}) {
   const auth = options.auth;
+  const invites = options.invites;
   const app = new Hono();
   const oidcPending = new Map<string, OidcPending>();
   const OIDC_TTL_MS = 10 * 60 * 1000;
@@ -107,6 +111,48 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
       house.log.warn("oidc:callback-failed", { message: err instanceof Error ? err.message : String(err) });
       return c.json({ error: { code: "oidc_failed", message: "the house could not verify this identity" } }, 401);
     }
+  });
+
+  // Redeem an invite — the guest's door into the house. Public, like the
+  // health check: the whole point is that a guest has no credential yet.
+  // Proves possession of the invite letter (address is a participant) and
+  // the one-time code; the house issues the credential the guest sets
+  // themselves. Fail closed: every negative path answers 404, never 403,
+  // and never confirms that an invite exists. Absence is silence.
+  app.post("/v1/invites/redeem", async (c) => {
+    if (!invites) {
+      return c.json({ error: { code: "not_found", message: "no such thing in the house" } }, 404);
+    }
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.json(
+        { error: { code: "invalid_json", message: "the letter must be JSON" } },
+        400,
+      );
+    }
+    const parsed = RedeemSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json(
+        {
+          error: {
+            code: "invalid_redeem",
+            message: "the redemption does not match the contract",
+            details: parsed.error.flatten(),
+          },
+        },
+        400,
+      );
+    }
+    const redeemed = await invites.redeem(parsed.data);
+    if (!redeemed) {
+      // Absence is silence: wrong code, wrong address, spent, expired, or
+      // already a resident — the house never says which.
+      return c.json({ error: { code: "not_found", message: "no such thing in the house" } }, 404);
+    }
+    house.log.info("invite:redeemed", { address: redeemed.address });
+    return c.json({ address: redeemed.address, joined: true }, 201);
   });
 
   // ── Letters ──────────────────────────────────────────────────────────────

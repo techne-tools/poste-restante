@@ -123,7 +123,17 @@ Set `AUTH_MODE` in the environment. The owner issues credentials via the CLI (`n
 
 ### What the House Never Stores
 
-Only hashes. A password is stored as a scrypt hash; a bearer token as a sha256 hash; an OIDC binding as the provider's `sub`. The house never holds a password, a token, or an id_token. Credentials live in a separate table from the social graph — the secrets and the addresses never share a table.
+Only hashes. A password is stored as a scrypt hash; a bearer token as a sha256 hash; an OIDC binding as the provider's `sub`; an invite code as a sha256 hash. The house never holds a password, a token, an id_token, or a raw invite code. Credentials live in a separate table from the social graph — the secrets and the addresses never share a table.
+
+### Invitation-only Membership (2026-08-31)
+
+Joining the house is invitation-only, and the join flow is a letter, not a CLI ceremony (SPEC §5.7).
+
+- **Mint** — the owner vouches via `npm run invite:new -- <owner> <guest>`. The house writes a `kind: "invite"` letter to the guest's (dormant) address — the voucher edge (`owner@house wrote to guest@house`) IS the social graph — and the guest is told about the letter **out of band**; the house never pushes. The one-time code is printed once; only its sha256 hash is stored.
+- **Redeem** — `POST /v1/invites/redeem` with `{address, code, password}`. Public (the guest has no credential yet). Proves possession of the letter — the redeeming address must be a `to` participant — *and* the code: the two factors of the voucher. The claim is atomic (one transaction: `UPDATE ... WHERE redeemed_at IS NULL` + credential grant), so exactly one redemption wins, and the guest sets their own password credential.
+- **Fail closed.** Wrong code, wrong address, spent, expired, or already a resident → all 404. Absence is silence; the house never confirms that an invite exists.
+- **One-time.** `redeemed_at` is set once, atomically; a redeemed invite is spent. Revocation is just deletion of the letter — the invite row CASCADEs away (first-class deletion, no revoke flag).
+- **Open registration remains off.** The pub stays the only keyless door (and opens onto public mail only).
 
 ## Constraints
 

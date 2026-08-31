@@ -50,6 +50,18 @@ export const AddressSchema = z.object({
   pronouns: z.string().nullable().default(null),
 });
 
+/**
+ * The invite redemption — the guest's door into the house (SPEC §5.7).
+ * Address must be a participant of the invite letter; the code and the
+ * password are the guest's own. The code is the one-time key; the password
+ * is the credential the guest sets for themselves.
+ */
+export const RedeemSchema = z.object({
+  address: z.string().min(1),
+  code: z.string().min(1),
+  password: z.string().min(8),
+});
+
 export type LetterInput = z.infer<typeof LetterSchema>;
 
 /** Map a stored row back to the contract letter shape. Shared by the Hono
