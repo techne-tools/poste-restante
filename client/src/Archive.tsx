@@ -3,6 +3,7 @@ import { house } from "./api";
 import type { Letter } from "./api";
 import LetterView from "./LetterView";
 import KindTag from "./KindTag";
+import { snippet } from "./markdown";
 import {
   classifyLetter,
   railPositions,
@@ -218,8 +219,9 @@ export default function Archive({ onError }: Props) {
             {letters.map((l) => {
               const cls = classified.get(l.id) ?? "none";
               return (
-                <div
+                <button
                   key={l.id}
+                  type="button"
                   className={`letter-row${cls !== "none" ? ` ${cls}` : ""}`}
                   onClick={() => setSelected(l)}
                 >
@@ -234,8 +236,8 @@ export default function Archive({ onError }: Props) {
                       </span>
                     ))}
                   </div>
-                  <div className="snippet">{l.body.content.replace(/[#*`>]/g, "").slice(0, 120)}</div>
-                </div>
+                  <div className="snippet">{snippet(l.body.content)}</div>
+                </button>
               );
             })}
           </div>

@@ -3,6 +3,7 @@ import { house } from "./api";
 import type { Letter } from "./api";
 import LetterView from "./LetterView";
 import KindTag from "./KindTag";
+import { snippet } from "./markdown";
 
 interface Props {
   threadId: string;
@@ -51,7 +52,12 @@ export default function ThreadView({ threadId, onError, onBack }: Props) {
           <div className="letter-list">
             {letters.length === 0 && <p className="empty">No letters in this thread.</p>}
             {letters.map((l) => (
-              <div key={l.id} className="letter-row" onClick={() => setSelected(l)}>
+              <button
+                key={l.id}
+                type="button"
+                className="letter-row"
+                onClick={() => setSelected(l)}
+              >
                 <p className="subject">{l.envelope.subject || "(no subject)"}</p>
                 <div className="meta">
                   <KindTag kind={l.envelope.kind} />
@@ -63,8 +69,8 @@ export default function ThreadView({ threadId, onError, onBack }: Props) {
                     </span>
                   ))}
                 </div>
-                <div className="snippet">{l.body.content.replace(/[#*`>]/g, "").slice(0, 120)}</div>
-              </div>
+                <div className="snippet">{snippet(l.body.content)}</div>
+              </button>
             ))}
           </div>
         </div>

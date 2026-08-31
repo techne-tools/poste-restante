@@ -100,3 +100,15 @@ export function renderMarkdown(content: string): ReactNode {
   flushList("list-end");
   return out;
 }
+
+/** A letter's first line — markdown reduced to plain text, for the rows.
+ *  Links become their text; emphasis markers, headings, quotes and code
+ *  ticks are stripped; runs of whitespace collapse. */
+export function snippet(content: string, max = 120): string {
+  return content
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/[#*`>]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, max);
+}

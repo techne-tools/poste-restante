@@ -223,6 +223,7 @@ a:hover {
 }
 
 .letter-row {
+  font: inherit;
   background: var(--surface-raised);
   border: var(--rule);
   border-radius: var(--radius);
@@ -469,7 +470,9 @@ a:hover {
 
 .compose-field input:focus,
 .compose-field textarea:focus {
-  outline: none;
+  /* The global :focus-visible ring (accent) is the contract's focus
+     indicator; the border shift is a quiet reinforcement, never a
+     replacement. No outline:none here — that would break the ring. */
   border-color: var(--accent);
 }
 

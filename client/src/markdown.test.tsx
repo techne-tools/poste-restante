@@ -7,7 +7,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { renderMarkdown } from "./markdown";
+import { renderMarkdown, snippet } from "./markdown";
 
 function html(content: string): string {
   return renderToStaticMarkup(<>{renderMarkdown(content)}</>);
@@ -72,5 +72,23 @@ describe("renderMarkdown — inline", () => {
     expect(html("- a **bold** item")).toBe(
       "<ul><li>a <strong>bold</strong> item</li></ul>",
     );
+  });
+});
+
+describe("snippet — the row's plain-text first line", () => {
+  it("strips markdown markers and collapses whitespace", () => {
+    expect(snippet("## The **gap**\n\n> the decision is in the archive")).toBe(
+      "The gap the decision is in the archive",
+    );
+  });
+
+  it("turns links into their text", () => {
+    expect(snippet("see [the archive](/v1/archive) for the rest")).toBe(
+      "see the archive for the rest",
+    );
+  });
+
+  it("caps at the default 120 characters", () => {
+    expect(snippet("x".repeat(200))).toHaveLength(120);
   });
 });

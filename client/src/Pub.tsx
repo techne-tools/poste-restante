@@ -3,6 +3,7 @@ import { house } from "./api";
 import type { Letter } from "./api";
 import LetterView from "./LetterView";
 import KindTag from "./KindTag";
+import { snippet } from "./markdown";
 
 interface Props {
   onError: (msg: string) => void;
@@ -50,7 +51,12 @@ export default function Pub({ onError }: Props) {
             <p className="empty">The pub is quiet — no letters posted yet.</p>
           )}
           {letters.map((l) => (
-            <div key={l.id} className="letter-row" onClick={() => setSelected(l)}>
+            <button
+              key={l.id}
+              type="button"
+              className="letter-row"
+              onClick={() => setSelected(l)}
+            >
               <span className="posted">posted · {new Date(l.receivedAt).toLocaleString("en-AU")}</span>
               <p className="subject">{l.envelope.subject || "(no subject)"}</p>
               <div className="meta">
@@ -62,8 +68,8 @@ export default function Pub({ onError }: Props) {
                   </span>
                 ))}
               </div>
-              <div className="snippet">{l.body.content.replace(/[#*`>]/g, "").slice(0, 120)}</div>
-            </div>
+              <div className="snippet">{snippet(l.body.content)}</div>
+            </button>
           ))}
         </div>
       )}
