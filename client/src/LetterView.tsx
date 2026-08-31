@@ -1,60 +1,32 @@
 import type { Letter } from "./api";
 import KindTag from "./KindTag";
+import { renderMarkdown } from "./markdown";
 
 interface Props {
   letter: Letter;
   onBack: () => void;
 }
 
-/** A minimal markdown renderer — the house reads like a letter. */
-function renderMarkdown(content: string): React.ReactNode {
-  const lines = content.split("\n");
-  const out: React.ReactNode[] = [];
-  let inList = false;
-  let list: React.ReactNode[] = [];
-
-  const flushList = (key: string) => {
-    if (inList) {
-      out.push(<ul key={key}>{list}</ul>);
-      list = [];
-      inList = false;
-    }
-  };
-
-  lines.forEach((line, i) => {
-    const trimmed = line.trim();
-    if (!trimmed) {
-      flushList(`list-${i}`);
-      return;
-    }
-    const h = trimmed.match(/^(#{1,3})\s+(.*)$/);
-    if (h) {
-      flushList(`list-${i}`);
-      const level = h[1]!.length;
-      const Tag = (level === 1 ? "h1" : level === 2 ? "h2" : "h3") as "h1" | "h2" | "h3";
-      out.push(<Tag key={i}>{h[2]}</Tag>);
-      return;
-    }
-    const bq = trimmed.match(/^>\s?(.*)$/);
-    if (bq) {
-      flushList(`list-${i}`);
-      out.push(<blockquote key={i}>{bq[1]}</blockquote>);
-      return;
-    }
-    const li = trimmed.match(/^[-*]\s+(.*)$/);
-    if (li) {
-      inList = true;
-      list.push(<li key={i}>{li[1]}</li>);
-      return;
-    }
-    flushList(`list-${i}`);
-    out.push(<p key={i}>{trimmed}</p>);
-  });
-  flushList("list-end");
-  return out;
-}
-
+/**
+ * The letter — the atomic unit of the house (DESIGN.md "the unit and the
+ * frame"; .impeccable/design.json → surfaces.letter). A letter reads as a
+ * letter, not a chat bubble, not a feed card:
+ *
+ *   to: chris@house · from: hermes@house          [mono — the machine]
+ *   On the winter of the show                      [serif — the writer]
+ *   production:tempest-tech-week · season:autumn   [mono, quiet — the frames]
+ *   …body…                                         [sans — the reading]
+ *   — the house                                    [serif italic — the signoff]
+ *
+ * The envelope is minimal by default: the address line and the kind. The
+ * rest of the machine metadata (cc, thread, lang, the raw gregorian) stays
+ * one quiet disclosure away — expandable on demand, never in the way.
+ */
 export default function LetterView({ letter, onBack }: Props) {
+  const { envelope, time, body } = letter;
+  const to = envelope.to.join(", ");
+  const frames = time.frames;
+
   return (
     <div>
       <button onClick={onBack} style={{ marginBottom: "var(--space-3)" }}>
@@ -62,30 +34,39 @@ export default function LetterView({ letter, onBack }: Props) {
       </button>
       <article className="letter">
         <div className="envelope">
-          <div>
-            <span className="from">{letter.envelope.from}</span>
-            {" → "}
-            {letter.envelope.to.join(", ")}
-          </div>
-          <div>
-            {new Date(letter.receivedAt).toLocaleString("en-AU")} · <KindTag kind={letter.envelope.kind} />
-          </div>
-          <details>
-            <summary>envelope</summary>
-            <div className="details-body">
-              {letter.envelope.cc.length > 0 && <span>cc: {letter.envelope.cc.join(", ")}</span>}
-              <span>thread: {letter.envelope.thread}</span>
-              <span>lang: {letter.envelope.lang}</span>
-              {letter.time.frames.map((f) => (
-                <span key={`${f.frame}:${f.value}`} className="frame">
-                  {f.frame}:{f.value}
-                </span>
-              ))}
-            </div>
-          </details>
+          <span className="address">
+            <span className="to">to: {to}</span>
+            <span className="sep">·</span>
+            <span>from: {envelope.from}</span>
+          </span>
+          <KindTag kind={envelope.kind} />
         </div>
-        <h1 style={{ marginTop: 0 }}>{letter.envelope.subject || "(no subject)"}</h1>
-        <div className="body">{renderMarkdown(letter.body.content)}</div>
+
+        <h1 className="subject">{envelope.subject || "(no subject)"}</h1>
+
+        {frames.length > 0 && (
+          <div className="frames">
+            {frames.map((f) => (
+              <span key={`${f.frame}:${f.value}`} className="frame">
+                {f.frame}:{f.value}
+              </span>
+            ))}
+          </div>
+        )}
+
+        <div className="body">{renderMarkdown(body.content)}</div>
+
+        <div className="signoff">— {envelope.from}</div>
+
+        <details className="machine">
+          <summary>envelope</summary>
+          <div className="details-body">
+            {envelope.cc.length > 0 && <span>cc: {envelope.cc.join(", ")}</span>}
+            <span>thread: {envelope.thread}</span>
+            <span>lang: {envelope.lang}</span>
+            <span>received: {new Date(letter.receivedAt).toLocaleString("en-AU")}</span>
+          </div>
+        </details>
       </article>
     </div>
   );

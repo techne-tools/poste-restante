@@ -266,7 +266,11 @@ a:hover {
   white-space: nowrap;
 }
 
-/* The letter — the whole protocol. */
+/* The letter — the whole protocol. A letter reads as a letter, not a chat
+   bubble, not a feed card (design.json → surfaces.letter). The envelope is
+   a single mono address line with the kind as the seal; the subject is the
+   writer's serif; the frames are a quiet mono line; the body is the reader's
+   sans at a letter measure; the signoff is the writer's italic hand. */
 .letter {
   background: var(--surface-raised);
   border: var(--rule);
@@ -276,49 +280,89 @@ a:hover {
 }
 
 .letter .envelope {
-  font-size: 12px;
-  color: var(--muted);
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-3);
   border-bottom: var(--rule);
   padding-bottom: var(--space-3);
   margin-bottom: var(--space-4);
 }
 
-.letter .envelope .from {
-  color: var(--fg);
-}
-
-.letter .envelope details {
-  margin-top: var(--space-2);
-}
-
-.letter .envelope details summary {
-  cursor: pointer;
+.letter .envelope .address {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
 }
 
-.letter .envelope details summary:hover {
+.letter .envelope .address .to {
   color: var(--fg);
 }
 
-.letter .envelope .details-body {
-  margin-top: var(--space-2);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
+.letter .envelope .address .sep {
+  margin: 0 0.5em;
+  color: var(--ink-faint);
 }
 
-.letter .body {
+/* The kind is the seal — the one accent this surface carries. */
+.letter .envelope .kind-tag {
+  color: var(--accent);
+}
+
+.letter .envelope .kind-tag .glyph {
+  color: var(--accent);
+}
+
+.letter .subject {
   font-family: var(--font-display);
+  font-size: var(--step-3);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  margin: 0 0 var(--space-2);
+}
+
+/* The frames — quiet, legible, mono. The human's way in. */
+.letter .frames {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  margin: 0 0 var(--space-4);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.letter .frames .frame {
+  color: var(--accent);
+}
+
+/* The body — the reading, the reader's voice. Sans, at a letter measure. */
+.letter .body {
+  font-family: var(--font-body);
   font-size: 16px;
   line-height: 1.7;
+  max-width: 34em;
 }
 
+/* Headings inside a letter are the writer's voice — serif, even in the
+   sans body. */
 .letter .body h1,
 .letter .body h2,
 .letter .body h3 {
+  font-family: var(--font-display);
   font-size: 1.1em;
+  margin: var(--space-4) 0 var(--space-2);
+}
+
+.letter .body p {
+  margin: 0 0 var(--space-2);
+}
+
+.letter .body a {
+  color: var(--fg);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .letter .body code {
@@ -333,6 +377,42 @@ a:hover {
   border-left: 2px solid var(--muted);
   margin-left: 0;
   padding-left: var(--space-4);
+  color: var(--muted);
+}
+
+/* The signoff — the writer's italic hand. */
+.letter .signoff {
+  margin-top: var(--space-4);
+  font-family: var(--font-display);
+  font-style: italic;
+  color: var(--fg);
+}
+
+/* The machine metadata — one quiet disclosure away, never in the way. */
+.letter .machine {
+  margin-top: var(--space-4);
+  border-top: var(--rule);
+  padding-top: var(--space-2);
+}
+
+.letter .machine summary {
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.letter .machine summary:hover {
+  color: var(--fg);
+}
+
+.letter .machine .details-body {
+  margin-top: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-family: var(--font-mono);
+  font-size: 11px;
   color: var(--muted);
 }
 
