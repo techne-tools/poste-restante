@@ -209,4 +209,28 @@ export const house = {
   oidcStart() {
     return request<{ url: string; state: string }>("/auth/oidc/start");
   },
+
+  /**
+   * Redeem an invitation — the guest's door. Public like OIDC: the caller
+   * has no credential yet, so the Authorization header (if any) is never
+   * attached — the guest redeems as themselves, not as a stale resident.
+   * Proves possession of the invite letter and the one-time code; the house
+   * answers 201 {address, joined} or, on every negative path (wrong code,
+   * spent, expired, wrong address), the same 404 — absence is silence.
+   */
+  async redeemInvite(input: {
+    address: string;
+    code: string;
+    password: string;
+  }): Promise<{ address: string; joined: boolean }> {
+    const res = await fetch(`${BASE}/invites/redeem`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    if (!res.ok) {
+      throw new Error("the house has no invitation for you — check the code and address");
+    }
+    return res.json() as Promise<{ address: string; joined: boolean }>;
+  },
 };

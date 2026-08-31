@@ -15,6 +15,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Redeem route** — `POST /v1/invites/redeem` (public, like health: the guest has no credential yet). Proves possession of the letter + the code; the claim is atomic (`UPDATE ... WHERE redeemed_at IS NULL` + credential grant in one transaction), so exactly one redemption wins. Fail closed: every negative path answers 404 — absence is silence. (`server/src/server.ts`)
 - **Tests** — 12 invite unit tests (code generation, hashing, mint, redeem happy + wrong code / wrong address / spent / expired / already-resident / short password) and 7 integration tests (full mint → redeem → authenticate arc, one-time, all negatives) against live infra. 117/117 passing.
 - **SPEC §5.7 open question resolved (2026-08-31): in scope, built.** CONTRACT documents the invitation-only membership contract.
+- **Reference client redemption UI** — the door has a quiet third way in: "A resident invited you? Enter with your invitation" flips Login between sign-in and redemption. The guest presents address + one-time code + the password they choose; redemption persists the credential and walks them in — no second door. Fail closed in the client too: a 404 maps to the same single answer. (`client/src/Redeem.tsx`, `client/src/Login.tsx`, `client/src/api.ts`)
+- **Client redeem unit tests** — prove `redeemInvite` never attaches an Authorization header even with a stale resident session (the guest redeems as themselves), and maps every negative path to the one absence answer. 8/8 client, 125/125 suite. (`client/src/api.test.ts`)
 
 ### Added — authentication & authorization (2026-08-30)
 

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { house, saveAuth } from "./api";
+import Redeem from "./Redeem";
 
 interface Props {
   onAuthed: (address: string) => void;
@@ -7,11 +8,22 @@ interface Props {
 
 /**
  * The door of the house. Authentication is mandatory: the house does not
- * know you until you prove who you are. Two ways in — a password (basic) or
- * an identity provider (OIDC). The credential lives with the client; the
+ * know you until you prove who you are. Three ways in — a password (basic),
+ * an identity provider (OIDC), or, if a resident has invited you, the
+ * invitation letter (Redeem). The credential lives with the client; the
  * house holds only a hash.
  */
 export default function Login({ onAuthed }: Props) {
+  const [redeeming, setRedeeming] = useState(false);
+
+  if (redeeming) {
+    return <Redeem onAuthed={onAuthed} />;
+  }
+
+  return <SignIn onAuthed={onAuthed} onRedeem={() => setRedeeming(true)} />;
+}
+
+function SignIn({ onAuthed, onRedeem }: Props & { onRedeem: () => void }) {
   const [address, setAddress] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -101,6 +113,12 @@ export default function Login({ onAuthed }: Props) {
                 Sign in with your identity provider
               </button>
             </div>
+            <p className="door-switch">
+              A resident invited you?{" "}
+              <button type="button" className="door-link" onClick={onRedeem} disabled={busy}>
+                Enter with your invitation
+              </button>
+            </p>
           </form>
         </div>
       </main>

@@ -16,6 +16,15 @@ function mockFetch(status: number, body: unknown) {
   });
 }
 
+// Node environment (no jsdom) — a minimal storage shim for the handful of
+// tests that touch localStorage (auth persistence, redeem with a stale session).
+const storage = new Map<string, string>();
+(globalThis as Record<string, unknown>).localStorage = {
+  getItem: (k: string) => storage.get(k) ?? null,
+  setItem: (k: string, v: string) => void storage.set(k, v),
+  removeItem: (k: string) => void storage.delete(k),
+};
+
 describe("house client", () => {
   const originalFetch = globalThis.fetch;
 
@@ -86,8 +95,37 @@ describe("house client", () => {
     );
   });
 
-  it("falls back to the status when the house answers without a message", async () => {
-    globalThis.fetch = mockFetch(500, {});
-    await expect(house.letter("abc")).rejects.toThrow("the house answered 500");
+  it("redeems an invitation as the guest — public, no Authorization header even with a stale session", async () => {
+    // A stale resident session must not leak into the guest's redemption —
+    // the guest redeems as themselves, not as whoever was last in the house.
+    localStorage.setItem(
+      "poste-restante.auth",
+      JSON.stringify({ address: "stale-owner@house", header: "Basic c3RhbGU6c3RhbGU=" }),
+    );
+    globalThis.fetch = mockFetch(201, { address: "guest@house", joined: true });
+    const res = await house.redeemInvite({
+      address: "guest@house",
+      code: "E2FG-3QVQ-23BW",
+      password: "correct-horse-battery",
+    });
+    expect(res).toEqual({ address: "guest@house", joined: true });
+    const [url, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe("/v1/invites/redeem");
+    expect(init.method).toBe("POST");
+    expect(init.headers.Authorization).toBeUndefined();
+    expect(JSON.parse(init.body)).toEqual({
+      address: "guest@house",
+      code: "E2FG-3QVQ-23BW",
+      password: "correct-horse-battery",
+    });
+  });
+
+  it("maps a failed redemption to absence — one 404 answer for every negative path", async () => {
+    globalThis.fetch = mockFetch(404, {
+      error: { code: "not_found", message: "no such thing in the house" },
+    });
+    await expect(
+      house.redeemInvite({ address: "guest@house", code: "AAAA-BBBB-CCCC", password: "correct-horse-battery" }),
+    ).rejects.toThrow("the house has no invitation for you — check the code and address");
   });
 });

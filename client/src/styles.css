@@ -594,3 +594,25 @@ button.primary:hover {
   border-color: var(--accent);
   color: var(--fg);
 }
+
+/* The door's quiet switch — sign in, or accept an invitation. Presence,
+   not pressure: a resident invited you, so the second door is offered,
+   never demanded. */
+.door-switch {
+  color: var(--ink-faint);
+  font-size: 13px;
+  margin-top: var(--space-4);
+}
+
+button.door-link {
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  font-size: 13px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+button.door-link:hover {
+  color: var(--fg);
+}
