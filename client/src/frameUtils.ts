@@ -63,3 +63,29 @@ export function railPositions(
 export function byTimeDesc(a: Letter, b: Letter): number {
   return new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime();
 }
+
+/**
+ * A quiet surface for a contradiction, without picking a side (DESIGN.md
+ * archive rule 4). Where letters in one frame also share a thread, more than
+ * one account of that thread sits in the same frame — the reader is told the
+ * accounts may not agree, and both are left at full weight. No ranking, no
+ * verdict. Returns the set of thread ids that carry two or more letters in
+ * the given frame.
+ */
+export function threadsWithMultipleAccounts(
+  letters: Letter[],
+  frameId: string,
+): Set<string> {
+  const perThread = new Map<string, number>();
+  const [name, value] = frameId.split(":");
+  for (const l of letters) {
+    if (!name || !value) continue;
+    if (!letterInFrame(l, name, value)) continue;
+    perThread.set(l.envelope.thread, (perThread.get(l.envelope.thread) ?? 0) + 1);
+  }
+  const out = new Set<string>();
+  for (const [thread, count] of perThread) {
+    if (count >= 2) out.add(thread);
+  }
+  return out;
+}

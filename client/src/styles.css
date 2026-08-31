@@ -15,7 +15,7 @@
   /* Derived aliases (documented, not in the bound spec). */
   --surface-raised: var(--surface); /* cards on paper */
   --surface-sunken: var(--bg);      /* recessed areas — sidebar, code, banners */
-  --ink-faint: oklch(60% 0.01 70);  /* quietest text — empty states, kickers */
+  --ink-faint: oklch(54% 0.01 70); /* quietest text — empty states, kickers. ≥4.5:1 vs paper and sheet, under --muted. */
   --error: var(--muted);            /* errors are ink-secondary grey, never red */
   --accent-soft: oklch(90% 0.03 28);/* a whisper of the seal — reserved, rare */
 
@@ -104,12 +104,25 @@ a:hover {
   padding: var(--space-4);
 }
 
+/* The whisper is the house's own voice, not a second inbox. The house is a
+   writer — so a whisper's words are set in the serif hand (the letter voice)
+   while everything a *person* reads in the app is sans. The kind kicker stays
+   mono (the machine framing the house's speech); the summary speaks serif. */
 .whisper h2 {
   font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--muted);
   margin: 0 0 var(--space-3);
+}
+
+.whisper h2::after {
+  content: "";
+  display: block;
+  width: 2rem;
+  height: 2px;
+  background: var(--accent);
+  margin-top: var(--space-2);
 }
 
 .whisper-card {
@@ -131,6 +144,9 @@ a:hover {
 
 .whisper-card .summary {
   margin: var(--space-2) 0;
+  font-family: var(--font-display);
+  font-size: 15px;
+  line-height: 1.55;
   color: var(--fg);
 }
 
@@ -140,6 +156,15 @@ a:hover {
   border-left: 2px solid var(--border);
   padding-left: var(--space-2);
   margin: var(--space-2) 0;
+}
+
+/* A quiet whisper — no cards — is the house speaking too, so it stays in the
+   serif hand. A sentence, not a dashboard. */
+.whisper .empty {
+  font-family: var(--font-display);
+  font-style: italic;
+  text-align: left;
+  padding: var(--space-3) 0;
 }
 
 .whisper-card .actions {
@@ -153,7 +178,7 @@ a:hover {
 }
 
 .whisper-card.replied {
-  border-left: 2px solid var(--accent);
+  border-left: 2px solid var(--fg);
 }
 
 /* The composed space. */
@@ -456,7 +481,7 @@ a:hover {
 }
 
 .frame-label.active {
-  border-color: var(--accent);
+  border-color: var(--fg);
 }
 
 .frame-label .frame-name {
@@ -522,6 +547,37 @@ a:hover {
 }
 
 .horizon-hint .door-link {
+  font-size: 13px;
+}
+
+/* The door-links inside the archive notes stay ink, not accent — the transit
+   line is the plural-time flourish, the only accent this surface carries. */
+.horizon-hint .door-link,
+.horizon-note .door-link {
+  color: var(--fg);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* A quiet note — an empty-frame invitation, a contradiction made visible.
+   Never a guilt trip: ink-faint text, a plain sentence, no ranking. */
+.horizon-note {
+  border: var(--rule);
+  border-left: 2px solid var(--fg);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  color: var(--ink-faint);
+  font-size: 13px;
+  line-height: 1.6;
+  padding: var(--space-2) var(--space-3);
+  margin: var(--space-1) 0 var(--space-2);
+}
+
+.horizon-note.has-contradiction {
+  border-left-color: var(--accent);
+}
+
+.horizon-note .door-link {
   font-size: 13px;
 }
 
@@ -647,4 +703,78 @@ button.door-link {
 
 button.door-link:hover {
   color: var(--fg);
+}
+
+/* Kind identity — distinct-but-quiet. Each kind carries its own glyph in the
+   mono voice, but all render muted ink on the sheet: legible kinds, not six
+   loud badges. The glyph is the identity; the colour stays quiet. */
+.kind-tag {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35em;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.4;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+.kind-tag .glyph {
+  color: var(--muted);
+}
+
+/* The pub — a shared public space, distinct from the private mailbox. The
+   letter rows keep the house sheet, but the room is marked by where the
+   letters hang: a notice-board border, a small posted marker, and a ledger
+   header. Shaped like a channel; operates like a pub. */
+.pub-board {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.pub-ledger {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  border-bottom: var(--rule-strong);
+  padding-bottom: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.pub-ledger h2 {
+  margin: 0;
+  font-size: 16px;
+  color: var(--fg);
+}
+
+.pub-ledger .address {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.pub .letter-row {
+  border-top: var(--rule-strong);
+  border-right: none;
+  border-bottom: var(--rule);
+  border-left: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.pub .letter-row:hover {
+  border-top-color: var(--fg);
+}
+
+.pub .letter-row .posted {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: var(--space-1);
 }

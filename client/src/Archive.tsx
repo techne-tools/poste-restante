@@ -2,7 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { house } from "./api";
 import type { Letter } from "./api";
 import LetterView from "./LetterView";
-import { classifyLetter, railPositions, type FrameInfo } from "./frameUtils";
+import KindTag from "./KindTag";
+import {
+  classifyLetter,
+  railPositions,
+  threadsWithMultipleAccounts,
+  type FrameInfo,
+} from "./frameUtils";
 
 interface Props {
   onError: (msg: string) => void;
@@ -73,6 +79,32 @@ export default function Archive({ onError }: Props) {
 
   /** Ticks on the transit lines — flow indexes per frame. */
   const rail = useMemo(() => railPositions(letters, frames), [letters, frames]);
+
+  /** Empty active frames — the unvisited corners, surfaced as a quiet
+   *  invitation, never a guilt trip (DESIGN.md archive rule 3). */
+  const emptyActives = useMemo(
+    () =>
+      frames.filter((f) => activeFrames.has(f.id) && (rail.get(f.id)?.length ?? 0) === 0),
+    [frames, activeFrames, rail],
+  );
+
+  /** Contradictions made visible without picking a side (archive rule 4).
+   *  Two or more letters in the same thread, within an active frame. Both
+   *  accounts stay at full weight; the reader is simply told they may not
+   *  agree. */
+  const contradictionThreads = useMemo(
+    () => {
+      const out = new Set<string>();
+      for (const f of frames) {
+        if (!activeFrames.has(f.id)) continue;
+        for (const thread of threadsWithMultipleAccounts(letters, f.id)) {
+          out.add(thread);
+        }
+      }
+      return out;
+    },
+    [frames, activeFrames, letters],
+  );
 
   const tickTop = useCallback(
     (index: number) =>
@@ -153,6 +185,35 @@ export default function Archive({ onError }: Props) {
                 </button>
               </p>
             )}
+            {emptyActives.length > 0 && (
+              <p className="horizon-note">
+                {emptyActives.length === 1
+                  ? `The frame “${emptyActives[0]!.name}” is open and quiet — nothing filed there yet. An invitation, not a gap to fill.`
+                  : `Some open frames are quiet — ${emptyActives
+                      .map((f) => `${f.name}:${f.value}`)
+                      .join(", ")} hold no letters yet. An invitation, not a gap to fill.`}{" "}
+                <button
+                  type="button"
+                  className="door-link"
+                  onClick={() =>
+                    setActiveFrames((prev) => {
+                      const next = new Set(prev);
+                      for (const f of emptyActives) next.delete(f.id);
+                      return next;
+                    })
+                  }
+                >
+                  Set these frames aside
+                </button>
+              </p>
+            )}
+            {contradictionThreads.size > 0 && (
+              <p className="horizon-note has-contradiction">
+                This time holds more than one account of the same thread. The
+                letters may not agree — both remain here, neither is weighed
+                or removed.
+              </p>
+            )}
             {letters.length === 0 && <p className="empty">Nothing here. The house holds.</p>}
             {letters.map((l) => {
               const cls = classified.get(l.id) ?? "none";
@@ -164,7 +225,7 @@ export default function Archive({ onError }: Props) {
                 >
                   <p className="subject">{l.envelope.subject || "(no subject)"}</p>
                   <div className="meta">
-                    <span className="kind">{l.envelope.kind}</span>
+                    <KindTag kind={l.envelope.kind} />
                     <span>{l.envelope.from}</span>
                     <span>{new Date(l.receivedAt).toLocaleString("en-AU")}</span>
                     {l.time.frames.map((f) => (

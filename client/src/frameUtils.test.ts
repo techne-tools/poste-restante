@@ -4,7 +4,13 @@
  * partially-matched as mid-dim, and dims the rest.
  */
 import { describe, it, expect } from "vitest";
-import { classifyLetter, letterInFrame, railPositions, byTimeDesc } from "./frameUtils";
+import {
+  classifyLetter,
+  letterInFrame,
+  railPositions,
+  byTimeDesc,
+  threadsWithMultipleAccounts,
+} from "./frameUtils";
 import type { Letter } from "./api";
 
 function letter(id: string, frames: { frame: string; value: string }[], receivedAt: string): Letter {
@@ -94,5 +100,36 @@ describe("byTimeDesc", () => {
     const older = letter("old", [], "2026-08-01T00:00:00Z");
     const newer = letter("new", [], "2026-08-05T00:00:00Z");
     expect([older, newer].sort(byTimeDesc)).toEqual([newer, older]);
+  });
+});
+
+describe("threadsWithMultipleAccounts — the contradiction surface", () => {
+  const l = (id: string, thread: string, frames: { frame: string; value: string }[]) =>
+    ({ ...letter(id, frames, "2026-08-01"), envelope: { ...letter(id, frames, "2026-08-01").envelope, thread } });
+
+  it("flags a thread that has 2+ letters in a frame — the reader may be told, not told which is right", () => {
+    const letters = [
+      l("a", "th_x", [{ frame: "production", value: "tempest-2026" }]),
+      l("b", "th_x", [{ frame: "production", value: "tempest-2026" }]),
+      l("c", "th_y", [{ frame: "production", value: "tempest-2026" }]),
+    ];
+    const flagged = threadsWithMultipleAccounts(letters, "production:tempest-2026");
+    expect([...flagged]).toEqual(["th_x"]); // th_y has only one account here
+  });
+
+  it("leaves a frame empty of contradictions when threads hold a single account each", () => {
+    const letters = [
+      l("a", "th_1", [{ frame: "production", value: "tempest-2026" }]),
+      l("b", "th_2", [{ frame: "production", value: "tempest-2026" }]),
+    ];
+    expect(threadsWithMultipleAccounts(letters, "production:tempest-2026").size).toBe(0);
+  });
+
+  it("ignores letters outside the frame — a thread's accounts in another frame don't count", () => {
+    const letters = [
+      l("a", "th_x", [{ frame: "production", value: "tempest-2026" }]),
+      l("b", "th_x", [{ frame: "season", value: "autumn" }]), // same thread, other frame
+    ];
+    expect(threadsWithMultipleAccounts(letters, "production:tempest-2026").size).toBe(0);
   });
 });

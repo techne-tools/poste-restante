@@ -1,4 +1,5 @@
 import type { Letter } from "./api";
+import KindTag from "./KindTag";
 
 interface Props {
   letter: Letter;
@@ -67,7 +68,7 @@ export default function LetterView({ letter, onBack }: Props) {
             {letter.envelope.to.join(", ")}
           </div>
           <div>
-            {new Date(letter.receivedAt).toLocaleString("en-AU")} · {letter.envelope.kind}
+            {new Date(letter.receivedAt).toLocaleString("en-AU")} · <KindTag kind={letter.envelope.kind} />
           </div>
           <details>
             <summary>envelope</summary>

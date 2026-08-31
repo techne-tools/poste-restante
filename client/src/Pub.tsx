@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { house } from "./api";
 import type { Letter } from "./api";
 import LetterView from "./LetterView";
+import KindTag from "./KindTag";
 
 interface Props {
   onError: (msg: string) => void;
@@ -40,17 +41,21 @@ export default function Pub({ onError }: Props) {
       {selected ? (
         <LetterView letter={selected} onBack={() => setSelected(null)} />
       ) : (
-        <div className="letter-list">
+        <div className="pub-board">
+          <div className="pub-ledger" aria-label="The pub — shared public letters">
+            <h2>The pub</h2>
+            <span className="address">pub@house</span>
+          </div>
           {letters.length === 0 && (
             <p className="empty">The pub is quiet — no letters posted yet.</p>
           )}
           {letters.map((l) => (
             <div key={l.id} className="letter-row" onClick={() => setSelected(l)}>
+              <span className="posted">posted · {new Date(l.receivedAt).toLocaleString("en-AU")}</span>
               <p className="subject">{l.envelope.subject || "(no subject)"}</p>
               <div className="meta">
-                <span className="kind">{l.envelope.kind}</span>
+                <KindTag kind={l.envelope.kind} />
                 <span>{l.envelope.from}</span>
-                <span>{new Date(l.receivedAt).toLocaleString("en-AU")}</span>
                 {l.time.frames.map((f) => (
                   <span key={`${f.frame}:${f.value}`} className="frame">
                     {f.frame}:{f.value}

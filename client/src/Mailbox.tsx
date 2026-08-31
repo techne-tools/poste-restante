@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { house } from "./api";
 import type { Letter } from "./api";
 import LetterView from "./LetterView";
+import KindTag from "./KindTag";
 
 interface Props {
   onError: (msg: string) => void;
@@ -41,7 +42,7 @@ export default function Mailbox({ onError, address }: Props) {
             <div key={l.id} className="letter-row" onClick={() => setSelected(l)}>
               <p className="subject">{l.envelope.subject || "(no subject)"}</p>
               <div className="meta">
-                <span className="kind">{l.envelope.kind}</span>
+                <KindTag kind={l.envelope.kind} />
                 <span>{l.envelope.from}</span>
                 <span>{new Date(l.receivedAt).toLocaleString("en-AU")}</span>
                 {l.time.frames.map((f) => (
