@@ -61,7 +61,7 @@ export async function buildHouse(
   const payloads = new NoopPayloadStore();
   const pipeline = new IngestionPipeline(repo, semantic, embedder, payloads, log);
   const retrieval = new Retrieval(db.pool, semantic, embedder);
-  const whisper = new WhisperService(db.pool, log);
+  const whisper = new WhisperService(db.pool, log, semantic, embedder);
 
   return {
     config,

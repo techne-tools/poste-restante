@@ -56,9 +56,11 @@ describe.skipIf(!INTEGRATION)("auth (integration)", () => {
       `TRUNCATE letters, threads, frames, addresses, credentials RESTART IDENTITY CASCADE`,
     );
     auth = new AuthService(house.db.pool, house.log, house.config.auth);
-    // Two residents: you (the owner) and ben (a correspondent).
+    // Three residents: you (the owner), ben (a correspondent who must not
+    // see your private mail), and hermes (the other voice in the pair).
     await auth.setPassword("you@house", "youyouyou");
     await auth.setPassword("ben@house", "benbenben");
+    await auth.setPassword("hermes@house", "hermeshermes");
     app = createLetterServer(house, { auth });
   });
 
@@ -183,6 +185,75 @@ describe.skipIf(!INTEGRATION)("auth (integration)", () => {
     // ben is not party to any thread yet — the house has nothing to whisper
     // to him about.
     expect(json.whispers.every((w) => w.targetThread !== "th_auth_private")).toBe(true);
+  });
+
+  it("fails closed on pair gaps — ben is party to neither letter of the pair", async () => {
+    // A two-voices pair between you and hermes in one thread, within the
+    // active frame. ben is not party to it: the house must not leak even
+    // the EXISTENCE of the related letter.
+    const recent = "2026-08-31T14:00:00+04:00";
+    const mine = mkLetter({
+      envelope: { ...mkLetter().envelope, thread: "th_auth_voices", subject: "the locked door, opened" },
+      time: { gregorian: recent, frames: [{ frame: "production", value: "tempest-tech-week" }] },
+      body: { format: "markdown", content: "I want the storm cue at eighty — the verse rides above the surf." },
+    });
+    const hermesV = mkLetter({
+      envelope: { ...mkLetter().envelope, from: "hermes@house", to: ["you@house"], thread: "th_auth_voices", subject: "re: the locked door, opened" },
+      time: { gregorian: recent, frames: [{ frame: "production", value: "tempest-tech-week" }] },
+      body: { format: "markdown", content: "Keep it at sixty — louder buries the verse under the surf." },
+    });
+    await app.request("/v1/letters", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: basic("you@house", "youyouyou") },
+      body: JSON.stringify(mine),
+    });
+    await app.request("/v1/letters", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: basic("hermes@house", "hermeshermes") },
+      body: JSON.stringify(hermesV),
+    });
+
+    // you detects the pair.
+    const gaps = await app.request("/v1/whisper/gaps", {
+      method: "POST",
+      headers: { Authorization: basic("you@house", "youyouyou") },
+    });
+    const gapsJson = (await gaps.json()) as { created: string[] };
+    expect(gapsJson.created.some((id) => id.includes("th_auth_voices"))).toBe(true);
+
+    // you sees it — both letters named, at full weight.
+    const youWhisper = await app.request("/v1/whisper", {
+      method: "GET",
+      headers: { Authorization: basic("you@house", "youyouyou") },
+    });
+    const youJson = (await youWhisper.json()) as {
+      whispers: { id: string; kind: string; letterId: string | null; relatedLetterId: string | null; targetThread: string | null }[];
+    };
+    const pair = youJson.whispers.find((w) => w.kind === "gap-contradiction" && w.targetThread === "th_auth_voices");
+    expect(pair).toBeDefined();
+    expect(pair!.relatedLetterId).not.toBeNull();
+
+    // ben — party to NEITHER letter — must not see it: fails closed.
+    const benWhisper = await app.request("/v1/whisper", {
+      method: "GET",
+      headers: { Authorization: basic("ben@house", "benbenben") },
+    });
+    const benJson = (await benWhisper.json()) as { whispers: { id: string }[] };
+    expect(benJson.whispers.some((w) => w.id === pair!.id)).toBe(false);
+
+    // ben cannot open it either — absence is silence at every door.
+    const benOpen = await app.request(`/v1/whisper/${pair!.id}/open`, {
+      method: "POST",
+      headers: { Authorization: basic("ben@house", "benbenben") },
+    });
+    expect(benOpen.status).toBe(404);
+
+    // ben cannot dismiss it.
+    const benDismiss = await app.request(`/v1/whisper/${pair!.id}/dismiss`, {
+      method: "POST",
+      headers: { Authorization: basic("ben@house", "benbenben") },
+    });
+    expect(benDismiss.status).toBe(404);
   });
 
   it("keeps the pub public — readable without a credential", async () => {

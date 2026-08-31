@@ -457,7 +457,7 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
     {
       title: "Look for gaps",
       description:
-        "Run cheap structural gap detection: dormant threads (quiet 14 days) and unanswered questions (a week old). Postgres queries only — no expensive semantic scans. Runs on demand; the house never pushes the results. Scoped to the caller: gaps are only offered for threads the caller is party to.",
+        "Run gap detection over the caller's active correspondence: dormant threads (quiet 14 days), unanswered questions (a week old), two voices in one thread within an active frame, and semantic pair gaps — uncited connections and echoes — via the semantic layer. Runs on demand; the house never pushes the results. Scoped to the caller: gaps are only offered for correspondence the caller is party to.",
       inputSchema: {},
     },
     async () => {

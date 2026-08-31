@@ -383,6 +383,170 @@ describe.skipIf(!INTEGRATION)("letter server (integration)", () => {
     expect(unreadJson.whispers.some((w) => w.id === dormant!.id)).toBe(false);
   });
 
+  it("detects gaps — two voices in one thread, within a frame", async () => {
+    // hermes and you, one thread, both letters in the same active frame.
+    const recent = "2026-08-31T10:00:00+04:00";
+    const fromHermes = mkLetter({
+      envelope: {
+        from: "hermes@house",
+        to: ["you@house"],
+        cc: [],
+        thread: "th_gap_voices",
+        kind: "letter",
+        lang: "en-AU",
+        subject: "the tempest, opened",
+      },
+      time: { gregorian: recent, frames: [{ frame: "production", value: "tempest-tech-week" }] },
+      body: { format: "markdown", content: "I think the storm cue should stay at sixty percent — anything louder buries the verse." },
+    });
+    const fromYou = mkLetter({
+      envelope: {
+        from: "you@house",
+        to: ["hermes@house"],
+        cc: [],
+        thread: "th_gap_voices",
+        kind: "letter",
+        lang: "en-AU",
+        subject: "re: the tempest, opened",
+      },
+      time: { gregorian: recent, frames: [{ frame: "production", value: "tempest-tech-week" }] },
+      body: { format: "markdown", content: "Take it to eighty — the verse can ride above the surf." },
+    });
+    await app.request("/v1/letters", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(fromHermes) });
+    await app.request("/v1/letters", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(fromYou) });
+
+    // The negative sibling: two voices in one thread WITHOUT a shared frame.
+    // The house must not offer them — the frame is the shared ground.
+    const noFrameA = mkLetter({
+      envelope: { ...mkLetter().envelope, thread: "th_gap_voices_no_frame", subject: "no frame" },
+      time: { gregorian: recent, frames: [] },
+      body: { format: "markdown", content: "first letter without a frame" },
+    });
+    const noFrameB = mkLetter({
+      envelope: { ...mkLetter().envelope, from: "you@house", to: ["hermes@house"], thread: "th_gap_voices_no_frame", subject: "no frame" },
+      time: { gregorian: recent, frames: [] },
+      body: { format: "markdown", content: "second letter without a frame" },
+    });
+    await app.request("/v1/letters", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(noFrameA) });
+    await app.request("/v1/letters", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(noFrameB) });
+
+    const gaps = await app.request("/v1/whisper/gaps", { method: "POST" });
+    expect(gaps.status).toBe(200);
+    const gapsJson = (await gaps.json()) as { created: string[] };
+    // The pair with a shared frame is offered; the pair without is not.
+    expect(gapsJson.created.some((id) => id.includes("th_gap_voices"))).toBe(true);
+    expect(gapsJson.created.some((id) => id.includes("th_gap_voices_no_frame"))).toBe(false);
+
+    // The whisper surfaces as "two voices" — both letters named, the frame
+    // named, and NO verdict anywhere in the copy.
+    const whisper = await app.request("/v1/whisper", { method: "GET" });
+    const whisperJson = (await whisper.json()) as {
+      whispers: { id: string; kind: string; letterId: string | null; relatedLetterId: string | null; summary: string }[];
+    };
+    const twoVoices = whisperJson.whispers.find((w) => w.kind === "gap-contradiction" && w.id.includes("th_gap_voices"));
+    expect(twoVoices).toBeDefined();
+    expect(twoVoices!.letterId).not.toBeNull();
+    expect(twoVoices!.relatedLetterId).not.toBeNull();
+    expect(twoVoices!.letterId).not.toBe(twoVoices!.relatedLetterId);
+    expect(twoVoices!.summary).toContain("Two voices");
+    expect(twoVoices!.summary).toContain("tempest-tech-week");
+    expect(twoVoices!.summary).not.toMatch(/disagree|contradict|wrong/);
+  });
+
+  it("detects gaps — the echo (the work is circling)", async () => {
+    // Two near-identical letters in different threads: the work said twice
+    // in different words. Probe the ACTUAL embedding score first so a band
+    // failure explains itself, then assert the detector fired.
+    const recent = "2026-08-31T11:00:00+04:00";
+    const echoA = mkLetter({
+      envelope: { ...mkLetter().envelope, thread: "th_gap_echo_a", subject: "the cue list" },
+      time: { gregorian: recent, frames: [{ frame: "production", value: "tempest-tech-week" }] },
+      body: {
+        format: "markdown",
+        content:
+          "The storm cue list for the tech week: the surf starts at sixty, the verse rides above it, and the thunder rolls underneath at the third wave.",
+      },
+    });
+    const echoB = mkLetter({
+      envelope: { ...mkLetter().envelope, thread: "th_gap_echo_b", subject: "cue order notes" },
+      time: { gregorian: recent, frames: [{ frame: "production", value: "tempest-tech-week" }] },
+      body: {
+        format: "markdown",
+        content:
+          "The storm cue order in tech week: surf from sixty, verse on top of the surf, and the thunder underneath when the third wave breaks.",
+      },
+    });
+    const resA = await app.request("/v1/letters", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(echoA) });
+    const resB = await app.request("/v1/letters", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(echoB) });
+    const { id: echoBId } = (await resB.json()) as { id: string };
+
+    // Probe: what does the house's own embedder think of this pair? The
+    // fixture must sit above the echo threshold (0.82) or the test is
+    // measuring nothing. Measure the OTHER letter, not the anchor itself
+    // (the anchor's nearest neighbour is trivially itself).
+    const probeA = await house.embedder.embed(
+      "The storm cue list for the tech week: the surf starts at sixty, the verse rides above it, and the thunder rolls underneath at the third wave.",
+    );
+    const probeHits = await house.semantic.search(probeA, 8);
+    const pairScore = probeHits.find((h) => h.letterId === echoBId)?.score ?? 0;
+    console.log("[gap-echo fixture] pair score:", pairScore);
+    expect(pairScore).toBeGreaterThanOrEqual(0.8);
+
+    const gaps = await app.request("/v1/whisper/gaps", { method: "POST" });
+    const gapsJson = (await gaps.json()) as { created: string[] };
+    expect(gapsJson.created.some((id) => id.startsWith("gap-echo:"))).toBe(true);
+  });
+
+  it("detects gaps — the uncited connection across threads", async () => {
+    // Two letters, different threads, different words, same territory —
+    // related but not duplicated, so the score should sit between the
+    // connection threshold (0.58) and the echo threshold (0.82).
+    const recent = "2026-08-31T12:00:00+04:00";
+    const connA = mkLetter({
+      envelope: { ...mkLetter().envelope, thread: "th_gap_conn_a", subject: "the masque soundscape" },
+      time: { gregorian: recent, frames: [{ frame: "production", value: "tempest-tech-week" }] },
+      body: {
+        format: "markdown",
+        content:
+          "For the masque I am layering the harp with a slow choir pad; the pitch drifts a quarter-tone and the whole thing shimmers like heat over the sand.",
+      },
+    });
+    const connB = mkLetter({
+      envelope: { ...mkLetter().envelope, thread: "th_gap_conn_b", subject: "an idea for the vision scene" },
+      time: { gregorian: recent, frames: [{ frame: "production", value: "tempest-tech-week" }] },
+      body: {
+        format: "markdown",
+        content:
+          "In the vision the masque needs a choir and strings, slightly detuned, so the air above the stage feels warm and unstable.",
+      },
+    });
+    const resA = await app.request("/v1/letters", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(connA) });
+    const resB = await app.request("/v1/letters", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(connB) });
+    const { id: connAId } = (await resA.json()) as { id: string };
+    const { id: connBId } = (await resB.json()) as { id: string };
+
+    // Probe: the pair must sit in the connection band — related enough to
+    // be a connection, distinct enough to not be an echo. Measure the
+    // OTHER letter (the anchor's nearest neighbour is trivially itself).
+    const probeA = await house.embedder.embed(
+      "For the masque I am layering the harp with a slow choir pad; the pitch drifts a quarter-tone and the whole thing shimmers like heat over the sand.",
+    );
+    const probeHits = await house.semantic.search(probeA, 8);
+    const pairScore = probeHits.find((h) => h.letterId === connBId)?.score ?? 0;
+    console.log("[gap-conn fixture] pair score:", pairScore);
+    expect(pairScore).toBeGreaterThanOrEqual(0.5);
+
+    const gaps = await app.request("/v1/whisper/gaps", { method: "POST" });
+    const gapsJson = (await gaps.json()) as { created: string[] };
+    // Semantic gap ids are keyed on LETTER ids (the sha256 identities),
+    // never thread ids — two different namespaces. Assert on the letters.
+    const semantic = gapsJson.created.filter((id) => id.startsWith("gap-echo:") || id.startsWith("gap-uncited:"));
+    expect(semantic.some((id) => id.includes(connAId) || id.includes(connBId))).toBe(true);
+    // The pair must land as a CONNECTION, not an echo — the probe put it
+    // in the lower band (0.5–0.82).
+    expect(semantic.some((id) => id.startsWith("gap-uncited:") && (id.includes(connAId) || id.includes(connBId)))).toBe(true);
+  });
+
   it("does not surface private correspondence to other addresses", async () => {
     // A private thread between you@house and hermes@house — ben@house is not
     // party to it. The house must not whisper about it to ben.

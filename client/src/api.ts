@@ -35,8 +35,15 @@ export interface Letter {
 export interface Whisper {
   id: string;
   letterId: string | null;
-  kind: "house-letter" | "gap-dormant-thread" | "gap-unanswered-question";
+  kind:
+    | "house-letter"
+    | "gap-dormant-thread"
+    | "gap-unanswered-question"
+    | "gap-contradiction"
+    | "gap-uncited-connection"
+    | "gap-echo";
   targetThread: string | null;
+  relatedLetterId: string | null;
   summary: string;
   reasoning: string | null;
   createdAt: string;
