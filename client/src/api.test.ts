@@ -80,6 +80,14 @@ describe("house client", () => {
     expect(url).toBe("/v1/whisper?unread=1");
   });
 
+  it("reads a thread — the correspondence, oldest first", async () => {
+    globalThis.fetch = mockFetch(200, { thread: "th_gap_dormant", letters: [] });
+    const res = await house.thread("th_gap_dormant");
+    expect(res.thread).toBe("th_gap_dormant");
+    const [url] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe("/v1/threads/th_gap_dormant");
+  });
+
   it("deletes a letter — first-class, no soft delete", async () => {
     globalThis.fetch = mockFetch(200, { deleted: true, id: "abc" });
     const res = await house.deleteLetter("abc");

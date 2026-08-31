@@ -186,8 +186,11 @@ export class WhisperService {
     // days, that the house hasn't whispered about recently (7 days — a
     // dismissal is respected; the house doesn't re-offer immediately).
     // Only threads the address participates in.
-    const dormant = await this.pool.query<{ thread_id: string }>(
-      `SELECT t.id AS thread_id
+    const dormant = await this.pool.query<{ thread_id: string; subject: string | null }>(
+      `SELECT t.id AS thread_id,
+              (SELECT l2.subject FROM letters l2
+               WHERE l2.thread_id = t.id
+               ORDER BY l2.received_at DESC LIMIT 1) AS subject
        FROM threads t
        JOIN letters l ON l.thread_id = t.id
        GROUP BY t.id
@@ -211,19 +214,23 @@ export class WhisperService {
     );
     for (const row of dormant.rows) {
       const id = `gap-dormant:${row.thread_id}`;
+      // The serif voice names the thread by its latest letter's subject —
+      // a raw thread id is the machine's index, not the house's speech.
+      const name = row.subject?.trim() || row.thread_id;
+      const summary = `A correspondence has gone quiet — the last letter in “${name}” arrived more than a fortnight ago.`;
       const reasoning = `The last letter in ${row.thread_id} arrived more than 14 days ago, and the thread has at least two letters — a correspondence, not a one-off. The house holds it, quietly.`;
       await this.pool.query(
         `INSERT INTO whispers (id, kind, target_thread, summary, reasoning)
          VALUES ($1, 'gap-dormant-thread', $2, $3, $4)
          ON CONFLICT (id) DO NOTHING`,
-        [id, row.thread_id, `A thread has gone quiet — ${row.thread_id} hasn't heard from you in a while.`, reasoning],
+        [id, row.thread_id, summary, reasoning],
       );
       created.push({
         id,
         letterId: null,
         kind: "gap-dormant-thread",
         targetThread: row.thread_id,
-        summary: `A thread has gone quiet — ${row.thread_id} hasn't heard from you in a while.`,
+        summary,
         reasoning,
         createdAt: now,
         openedAt: null,
@@ -234,10 +241,13 @@ export class WhisperService {
 
     // Unanswered question: a letter with a question mark, no reply in 7 days.
     // Only threads the address participates in.
-    const questions = await this.pool.query<{ thread_id: string }>(
-      `SELECT DISTINCT l.thread_id
+    const questions = await this.pool.query<{ thread_id: string; subject: string | null }>(
+      `SELECT DISTINCT l.thread_id,
+              (SELECT l2.subject FROM letters l2
+               WHERE l2.thread_id = l.thread_id
+               ORDER BY l2.received_at DESC LIMIT 1) AS subject
        FROM letters l
-       WHERE l.body_text ~ '\\\\?'
+       WHERE l.body_text ~ '\\?'
          AND l.received_at < $1
          AND NOT EXISTS (
            SELECT 1 FROM letters l2
@@ -260,18 +270,20 @@ export class WhisperService {
     for (const row of questions.rows) {
       const id = `gap-question:${row.thread_id}`;
       const reasoning = `The most recent letter in ${row.thread_id} ends with a question, and nothing has been written back in 7 days. The house is not answering for you — it is holding the question open.`;
+      const name = row.subject?.trim() || row.thread_id;
+      const summary = `A question is waiting in “${name}” — unanswered for a week.`;
       await this.pool.query(
         `INSERT INTO whispers (id, kind, target_thread, summary, reasoning)
          VALUES ($1, 'gap-unanswered-question', $2, $3, $4)
          ON CONFLICT (id) DO NOTHING`,
-        [id, row.thread_id, `A question is waiting in ${row.thread_id} — unanswered for a week.`, reasoning],
+        [id, row.thread_id, summary, reasoning],
       );
       created.push({
         id,
         letterId: null,
         kind: "gap-unanswered-question",
         targetThread: row.thread_id,
-        summary: `A question is waiting in ${row.thread_id} — unanswered for a week.`,
+        summary,
         reasoning,
         createdAt: now,
         openedAt: null,

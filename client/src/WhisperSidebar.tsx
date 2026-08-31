@@ -2,7 +2,7 @@ import type { Whisper } from "./api";
 
 interface Props {
   whispers: Whisper[];
-  onOpen: (id: string) => void;
+  onOpen: (id: string, w: Whisper) => void;
   onDismiss: (id: string) => void;
   onUndismiss: (id: string) => void;
   onGaps: () => void;
@@ -45,7 +45,7 @@ export default function WhisperSidebar({
             <button className="primary" onClick={() => onWriteBack(w)}>
               Write back
             </button>
-            <button onClick={() => onOpen(w.id)}>Open</button>
+            <button onClick={() => onOpen(w.id, w)}>Open</button>
             {w.dismissedAt ? (
               <button onClick={() => onUndismiss(w.id)}>Keep</button>
             ) : (

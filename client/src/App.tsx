@@ -8,8 +8,9 @@ import Archive from "./Archive";
 import AddressBook from "./AddressBook";
 import Compose from "./Compose";
 import Pub from "./Pub";
+import ThreadView from "./ThreadView";
 
-type View = "mailbox" | "archive" | "addresses" | "compose" | "pub";
+type View = "mailbox" | "archive" | "addresses" | "compose" | "pub" | "thread";
 
 export default function App() {
   const [auth, setAuth] = useState(() => loadAuth());
@@ -18,6 +19,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [composeTo, setComposeTo] = useState<string | undefined>(undefined);
   const [composeThread, setComposeThread] = useState<string | undefined>(undefined);
+  const [threadId, setThreadId] = useState<string | undefined>(undefined);
 
   const refreshWhisper = useCallback(async () => {
     try {
@@ -49,9 +51,17 @@ export default function App() {
   );
 
   const open = useCallback(
-    async (id: string) => {
+    async (id: string, w?: Whisper) => {
       await house.openWhisper(id);
       refreshWhisper();
+      // Picking up a gap offer lands on the correspondence itself — the
+      // thread is the unit, not the message. The whisper stays in the
+      // sidebar: pick up or ignore, the house holds either way.
+      if (w?.targetThread) {
+        setThreadId(w.targetThread);
+        setError(null);
+        setView("thread");
+      }
     },
     [refreshWhisper],
   );
@@ -142,10 +152,25 @@ export default function App() {
         {view === "archive" && <Archive onError={setError} />}
         {view === "pub" && <Pub onError={setError} />}
         {view === "addresses" && <AddressBook onError={setError} onCompose={composeToAddress} />}
+        {view === "thread" && threadId && (
+          <ThreadView
+            threadId={threadId}
+            onError={setError}
+            onBack={() => {
+              setThreadId(undefined);
+              setView("mailbox");
+            }}
+          />
+        )}
         {view === "compose" && (
           <Compose
             onError={setError}
-            onDelivered={() => setView("mailbox")}
+            onDelivered={() => {
+              // A letter on a whispered thread is the strongest signal —
+              // the house marks the whisper replied, and the sidebar shows it.
+              refreshWhisper();
+              setView("mailbox");
+            }}
             initialTo={composeTo}
             initialThread={composeThread}
             from={auth.address}

@@ -341,17 +341,40 @@ describe.skipIf(!INTEGRATION)("letter server (integration)", () => {
       body: JSON.stringify(q),
     });
 
+    // A quiet thread with NO question mark — old, but not a question. The
+    // house must not flag it as one (the negative path).
+    const noq = mkLetter({
+      envelope: { ...mkLetter().envelope, thread: "th_gap_no_question", subject: "no question here" },
+      time: { gregorian: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(), frames: [] },
+      body: { format: "markdown", content: "Just a statement, no question mark at all" },
+    });
+    await app.request("/v1/letters", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(noq),
+    });
+
     const gaps = await app.request("/v1/whisper/gaps", { method: "POST" });
     expect(gaps.status).toBe(200);
     const gapsJson = (await gaps.json()) as { created: string[] };
     expect(gapsJson.created.some((id) => id.includes("th_gap_dormant"))).toBe(true);
     expect(gapsJson.created.some((id) => id.includes("th_gap_question"))).toBe(true);
+    expect(gapsJson.created.some((id) => id.includes("th_gap_no_question"))).toBe(false);
 
-    // Dismissal is the strongest negative signal.
+    // The serif voice names the thread by its latest letter's subject — a
+    // raw thread id is the machine's index, not the house's speech.
     const whisper = await app.request("/v1/whisper", { method: "GET" });
-    const whisperJson = (await whisper.json()) as { whispers: { id: string }[] };
+    const whisperJson = (await whisper.json()) as {
+      whispers: { id: string; summary: string; kind: string }[];
+    };
     const dormant = whisperJson.whispers.find((w) => w.id.includes("th_gap_dormant"));
     expect(dormant).toBeDefined();
+    expect(dormant!.summary).toContain("dormant");
+    expect(dormant!.summary).not.toContain("th_gap_dormant");
+    const question = whisperJson.whispers.find((w) => w.id.includes("th_gap_question"));
+    expect(question).toBeDefined();
+    expect(question!.summary).toContain("question");
+    expect(question!.summary).not.toContain("th_gap_question");
     const dismiss = await app.request(`/v1/whisper/${dormant!.id}/dismiss`, { method: "POST" });
     expect(dismiss.status).toBe(200);
 
