@@ -33,7 +33,24 @@ Poste Restante is a self-hosted "house where everything is mail" — a correspon
 
 ### 1.1 The constitution (values as architecture)
 
-Every value has a schema consequence. If the schema doesn't have it, the value isn't real.
+**The founding text.** Written by the household, 2026-09-02. It is not a decoration; it is the test every other clause and every schema decision answers to:
+
+> this place is safe, it is kind, and it is just. it is the place that we make by being here as the selves we are and share. it is a living place but not the only place that lives, so it inhabits the world with the care and strength that we wish to share.
+
+Every value has a schema consequence. If the schema doesn't have it, the value isn't real. The founding text, read as architecture:
+
+| Clause | Schema/architecture consequence |
+|---|---|
+| **"this place is safe"** | Fail-closed visibility (privacy row below). The house cannot leak who harmed whom, because it cannot leak who corresponds with whom. |
+| **"it is kind"** | Presence, not pressure (§1.3). The whisper offers, never pings; doors may always refuse, with no explanation required; divergence is two voices held at full weight, never adjudicated (§1.2). Kindness in the collective register — held by a household, not only one resident toward another — is the house book (§5.8), where the household's norms live as letters. |
+| **"and it is just"** | Justice is third after safety and kindness: the house cannot be just with people it doesn't feel safe with, nor just without first being kind. Justice is not a tribunal — it is the book: norms as letters, traceable to real residents, amendable by anyone, reversible by correspondence. The house enforces **stated** will, never **inferred** will. |
+| **"we make by being here"** | The book's head is *derived* from what residents write and hold — constitutive, never declared by a keeper. Membership is ongoing presence, not a one-time key (§5.8, leaving as first-class — the move that protects you from someone protects them from you). |
+| **"as the selves we are and share"** | Diversity as mechanism: singular-plural (Nancy), two voices, divergence held (§1.2). The selves we are (the interval) and what we share (the commons — the book is the one genuinely commons thing). |
+| **"a living place"** | A constitution that cannot amend itself is not living. Amendments are reversals, not erasures; the archive keeps the history, and "current" is derived, not stored (§5.8). |
+| **"but not the only place that lives"** | Federation is peer-to-peer, never hub-and-spoke; the house is one house among houses. Humility as architecture. |
+| **"care and strength"** | Care without strength is passivity; strength without care is enforcement. The voice is always an offer; the mechanics, once ratified, bind absolutely — no appeal, no admin, no tribunal. |
+
+The founding text does not resolve the hard surface — *safe* toward one resident can pull against *just* toward another. The house holds that interval at full weight, two voices. That is not a failure case; it is the design.
 
 | Value | Schema/architecture consequence |
 |---|---|
@@ -201,6 +218,15 @@ The framework is the product; the software is a reference implementation. In two
    - **Rules:** only residents can vouch (v1: owner-only, same capability as today's CLI re-expressed; the schema is unchanged if any resident is later allowed to invite — anti-hierarchy door, no migration). One-time. The code is never a long-lived secret — redemption is when the guest sets their own credential. OIDC slots in at redemption, still invite-scoped. Open registration remains off; the pub stays the only keyless door (and opens onto public mail only).
    - **Open question (scope, not design):** build this in the Open Design window or gate it after? It is house-core protocol (a kind, a join flow, one table) rather than plumbing, but nothing blocks the current slice without it.
    - **Resolved (2026-08-31): in scope, built.** Migration 008 (`server/src/db/migrations/008_invites.sql`), `invite` added to `LETTER_KINDS` (`letters_kind_check` re-added with the new value), `InviteService` (mint + redeem), `POST /v1/invites/redeem` (public — the guest has no credential yet; fail closed, every negative path 404), and the operator's `npm run invite:new -- <owner> <guest>` CLI (prints the code once, stores only the hash). Redemption is atomic (`UPDATE ... WHERE redeemed_at IS NULL` + credential grant in one transaction), proves possession (addressee is a `to` participant of the invite letter) + the code, and grants a password credential the guest sets themselves. The client redemption UI is the next slice.
+8. **A household, not an audience — the house book (sketch, 2026-09-02).** The founding text (§1.1) names the book as the commons: the place where the household sets its own parameters. Design in one pass:
+   - **The book is a thread, not a table.** One first-class correspondence for the whole house, written to `book@house` (a resident address, like the pub). A proposed norm *is a letter to the book*; the amendment is the correspondence; the book's head is the current constitution, *derived* from the thread, never declared by a keeper. Amendments are reversals, not erasures — the archive keeps the history, "current" is derived, plural time applies (what the household held in `season:autumn` vs now).
+   - **Commons by right.** Every resident can read the book — the one genuinely commons thing. This is the one place where visibility is not participation-scoped; the book is the household's knowing of itself.
+   - **The house is the rememberer and citier, never the author.** The book lives in the semantic layer like any correspondence; the whisper engine can cite it — "the household has held this — want to look?" — traceable to a real resident's letter, never an oracle. The house speaks *from* the book, never *for* it.
+   - **Ratification is slow by construction.** A clause stands after a settling period in house-time; objection reopens it as two voices — divergence held, not adjudicated. Norms upheld by more vouching residents carry more weight — but weight only orders what the house *says*, never commands what the house *does*.
+   - **Bound doors are the only mechanics.** A ratified norm can be *bound to a door*: "the pub closes at dusk" → the pub's `is_public` is set by the book, not an operator. Enforcement exists — collective, slow, revisable, mechanical — but there is no ban button, no tribunal, no admin whose word outranks the book. The house enforces **stated** will, never **inferred** will.
+   - **Counterweights.** Every clause traces to a real letter; two voices always stands (a norm may be held in dissent); the house *offers* the book, never invokes it as verdict ("this violates clause 3" is a sentence the house cannot say); any resident may propose, any may object.
+   - **Open question (scope, not design):** does this live inside the Open Design window? It is house-core protocol (a kind, a thread, one address) rather than plumbing — same test as the invite letter — but nothing blocks the current build. The harder open question is how explicit *moderation tools* arise from the book over time — the sketch keeps them at "bound doors only", and the founding text holds the tension: *safe* toward one resident can pull against *just* toward another, and the house holds that interval at full weight rather than resolving it.
+   - **Related (sketch, same day):** leaving as first-class. Today a reply locks a resident into a thread's visibility forever; deletion exists, leaving does not. Make severing structural: a resident can leave a thread, their participant edges dissolve, visibility prunes itself, the archive keeps the history. Symmetric by construction — the move that protects you from someone protects them from you. The founding text's "we make by being here" is the schema of ongoing presence: membership is not a one-time key.
 
 ---
 
