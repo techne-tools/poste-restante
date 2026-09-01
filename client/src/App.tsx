@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { house, loadAuth, clearAuth } from "./api";
 import type { Whisper } from "./api";
 import Login from "./Login";
+import GuestShell from "./GuestShell";
 import WhisperSidebar from "./WhisperSidebar";
 import Mailbox from "./Mailbox";
 import Archive from "./Archive";
@@ -14,12 +15,16 @@ type View = "mailbox" | "archive" | "addresses" | "compose" | "pub" | "thread";
 
 export default function App() {
   const [auth, setAuth] = useState(() => loadAuth());
+  const [guest, setGuest] = useState(false);
   const [view, setView] = useState<View>("mailbox");
   const [whispers, setWhispers] = useState<Whisper[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [composeTo, setComposeTo] = useState<string | undefined>(undefined);
   const [composeThread, setComposeThread] = useState<string | undefined>(undefined);
   const [threadId, setThreadId] = useState<string | undefined>(undefined);
+  /** Where the compose view returns after a letter is delivered — the
+   *  mailbox by default, the pub when the resident was writing there. */
+  const [returnTo, setReturnTo] = useState<"mailbox" | "pub">("mailbox");
   // A frame-scoped gap (unvisited corner) lands in the archive with that
   // frame open — the empty room, held in view.
   const [frameId, setFrameId] = useState<string | null>(null);
@@ -100,19 +105,32 @@ export default function App() {
   const navigate = useCallback((v: View) => {
     setError(null);
     setFrameId(null);
+    setReturnTo("mailbox");
     setView(v);
   }, []);
 
   const signOut = useCallback(() => {
     clearAuth();
     setAuth(null);
+    setGuest(false);
     setWhispers([]);
     setError(null);
     setView("mailbox");
   }, []);
 
   if (!auth) {
-    return <Login onAuthed={() => setAuth(loadAuth())} />;
+    // The keyless door: a guest enters the pub without a credential — the
+    // only room that asks nothing. Nothing private is mounted; the pub's
+    // own fetch is the only call the shell makes.
+    if (guest) {
+      return <GuestShell onEnterHouse={() => setGuest(false)} />;
+    }
+    return (
+      <Login
+        onAuthed={() => setAuth(loadAuth())}
+        onGuest={() => setGuest(true)}
+      />
+    );
   }
 
   return (
@@ -161,7 +179,25 @@ export default function App() {
         </nav>
         {view === "mailbox" && <Mailbox onError={setError} address={auth.address} />}
         {view === "archive" && <Archive onError={setError} initialFrame={frameId} />}
-        {view === "pub" && <Pub onError={setError} />}
+        {view === "pub" && (
+          <Pub
+            onError={setError}
+            onReply={(thread) => {
+              setComposeTo("pub@house");
+              setComposeThread(thread);
+              setReturnTo("pub");
+              setError(null);
+              setView("compose");
+            }}
+            onPost={() => {
+              setComposeTo("pub@house");
+              setComposeThread(undefined);
+              setReturnTo("pub");
+              setError(null);
+              setView("compose");
+            }}
+          />
+        )}
         {view === "addresses" && <AddressBook onError={setError} onCompose={composeToAddress} />}
         {view === "thread" && threadId && (
           <ThreadView
@@ -179,8 +215,9 @@ export default function App() {
             onDelivered={() => {
               // A letter on a whispered thread is the strongest signal —
               // the house marks the whisper replied, and the sidebar shows it.
+              // Writing from the pub returns to the pub.
               refreshWhisper();
-              setView("mailbox");
+              setView(returnTo);
             }}
             initialTo={composeTo}
             initialThread={composeThread}

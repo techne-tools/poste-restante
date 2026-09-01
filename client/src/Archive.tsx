@@ -5,6 +5,7 @@ import LetterView from "./LetterView";
 import KindTag from "./KindTag";
 import { snippet } from "./markdown";
 import {
+  byTimeAsc,
   classifyLetter,
   railPositions,
   threadsWithMultipleAccounts,
@@ -20,8 +21,9 @@ interface Props {
 
 /**
  * The archive — the Horizon View (DESIGN.md: the unit and the frame).
- * The letter flow is a single vertical axis; frames are parallel lines
- * flanking it, like a transit diagram. Toggling frame lines brings the
+ * The letter flow is a single vertical axis of TIME: oldest → newest when
+ * browsing, the house's relevance order under a query. Frames are parallel
+ * lines flanking it, like a transit diagram. Toggling frame lines brings the
  * intersection forward: letters in EVERY selected frame stay full, letters
  * in SOME mid-dim, the rest dim. Nothing is removed — the intersection
  * stays visible. Plural time, made visible.
@@ -37,6 +39,10 @@ export default function Archive({ onError, initialFrame = null }: Props) {
   );
   const [selected, setSelected] = useState<Letter | null>(null);
   const [loading, setLoading] = useState(true);
+  /** Browse = the timeline (oldest → newest); search = the house's
+   *  relevance order. The mode flips when a search runs, and back the
+   *  moment the query is emptied — the archive resumes its timeline. */
+  const [mode, setMode] = useState<"browse" | "search">("browse");
 
   const load = useCallback(async () => {
     try {
@@ -46,6 +52,7 @@ export default function Archive({ onError, initialFrame = null }: Props) {
       ]);
       setLetters(searchRes.letters);
       setFrames(framesRes.frames);
+      setMode("browse");
     } catch (err) {
       onError(err instanceof Error ? err.message : "the archive is quiet");
     } finally {
@@ -61,6 +68,7 @@ export default function Archive({ onError, initialFrame = null }: Props) {
     try {
       const res = await house.search({ text: query, limit: "100" });
       setLetters(res.letters);
+      setMode("search");
     } catch (err) {
       onError(err instanceof Error ? err.message : "the search failed");
     }
@@ -79,14 +87,23 @@ export default function Archive({ onError, initialFrame = null }: Props) {
 
   const clearFrames = useCallback(() => setActiveFrames(new Set()), []);
 
+  /** The displayed letter flow. The axis is time, not search order: when
+   *  browsing the house reads oldest → newest — a timeline, the way a
+   *  correspondence actually accumulates. With a query, the flow keeps the
+   *  house's relevance order — a feed, not a timeline, and the rails follow. */
+  const displayed = useMemo(() => {
+    if (mode === "search") return letters;
+    return [...letters].sort(byTimeAsc);
+  }, [letters, mode]);
+
   /** The ∩ semantics: what each letter becomes under the active frames. */
   const classified = useMemo(
-    () => new Map(letters.map((l) => [l.id, classifyLetter(l, activeFrames)])),
-    [letters, activeFrames],
+    () => new Map(displayed.map((l) => [l.id, classifyLetter(l, activeFrames)])),
+    [displayed, activeFrames],
   );
 
   /** Ticks on the transit lines — flow indexes per frame. */
-  const rail = useMemo(() => railPositions(letters, frames), [letters, frames]);
+  const rail = useMemo(() => railPositions(displayed, frames), [displayed, frames]);
 
   /** Empty active frames — the unvisited corners, surfaced as a quiet
    *  invitation, never a guilt trip (DESIGN.md archive rule 3). */
@@ -116,8 +133,8 @@ export default function Archive({ onError, initialFrame = null }: Props) {
 
   const tickTop = useCallback(
     (index: number) =>
-      letters.length <= 1 ? "50%" : `${(index / (letters.length - 1)) * 100}%`,
-    [letters.length],
+      displayed.length <= 1 ? "50%" : `${(index / (displayed.length - 1)) * 100}%`,
+    [displayed.length],
   );
 
   if (loading) return <p className="empty">Opening the archive…</p>;
@@ -128,7 +145,14 @@ export default function Archive({ onError, initialFrame = null }: Props) {
         <input
           placeholder="Search the archive — the house answers in any frame"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => {
+            const v = e.target.value;
+            setQuery(v);
+            // Emptying the query is the quiet way back to the timeline —
+            // the house resumes reading oldest → newest the moment the
+            // question is gone.
+            if (v === "") setMode("browse");
+          }}
           onKeyDown={(e) => e.key === "Enter" && search()}
         />
         <button onClick={search}>Search</button>
@@ -222,8 +246,8 @@ export default function Archive({ onError, initialFrame = null }: Props) {
                 or removed.
               </p>
             )}
-            {letters.length === 0 && <p className="empty">Nothing here. The house holds.</p>}
-            {letters.map((l) => {
+            {displayed.length === 0 && <p className="empty">Nothing here. The house holds.</p>}
+            {displayed.map((l) => {
               const cls = classified.get(l.id) ?? "none";
               return (
                 <button

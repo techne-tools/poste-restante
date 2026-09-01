@@ -65,6 +65,15 @@ export function byTimeDesc(a: Letter, b: Letter): number {
 }
 
 /**
+ * Chronological flow — the timeline's axis when browsing (oldest first).
+ * The Horizon View is an archive, not a feed: without a query the house
+ * reads oldest → newest, the way a correspondence actually accumulates.
+ */
+export function byTimeAsc(a: Letter, b: Letter): number {
+  return new Date(a.receivedAt).getTime() - new Date(b.receivedAt).getTime();
+}
+
+/**
  * A quiet surface for a contradiction, without picking a side (DESIGN.md
  * archive rule 4). Where letters in one frame also share a thread, more than
  * one account of that thread sits in the same frame — the reader is told the

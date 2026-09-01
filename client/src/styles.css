@@ -644,7 +644,8 @@ a:hover {
 /* The door-links inside the archive notes stay ink, not accent — the transit
    line is the plural-time flourish, the only accent this surface carries. */
 .horizon-hint .door-link,
-.horizon-note .door-link {
+.horizon-note .door-link,
+.pub-note .door-link {
   color: var(--fg);
   text-decoration: underline;
   text-underline-offset: 2px;
@@ -652,7 +653,8 @@ a:hover {
 
 /* A quiet note — an empty-frame invitation, a contradiction made visible.
    Never a guilt trip: ink-faint text, a plain sentence, no ranking. */
-.horizon-note {
+.horizon-note,
+.pub-note {
   border: var(--rule);
   border-left: 2px solid var(--fg);
   border-radius: var(--radius);

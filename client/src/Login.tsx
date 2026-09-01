@@ -4,6 +4,8 @@ import Redeem from "./Redeem";
 
 interface Props {
   onAuthed: (address: string) => void;
+  /** The keyless door: skip the credential and enter the pub as a guest. */
+  onGuest: () => void;
 }
 
 /**
@@ -11,19 +13,20 @@ interface Props {
  * know you until you prove who you are. Three ways in — a password (basic),
  * an identity provider (OIDC), or, if a resident has invited you, the
  * invitation letter (Redeem). The credential lives with the client; the
- * house holds only a hash.
+ * house holds only a hash. One way to look — the pub (SPEC §5 #5: the pub
+ * stays the only keyless door), where the house's public mail waits.
  */
-export default function Login({ onAuthed }: Props) {
+export default function Login({ onAuthed, onGuest }: Props) {
   const [redeeming, setRedeeming] = useState(false);
 
   if (redeeming) {
     return <Redeem onAuthed={onAuthed} />;
   }
 
-  return <SignIn onAuthed={onAuthed} onRedeem={() => setRedeeming(true)} />;
+  return <SignIn onAuthed={onAuthed} onRedeem={() => setRedeeming(true)} onGuest={onGuest} />;
 }
 
-function SignIn({ onAuthed, onRedeem }: Props & { onRedeem: () => void }) {
+function SignIn({ onAuthed, onRedeem, onGuest }: Props & { onRedeem: () => void }) {
   const [address, setAddress] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -117,6 +120,12 @@ function SignIn({ onAuthed, onRedeem }: Props & { onRedeem: () => void }) {
               A resident invited you?{" "}
               <button type="button" className="door-link" onClick={onRedeem} disabled={busy}>
                 Enter with your invitation
+              </button>
+            </p>
+            <p className="door-switch">
+              Just looking? The house's public room is open —{" "}
+              <button type="button" className="door-link" onClick={onGuest} disabled={busy}>
+                enter the pub without signing in
               </button>
             </p>
           </form>

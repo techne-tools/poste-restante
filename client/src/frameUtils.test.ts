@@ -8,6 +8,7 @@ import {
   classifyLetter,
   letterInFrame,
   railPositions,
+  byTimeAsc,
   byTimeDesc,
   threadsWithMultipleAccounts,
 } from "./frameUtils";
@@ -96,10 +97,28 @@ describe("railPositions — the transit ticks", () => {
 });
 
 describe("byTimeDesc", () => {
-  it("sorts newest first — the archive's axis", () => {
+  it("sorts newest first — the whisper and search feed order", () => {
     const older = letter("old", [], "2026-08-01T00:00:00Z");
     const newer = letter("new", [], "2026-08-05T00:00:00Z");
     expect([older, newer].sort(byTimeDesc)).toEqual([newer, older]);
+  });
+});
+
+describe("byTimeAsc", () => {
+  it("sorts oldest first — the timeline axis when browsing the archive", () => {
+    const older = letter("old", [], "2026-08-01T00:00:00Z");
+    const newer = letter("new", [], "2026-08-05T00:00:00Z");
+    expect([newer, older].sort(byTimeAsc)).toEqual([older, newer]);
+  });
+
+  it("is the exact inverse of byTimeDesc", () => {
+    const letters = [
+      letter("a", [], "2026-08-01T00:00:00Z"),
+      letter("b", [], "2026-08-03T00:00:00Z"),
+      letter("c", [], "2026-08-02T00:00:00Z"),
+    ];
+    expect(letters.sort(byTimeAsc).map((l) => l.id)).toEqual(["a", "c", "b"]);
+    expect(letters.sort(byTimeDesc).map((l) => l.id)).toEqual(["b", "c", "a"]);
   });
 });
 
