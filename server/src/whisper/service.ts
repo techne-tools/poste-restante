@@ -27,6 +27,11 @@
  * detection writers are convergent by construction: they only create pairs
  * within the caller's own participation set, so a dead invisible whisper
  * cannot be created.
+ *
+ * Frame gaps (gap-unvisited-corner) add a third limb: the address must be
+ * party to at least one letter in the target frame. The room's territory
+ * is proven through the social graph — the house never whispers about a
+ * room its resident has never entered.
  */
 import type pg from "pg";
 import type { Logger } from "../pipeline/logger.js";
@@ -53,7 +58,8 @@ export type WhisperKind =
   | "gap-unanswered-question"
   | "gap-contradiction"
   | "gap-uncited-connection"
-  | "gap-echo";
+  | "gap-echo"
+  | "gap-unvisited-corner";
 
 export interface Whisper {
   id: string;
@@ -68,6 +74,12 @@ export interface Whisper {
    * merge them by accident. Null for single-letter/thread whispers.
    */
   relatedLetterId: string | null;
+  /**
+   * The room in a frame-scoped gap (gap-unvisited-corner). The corner is
+   * a region of the frame's territory with no letters — the whisper is
+   * anchored on the room itself, not on any one letter. Null otherwise.
+   */
+  targetFrame: string | null;
   summary: string;
   reasoning: string | null;
   createdAt: Date;
@@ -82,6 +94,7 @@ export interface WhisperRow {
   kind: WhisperKind;
   target_thread: string | null;
   related_letter_id: string | null;
+  target_frame: string | null;
   summary: string;
   reasoning: string | null;
   created_at: Date;
@@ -96,6 +109,7 @@ const toWhisper = (r: WhisperRow): Whisper => ({
   kind: r.kind,
   targetThread: r.target_thread,
   relatedLetterId: r.related_letter_id,
+  targetFrame: r.target_frame,
   summary: r.summary,
   reasoning: r.reasoning,
   createdAt: r.created_at,
@@ -106,32 +120,64 @@ const toWhisper = (r: WhisperRow): Whisper => ({
 
 /**
  * The visibility predicate. A whisper is visible to an address iff the
- * address is a participant in the whisper's thread. `w` is the whispers
- * alias; `$1` is the address. Every whisper kind sets target_thread, so a
- * whisper with a NULL thread is visible to no one (it cannot exist in
- * practice — the invariant is enforced by the writers).
+ * address is a participant in the whisper's subject. Two shapes:
  *
- * Pair gaps add a second limb: the address must ALSO be party to the
- * related letter. Surfacing a half-visible pair would leak that the other
- * letter exists. The writers only create pairs within the caller's own
- * participation set, so this predicate is the final gate on a convergent
- * construction.
+ *   * Thread-scoped whispers (all kinds except the corner) carry a
+ *     target_thread — visible iff the caller is a participant. Pair gaps
+ *     add a second limb (party to BOTH letters); the room limb guards a
+ *     thread whisper that also names a frame.
+ *   * Frame-scoped whispers (gap-unvisited-corner) carry target_frame and
+ *     NO thread — visible iff the caller is party to at least one letter
+ *     in the room. The room's territory is proven through the social
+ *     graph; the house never whispers about a room its resident has never
+ *     entered, and never leaks the room's existence to outsiders.
+ *
+ * `w` is the whispers alias; `$1` is the address. The writers are
+ * convergent by construction (thread writers set no frame; the corner
+ * sets no thread), so exactly one branch applies per whisper.
+ *
+ * The whole disjunction is parenthesised: callers suffix their own AND
+ * conditions (`AND w.dismissed_at IS NULL`), and OR binds looser than
+ * AND — an ungrouped `a OR b AND c` would apply `c` only to `b`.
  */
 const VISIBLE_TO = `
-  w.target_thread IS NOT NULL
-  AND EXISTS (
-    SELECT 1 FROM letters l
-    JOIN letter_addresses la ON la.letter_id = l.id
-    WHERE l.thread_id = w.target_thread
-      AND la.address_id = $1
-  )
-  AND (
-    w.related_letter_id IS NULL
-    OR EXISTS (
-      SELECT 1 FROM letters l
-      JOIN letter_addresses la ON la.letter_id = l.id
-      WHERE l.id = w.related_letter_id
-        AND la.address_id = $1
+  (
+    (
+      w.target_thread IS NOT NULL
+      AND EXISTS (
+        SELECT 1 FROM letters l
+        JOIN letter_addresses la ON la.letter_id = l.id
+        WHERE l.thread_id = w.target_thread
+          AND la.address_id = $1
+      )
+      AND (
+        w.related_letter_id IS NULL
+        OR EXISTS (
+          SELECT 1 FROM letters l
+          JOIN letter_addresses la ON la.letter_id = l.id
+          WHERE l.id = w.related_letter_id
+            AND la.address_id = $1
+        )
+      )
+      AND (
+        w.target_frame IS NULL
+        OR EXISTS (
+          SELECT 1 FROM letter_frames lf
+          JOIN letter_addresses la ON la.letter_id = lf.letter_id
+          WHERE lf.frame_id = w.target_frame
+            AND la.address_id = $1
+        )
+      )
+    )
+    OR
+    (
+      w.target_frame IS NOT NULL
+      AND EXISTS (
+        SELECT 1 FROM letter_frames lf
+        JOIN letter_addresses la ON la.letter_id = lf.letter_id
+        WHERE lf.frame_id = w.target_frame
+          AND la.address_id = $1
+      )
     )
   )`;
 
@@ -285,6 +331,7 @@ export class WhisperService {
         kind: "gap-dormant-thread",
         targetThread: row.thread_id,
         relatedLetterId: null,
+        targetFrame: null,
         summary,
         reasoning,
         createdAt: now,
@@ -339,6 +386,7 @@ export class WhisperService {
         kind: "gap-unanswered-question",
         targetThread: row.thread_id,
         relatedLetterId: null,
+        targetFrame: null,
         summary,
         reasoning,
         createdAt: now,
@@ -401,6 +449,7 @@ export class WhisperService {
           kind: "gap-contradiction",
           targetThread: row.thread_id,
           relatedLetterId: row.related,
+          targetFrame: null,
           summary,
           reasoning,
           createdAt: now,
@@ -409,6 +458,73 @@ export class WhisperService {
           repliedAt: null,
         });
       }
+    }
+
+    // The unvisited corner — a region of the frame's territory with no
+    // letters (SKETCH.md: "the masque cluster is empty while every other
+    // cluster has letters"). A frame the caller has worked in has gone
+    // quiet 30 days, while at least one of the caller's OTHER frames moved
+    // within a fortnight — the territory moves, this room doesn't. The
+    // house is not telling you to go back; it is holding the empty room
+    // open. Convergent by construction: only frames the caller is party to.
+    const corners = await this.pool.query<{ frame_id: string }>(
+      `SELECT DISTINCT lf.frame_id
+       FROM letter_frames lf
+       JOIN letter_addresses la ON la.letter_id = lf.letter_id
+       WHERE la.address_id = $1
+         AND NOT EXISTS (
+           SELECT 1 FROM letter_frames lf2
+           JOIN letters l2 ON l2.id = lf2.letter_id
+           WHERE lf2.frame_id = lf.frame_id
+             AND l2.received_at > $2
+         )
+         AND EXISTS (
+           SELECT 1 FROM letters l3
+           JOIN letter_frames lf3 ON lf3.letter_id = l3.id
+           JOIN letter_addresses la3 ON la3.letter_id = l3.id
+           WHERE la3.address_id = $1
+             AND lf3.frame_id <> lf.frame_id
+             AND l3.received_at > $3
+         )
+         AND NOT EXISTS (
+           SELECT 1 FROM whispers w
+           WHERE w.kind = 'gap-unvisited-corner'
+             AND w.target_frame = lf.frame_id
+             AND w.created_at > $4
+         )`,
+      [
+        address,
+        new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000),
+        new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000),
+        new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000),
+      ],
+    );
+    for (const row of corners.rows) {
+      const id = `gap-corner:${row.frame_id}`;
+      // The frame id IS the human plural-time address (name:value) — the
+      // serif voice keeps it whole, like the two-Voices summary.
+      const summary = `An unvisited corner — “${row.frame_id}” has gone quiet while the work moves elsewhere.`;
+      const reasoning = `No letter in ${row.frame_id} for 30 days, while another of your frames moved within a fortnight. The house is not telling you to go back — it is holding the empty room open.`;
+      await this.pool.query(
+        `INSERT INTO whispers (id, kind, target_frame, summary, reasoning)
+         VALUES ($1, 'gap-unvisited-corner', $2, $3, $4)
+         ON CONFLICT (id) DO NOTHING`,
+        [id, row.frame_id, summary, reasoning],
+      );
+      created.push({
+        id,
+        letterId: null,
+        kind: "gap-unvisited-corner",
+        targetThread: null,
+        relatedLetterId: null,
+        targetFrame: row.frame_id,
+        summary,
+        reasoning,
+        createdAt: now,
+        openedAt: null,
+        dismissedAt: null,
+        repliedAt: null,
+      });
     }
 
     // The semantic pair gaps (uncited connection, echo) — one pass, two
@@ -523,6 +639,7 @@ export class WhisperService {
       kind,
       targetThread: row.thread_id,
       relatedLetterId: relatedId,
+      targetFrame: null,
       summary,
       reasoning,
       createdAt: now,

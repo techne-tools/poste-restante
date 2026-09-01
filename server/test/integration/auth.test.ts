@@ -256,6 +256,76 @@ describe.skipIf(!INTEGRATION)("auth (integration)", () => {
     expect(benDismiss.status).toBe(404);
   });
 
+  it("fails closed on corner gaps — ben is party to neither frame of the corner", async () => {
+    // A frame you have worked in, gone quiet 35 days, while another of
+    // your frames moved two days ago. The house offers the empty room —
+    // to you. ben has never entered either room: the frame-scoped whisper
+    // must not reach him, not even the room's existence.
+    const recent = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+    const oldCorner = mkLetter({
+      envelope: { ...mkLetter().envelope, thread: "th_auth_corner_old", subject: "the masque, set aside" },
+      time: {
+        gregorian: new Date(Date.now() - 35 * 24 * 60 * 60 * 1000).toISOString(),
+        frames: [{ frame: "production", value: "auth-corner-a" }],
+      },
+      body: { format: "markdown", content: "Early masque notes, long quiet." },
+    });
+    const moving = mkLetter({
+      envelope: { ...mkLetter().envelope, thread: "th_auth_corner_next", subject: "the next production" },
+      time: { gregorian: recent, frames: [{ frame: "production", value: "auth-corner-b" }] },
+      body: { format: "markdown", content: "The next production planning thread." },
+    });
+    await app.request("/v1/letters", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: basic("you@house", "youyouyou") },
+      body: JSON.stringify(oldCorner),
+    });
+    await app.request("/v1/letters", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: basic("you@house", "youyouyou") },
+      body: JSON.stringify(moving),
+    });
+
+    // you detects the corner.
+    const gaps = await app.request("/v1/whisper/gaps", {
+      method: "POST",
+      headers: { Authorization: basic("you@house", "youyouyou") },
+    });
+    const gapsJson = (await gaps.json()) as { created: string[] };
+    const cornerId = "gap-corner:production:auth-corner-a";
+    expect(gapsJson.created).toContain(cornerId);
+
+    // you sees it — the room named, no thread, no letter.
+    const youWhisper = await app.request("/v1/whisper", {
+      method: "GET",
+      headers: { Authorization: basic("you@house", "youyouyou") },
+    });
+    const youJson = (await youWhisper.json()) as {
+      whispers: { id: string; kind: string; targetFrame: string | null; letterId: string | null }[];
+    };
+    const corner = youJson.whispers.find((w) => w.id === cornerId);
+    expect(corner).toBeDefined();
+    expect(corner!.kind).toBe("gap-unvisited-corner");
+    expect(corner!.targetFrame).toBe("production:auth-corner-a");
+    expect(corner!.letterId).toBeNull();
+
+    // ben — party to neither room — must not see it: fails closed on the
+    // frame limb.
+    const benWhisper = await app.request("/v1/whisper", {
+      method: "GET",
+      headers: { Authorization: basic("ben@house", "benbenben") },
+    });
+    const benJson = (await benWhisper.json()) as { whispers: { id: string }[] };
+    expect(benJson.whispers.some((w) => w.id === cornerId)).toBe(false);
+
+    // ben cannot open the corner either — absence is silence at every door.
+    const benOpen = await app.request(`/v1/whisper/${cornerId}/open`, {
+      method: "POST",
+      headers: { Authorization: basic("ben@house", "benbenben") },
+    });
+    expect(benOpen.status).toBe(404);
+  });
+
   it("keeps the pub public — readable without a credential", async () => {
     // A public letter: pub@house is a participant.
     const pubLetter = mkLetter({

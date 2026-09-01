@@ -13,6 +13,9 @@ import {
 
 interface Props {
   onError: (msg: string) => void;
+  /** A corner offer to hold open — the archive mounts with this frame's
+   *  transit line activated, so the empty room is visible in the legend. */
+  initialFrame?: string | null;
 }
 
 /**
@@ -23,11 +26,15 @@ interface Props {
  * in SOME mid-dim, the rest dim. Nothing is removed — the intersection
  * stays visible. Plural time, made visible.
  */
-export default function Archive({ onError }: Props) {
+export default function Archive({ onError, initialFrame = null }: Props) {
   const [letters, setLetters] = useState<Letter[]>([]);
   const [frames, setFrames] = useState<FrameInfo[]>([]);
   const [query, setQuery] = useState("");
-  const [activeFrames, setActiveFrames] = useState<ReadonlySet<string>>(new Set());
+  const [activeFrames, setActiveFrames] = useState<ReadonlySet<string>>(
+    // A corner offer mounts with its frame's line already open, so the
+    // empty room is visible in the legend without the resident hunting.
+    () => new Set(initialFrame ? [initialFrame] : []),
+  );
   const [selected, setSelected] = useState<Letter | null>(null);
   const [loading, setLoading] = useState(true);
 

@@ -547,6 +547,60 @@ describe.skipIf(!INTEGRATION)("letter server (integration)", () => {
     expect(semantic.some((id) => id.startsWith("gap-uncited:") && (id.includes(connAId) || id.includes(connBId)))).toBe(true);
   });
 
+  it("detects gaps — the unvisited corner: a frame gone quiet while the territory moves", async () => {
+    // A frame the caller has worked in, gone quiet 35 days. The territory
+    // moves elsewhere: a different frame of the caller's received a letter
+    // 2 days ago. The house holds the empty room open — it does not send
+    // you back.
+    const old = mkLetter({
+      envelope: { ...mkLetter().envelope, thread: "th_gap_corner_old", subject: "the masque, early days" },
+      time: {
+        gregorian: new Date(Date.now() - 35 * 24 * 60 * 60 * 1000).toISOString(),
+        frames: [{ frame: "production", value: "tempest-old" }],
+      },
+      body: { format: "markdown", content: "Early notes for the masque — long set aside." },
+    });
+    const recentSibling = mkLetter({
+      envelope: { ...mkLetter().envelope, thread: "th_gap_corner_next", subject: "the next show" },
+      time: {
+        gregorian: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+        frames: [{ frame: "production", value: "tempest-next-show" }],
+      },
+      body: { format: "markdown", content: "The next production needs its own planning thread." },
+    });
+    await app.request("/v1/letters", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(old) });
+    await app.request("/v1/letters", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(recentSibling) });
+
+    const gaps = await app.request("/v1/whisper/gaps", { method: "POST" });
+    const gapsJson = (await gaps.json()) as { created: string[] };
+    expect(gapsJson.created.some((id) => id === "gap-corner:production:tempest-old")).toBe(true);
+    // A frame that still moves is not a corner.
+    expect(gapsJson.created.some((id) => id.includes("tempest-next-show"))).toBe(false);
+
+    // The whisper is anchored on the room itself: targetFrame set, no
+    // thread, no letter. The frame id IS the human plural-time address, so
+    // the serif voice keeps it whole — and nothing else leaks.
+    const whisper = await app.request("/v1/whisper", { method: "GET" });
+    const whisperJson = (await whisper.json()) as {
+      whispers: {
+        id: string;
+        kind: string;
+        targetFrame: string | null;
+        targetThread: string | null;
+        letterId: string | null;
+        summary: string;
+      }[];
+    };
+    const corner = whisperJson.whispers.find(
+      (w) => w.kind === "gap-unvisited-corner" && w.targetFrame === "production:tempest-old",
+    );
+    expect(corner).toBeDefined();
+    expect(corner!.summary).toContain("production:tempest-old");
+    expect(corner!.summary).not.toContain("th_gap_corner_old");
+    expect(corner!.targetThread).toBeNull();
+    expect(corner!.letterId).toBeNull();
+  });
+
   it("does not surface private correspondence to other addresses", async () => {
     // A private thread between you@house and hermes@house — ben@house is not
     // party to it. The house must not whisper about it to ben.

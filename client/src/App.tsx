@@ -20,6 +20,9 @@ export default function App() {
   const [composeTo, setComposeTo] = useState<string | undefined>(undefined);
   const [composeThread, setComposeThread] = useState<string | undefined>(undefined);
   const [threadId, setThreadId] = useState<string | undefined>(undefined);
+  // A frame-scoped gap (unvisited corner) lands in the archive with that
+  // frame open — the empty room, held in view.
+  const [frameId, setFrameId] = useState<string | null>(null);
 
   const refreshWhisper = useCallback(async () => {
     try {
@@ -55,9 +58,14 @@ export default function App() {
       await house.openWhisper(id);
       refreshWhisper();
       // Picking up a gap offer lands on the correspondence itself — the
-      // thread is the unit, not the message. The whisper stays in the
+      // thread is the unit, not the message. A corner offer lands on the
+      // room: the archive, that frame open. The whisper stays in the
       // sidebar: pick up or ignore, the house holds either way.
-      if (w?.targetThread) {
+      if (w?.targetFrame) {
+        setFrameId(w.targetFrame);
+        setError(null);
+        setView("archive");
+      } else if (w?.targetThread) {
         setThreadId(w.targetThread);
         setError(null);
         setView("thread");
@@ -86,9 +94,12 @@ export default function App() {
   }, []);
 
   // The error banner is view-scoped feedback, not app-global state — a
-  // failure in one view must not follow the user into the next.
+  // failure in one view must not follow the user into the next. Navigation
+  // also clears any corner offer flag: the room stays open only while the
+  // resident stands in it.
   const navigate = useCallback((v: View) => {
     setError(null);
+    setFrameId(null);
     setView(v);
   }, []);
 
@@ -149,7 +160,7 @@ export default function App() {
           </button>
         </nav>
         {view === "mailbox" && <Mailbox onError={setError} address={auth.address} />}
-        {view === "archive" && <Archive onError={setError} />}
+        {view === "archive" && <Archive onError={setError} initialFrame={frameId} />}
         {view === "pub" && <Pub onError={setError} />}
         {view === "addresses" && <AddressBook onError={setError} onCompose={composeToAddress} />}
         {view === "thread" && threadId && (

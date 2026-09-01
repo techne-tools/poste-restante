@@ -41,9 +41,12 @@ export interface Whisper {
     | "gap-unanswered-question"
     | "gap-contradiction"
     | "gap-uncited-connection"
-    | "gap-echo";
+    | "gap-echo"
+    | "gap-unvisited-corner";
   targetThread: string | null;
   relatedLetterId: string | null;
+  /** The room in a frame-scoped gap (gap-unvisited-corner). Null otherwise. */
+  targetFrame: string | null;
   summary: string;
   reasoning: string | null;
   createdAt: string;
