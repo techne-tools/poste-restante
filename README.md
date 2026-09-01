@@ -40,7 +40,7 @@ Privacy as schema, anti-hierarchy as capability, queer/indigenous/global-majorit
 | Raw payloads | minio (S3-compatible) | ⬜ target — out of two-month scope |
 | Ingestion queue | redis | ⬜ target — out of two-month scope |
 | Audio letters | faster-whisper | ⬜ target — out of two-month scope |
-| Local brain | ollama (embeddings, 768-dim) | ✅ live on horza |
+| Local brain | ollama (embeddings, 768-dim) | ✅ live |
 | Bridges | IMAP/SMTP (primary), Matrix + ActivityPub (optional) | ⬜ target — out of two-month scope |
 | Deployment | docker-compose, tailscale for access | ⬜ target — out of two-month scope |
 
