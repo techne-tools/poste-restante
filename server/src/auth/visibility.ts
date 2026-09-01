@@ -36,6 +36,16 @@ export function isParticipant(l: LetterParty, address: string): boolean {
   );
 }
 
+/**
+ * The door of an address's room. `is_public` is the schema's answer to
+ * "may an unauthenticated reader look in?" Only pub@house carries the
+ * flag in practice, but the rule is a property of the ROOM, not of the
+ * name — no special case for 'pub@house' in the visibility path.
+ */
+export function isPublicAddress(addr: { is_public: boolean } | null): boolean {
+  return addr !== null && addr.is_public;
+}
+
 /** The visibility rule: participant OR public. */
 export function isVisibleTo(l: LetterParty, address: string): boolean {
   return isPublicLetter(l) || isParticipant(l, address);

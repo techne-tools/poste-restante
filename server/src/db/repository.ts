@@ -4,6 +4,7 @@
  */
 import type pg from "pg";
 import type { Letter, StoredLetter } from "../types.js";
+import { PUB_ADDRESS } from "../auth/visibility.js";
 
 export interface LetterRow {
   id: string;
@@ -64,12 +65,15 @@ export class PostgresRepository {
     try {
       await client.query("BEGIN");
 
-      // Addresses (the social graph).
+      // Addresses (the social graph). The pub's door default is OPEN when
+      // the row is absent (materialised public); a deliberately-closed pub
+      // is never reopened by incoming mail (DO NOTHING).
       const addresses = new Set([envelope.from, ...envelope.to, ...envelope.cc]);
       for (const addr of addresses) {
         await client.query(
-          `INSERT INTO addresses (id) VALUES ($1) ON CONFLICT (id) DO NOTHING`,
-          [addr],
+          `INSERT INTO addresses (id, is_public) VALUES ($1, $2)
+           ON CONFLICT (id) DO NOTHING`,
+          [addr, addr === PUB_ADDRESS],
         );
       }
       // Thread.
@@ -157,12 +161,21 @@ export class PostgresRepository {
   }
 
   /** Get one address. */
-  async getAddress(id: string): Promise<{ id: string; names: string[]; pronouns: string | null } | null> {
+  async getAddress(id: string): Promise<{ id: string; names: string[]; pronouns: string | null; is_public: boolean } | null> {
     const { rows } = await this.pool.query(
-      `SELECT id, names, pronouns FROM addresses WHERE id = $1`,
+      `SELECT id, names, pronouns, is_public FROM addresses WHERE id = $1`,
       [id],
     );
     return rows[0] ?? null;
+  }
+
+  /** Open or close an address's door. The house's visibility law reads this. */
+  async setPublic(id: string, open: boolean): Promise<boolean> {
+    const res = await this.pool.query(
+      `UPDATE addresses SET is_public = $2 WHERE id = $1`,
+      [id, open],
+    );
+    return (res.rowCount ?? 0) > 0;
   }
 
   /** Set an address's names and pronouns (the address book is correctable). */

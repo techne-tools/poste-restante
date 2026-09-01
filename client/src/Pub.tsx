@@ -16,6 +16,8 @@ interface Props {
    */
   onReply?: (thread: string) => void;
   onPost?: () => void;
+  /** Back to the door (login) — used when the guest finds the pub closed. */
+  onEnterHouse?: () => void;
 }
 
 /**
@@ -27,18 +29,25 @@ interface Props {
  * voice). The pub is an address (pub@house), not a separate mechanism —
  * everything is mail.
  */
-export default function Pub({ onError, onReply, onPost }: Props) {
+export default function Pub({ onError, onReply, onPost, onEnterHouse }: Props) {
   const [letters, setLetters] = useState<Letter[]>([]);
   const [selected, setSelected] = useState<Letter | null>(null);
   const [openThread, setOpenThread] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  /** The room is closed to this visitor (guests only — residents always read). */
+  const [closed, setClosed] = useState(false);
 
   const load = useCallback(async () => {
     try {
       const res = await house.inbox("pub@house");
       setLetters(res.letters);
     } catch (err) {
-      onError(err instanceof Error ? err.message : "the pub is quiet");
+      const status = (err as { status?: number }).status;
+      if (status === 401) {
+        setClosed(true);
+      } else {
+        onError(err instanceof Error ? err.message : "the pub is quiet");
+      }
     } finally {
       setLoading(false);
     }
@@ -49,6 +58,27 @@ export default function Pub({ onError, onReply, onPost }: Props) {
   }, [load]);
 
   if (loading) return <p className="empty">Opening the pub…</p>;
+
+  // A closed pub answers the guest exactly like any private mailbox: 401.
+  // The house is not broken; this room just does not open to passers-by
+  // tonight. Calm surface — no red, no alarm — and a quiet path back to
+  // the door where a credential could be found.
+  if (closed) {
+    return (
+      <div className="pub-closed">
+        <div className="pub-ledger" aria-label="The pub">
+          <h2>The pub</h2>
+          <span className="address">pub@house</span>
+        </div>
+        <p className="empty">The pub is closed to visitors tonight.</p>
+        {onEnterHouse && (
+          <button type="button" className="door-link" onClick={onEnterHouse}>
+            Sign in to enter
+          </button>
+        )}
+      </div>
+    );
+  }
 
   const conversations = groupConversations(letters);
   const openConv = openThread ? conversations.find((c) => c.thread === openThread) : undefined;

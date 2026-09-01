@@ -118,7 +118,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const body = (await res.json().catch(() => null)) as
       | { error?: { message?: string } }
       | null;
-    throw new Error(body?.error?.message ?? `the house answered ${res.status}`);
+    const message = body?.error?.message ?? `the house answered ${res.status}`;
+    const err = new Error(message) as Error & { status?: number };
+    // The status lets callers tell one silence from another — a closed pub
+    // door (401) from a broken house (5xx). Absence is silence; the kind
+    // of absence is still a fact worth knowing in the room that asks.
+    err.status = res.status;
+    throw err;
   }
   return res.json() as Promise<T>;
 }

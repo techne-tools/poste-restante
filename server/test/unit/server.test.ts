@@ -79,8 +79,9 @@ function fakeHouse(): House {
       listAddresses: async () =>
         [...addresses].map((id) => ({ id, names: [], pronouns: null })),
       getAddress: async (id: string) =>
-        addresses.has(id) ? { id, names: [], pronouns: null } : null,
+        addresses.has(id) ? { id, names: [], pronouns: null, is_public: false } : null,
       updateAddress: async () => {},
+      setPublic: async () => true,
       listFrames: async () =>
         [...frames].map((id) => {
           const [name, value] = id.split(":");

@@ -9,6 +9,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { buildHouse } from "../../src/index.js";
 import { createLetterServer } from "../../src/server.js";
 import { AuthService } from "../../src/auth/service.js";
+import { PUB_ADDRESS } from "../../src/auth/visibility.js";
 import type { House } from "../../src/house.js";
 
 const INTEGRATION = process.env.POSTE_RESTANTE_INTEGRATION === "1";
@@ -357,6 +358,70 @@ describe.skipIf(!INTEGRATION)("auth (integration)", () => {
     expect(pubJson.letters.some((l) => l.envelope.thread === "th_auth_pub")).toBe(true);
 
     // Anonymous read of a private mailbox still fails.
+    const anon = await app.request("/v1/addresses/you@house/inbox", { method: "GET" });
+    expect(anon.status).toBe(401);
+  });
+
+  it("closes the pub — guests are answered with silence, residents still read", async () => {
+    const pub = await house.repo.getAddress(PUB_ADDRESS);
+    expect(pub).not.toBeNull();
+    if (!pub) return;
+    expect(pub.is_public).toBe(true); // seeded open by migration 011
+
+    // The owner closes the door. Schema, not code — an UPDATE.
+    expect(await house.repo.setPublic(PUB_ADDRESS, false)).toBe(true);
+
+    // A guest gets the same 401 as any private mailbox — absence, not denial.
+    const guest = await app.request("/v1/addresses/pub@house/inbox", { method: "GET" });
+    expect(guest.status).toBe(401);
+
+    // A resident still reads the pub — members-only, not participants-only.
+    const ben = await app.request("/v1/addresses/pub@house/inbox", {
+      method: "GET",
+      headers: { Authorization: basic("ben@house", "benbenben") },
+    });
+    expect(ben.status).toBe(200);
+    const benJson = (await ben.json()) as { letters: { envelope: { thread: string } }[] };
+    expect(benJson.letters.some((l) => l.envelope.thread === "th_auth_pub")).toBe(true);
+  });
+
+  it("a letter delivered to a closed pub does not reopen the door", async () => {
+    // The door was left closed by the previous test.
+    const pub = await house.repo.getAddress(PUB_ADDRESS);
+    expect(pub?.is_public).toBe(false);
+
+    const letter = mkLetter({
+      envelope: {
+        from: "you@house",
+        to: ["pub@house"],
+        cc: [],
+        thread: "th_auth_pub_closed",
+        kind: "letter",
+        lang: "en-AU",
+        subject: "posted after hours",
+      },
+      body: { format: "markdown", content: "No one is listening tonight." },
+    });
+    const delivered = await app.request("/v1/letters", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: basic("you@house", "youyouyou"),
+      },
+      body: JSON.stringify(letter),
+    });
+    expect(delivered.status).toBe(201);
+
+    // Materialisation must NOT resurrect the open door (ON CONFLICT DO NOTHING).
+    const guest = await app.request("/v1/addresses/pub@house/inbox", { method: "GET" });
+    expect(guest.status).toBe(401);
+  });
+
+  it("reopens the pub — the door is data, it moves both ways", async () => {
+    expect(await house.repo.setPublic(PUB_ADDRESS, true)).toBe(true);
+    const guest = await app.request("/v1/addresses/pub@house/inbox", { method: "GET" });
+    expect(guest.status).toBe(200);
+    // And the private mailbox stays sealed for the same guest.
     const anon = await app.request("/v1/addresses/you@house/inbox", { method: "GET" });
     expect(anon.status).toBe(401);
   });

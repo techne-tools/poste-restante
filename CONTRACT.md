@@ -117,7 +117,7 @@ Set `AUTH_MODE` in the environment. The owner issues credentials via the CLI (`n
 - **Private by default.** A letter is visible to an address iff that address is a participant (from/to/cc) — or the letter is public (`pub@house` is a participant). Visibility is derived from the schema (`letter_addresses`), never from a runtime check.
 - **Absence is silence.** A caller who cannot see a thing gets **404 Not Found**, never 403 — the house never confirms existence.
 - **No forging.** The envelope's `from` must be the caller's own address. A letter claiming another address is refused (403).
-- **The pub is public.** `pub@house` is the schema-level public exception: its mailbox is readable without a credential. Everything else requires one.
+- **The pub's door is a schema flag.** `pub@house` is the house's own public room: its mailbox is readable without a credential **while the address is flagged public** (`addresses.is_public`). The operator opens or closes the door with `npm run pub:door -- open|close`; no deploy needed. A closed pub answers **401 Unauthorized** to guests — the room exists, the door is shut — and stays readable by any resident. Everything else requires a credential.
 - **Deletion is first-class but scoped.** Only participants may delete.
 - **Agents authenticate with a bearer token.** MCP clients cannot do interactive login over stdio; they present `POSTE_RESTANTE_TOKEN` (issued by `npm run auth:add -- <address> --token`). No token → fail closed: every tool refuses to act.
 

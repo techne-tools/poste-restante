@@ -22,7 +22,7 @@ import { deliverLetter } from "../deliver.js";
 import type { House } from "../house.js";
 import type { RetrievalQuery } from "../retrieval/retrieval.js";
 import type { AuthService, Authenticated } from "../auth/service.js";
-import { isVisibleTo, PUB_ADDRESS } from "../auth/visibility.js";
+import { isVisibleTo, isPublicAddress, PUB_ADDRESS } from "../auth/visibility.js";
 
 const MAX_LIMIT = 100;
 const DEFAULT_LIMIT = 20;
@@ -302,13 +302,15 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
   );
 
   // The mailbox — pull by default. Nothing pushes; the letter waits.
-  // Private by default: you may read your own mailbox, or the pub.
+  // Private by default: you may read your own mailbox. The pub's door is
+  // schema: agents may read it while its is_public door stands open, and
+  // only while it does.
   server.registerTool(
     "read_mailbox",
     {
       title: "Read a mailbox",
       description:
-        "Read an address's mailbox, newest first. Pull by default — nothing pushes; the letter waits. You may read your own mailbox, or the pub (pub@house).",
+        "Read an address's mailbox, newest first. Pull by default — nothing pushes; the letter waits. You may read your own mailbox, or the pub (pub@house) while its door is open.",
       inputSchema: {
         address: z.string().min(1).describe("the address, e.g. you@house"),
         limit: z.number().int().min(1).max(MAX_LIMIT).default(50),
@@ -316,10 +318,12 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
     },
     async ({ address, limit }) => {
       const who = await caller();
-      if (!who) return fail("the house does not know you — set POSTE_RESTANTE_TOKEN");
-      if (address !== who.address && address !== PUB_ADDRESS) return fail("no such address");
       const existing = await house.repo.getAddress(address);
       if (!existing) return fail("no such address");
+      const canRead =
+        who != null &&
+        (address === who.address || address === PUB_ADDRESS || isPublicAddress(existing));
+      if (!canRead) return fail("the house does not know you — set POSTE_RESTANTE_TOKEN");
       const letters = await house.repo.listMailbox(address, limit);
       return text({ address, letters: letters.map(toLetter) });
     },

@@ -25,7 +25,7 @@ import { deliverLetter } from "./deliver.js";
 import type { House } from "./house.js";
 import type { RetrievalQuery } from "./retrieval/retrieval.js";
 import type { AuthService, Authenticated } from "./auth/service.js";
-import { isVisibleTo, visibleToSql, PUB_ADDRESS } from "./auth/visibility.js";
+import { isVisibleTo, isPublicAddress, visibleToSql, PUB_ADDRESS } from "./auth/visibility.js";
 import type { InviteService } from "./invites/service.js";
 
 const MAX_LIMIT = 100;
@@ -383,18 +383,13 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
   });
 
   // The mailbox — pull by default. Nothing pushes; the letter waits.
-  // Private by default: you may read your own mailbox, or the pub.
+  // Private by default: you may read your own mailbox. The pub's door is
+  // schema — an unauthenticated reader is admitted only while the room's
+  // is_public door is open. A closed pub answers exactly like any private
+  // mailbox: 401, the absence of a visitor, not a denial (a member knows
+  // the pub exists; absence is silence, not accusation).
   app.get("/v1/addresses/:address/inbox", async (c) => {
     const address = c.req.param("address");
-    // The pub is the house's public face — readable without a credential.
-    // Everything else is private by default: you may read your own mailbox.
-    if (address !== PUB_ADDRESS) {
-      const who = await caller(c);
-      if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
-      if (address !== who.address) {
-        return c.json({ error: { code: "not_found", message: "no such address" } }, 404);
-      }
-    }
     const existing = await house.repo.getAddress(address);
     if (!existing) {
       return c.json({ error: { code: "not_found", message: "no such address" } }, 404);
@@ -410,6 +405,17 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
         );
       }
       limit = Math.min(limit, MAX_LIMIT);
+    }
+    const who = await caller(c);
+    if (!who) {
+      // No credential. The only rooms open to a visitor are the ones left
+      // open: addresses.is_public (the pub, while its door is open).
+      if (!isPublicAddress(existing)) {
+        return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
+      }
+    } else if (address !== who.address && address !== PUB_ADDRESS) {
+      // A resident reads their own mailbox, or the house's public room.
+      return c.json({ error: { code: "not_found", message: "no such address" } }, 404);
     }
     const letters = await house.repo.listMailbox(address, limit);
     return c.json({ address, letters: letters.map(toLetter) });

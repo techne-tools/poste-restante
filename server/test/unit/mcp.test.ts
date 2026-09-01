@@ -92,11 +92,13 @@ function fakeHouse(): House {
               id,
               names: addressMeta.get(id)?.names ?? [],
               pronouns: addressMeta.get(id)?.pronouns ?? null,
+              is_public: false,
             }
           : null,
       updateAddress: async (id: string, names: string[], pronouns: string | null) => {
         addressMeta.set(id, { names, pronouns });
       },
+      setPublic: async () => true,
       listFrames: async () =>
         [...frames].map((id) => {
           const [name, value] = id.split(":");
