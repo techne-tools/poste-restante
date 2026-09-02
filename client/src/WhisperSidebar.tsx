@@ -7,6 +7,8 @@ interface Props {
   onUndismiss: (id: string) => void;
   onGaps: () => void;
   onWriteBack: (w: Whisper) => void;
+  /** The resident asked to look at the cited clause — the book, that clause open. */
+  onCite: (w: Whisper) => void;
 }
 
 const KIND_LABEL: Record<Whisper["kind"], string> = {
@@ -26,6 +28,7 @@ export default function WhisperSidebar({
   onUndismiss,
   onGaps,
   onWriteBack,
+  onCite,
 }: Props) {
   const unread = whispers.filter((w) => !w.dismissedAt);
   return (
@@ -39,6 +42,15 @@ export default function WhisperSidebar({
         >
           <div className="kind">{KIND_LABEL[w.kind]}</div>
           <div className="summary">{w.summary}</div>
+          {w.citedClause && w.citedExcerpt && (
+            <div className="citation">
+              <div className="citation-line">the household has held this — want to look?</div>
+              <div className="citation-excerpt">“{w.citedExcerpt}”</div>
+              <button className="citation-link" onClick={() => onCite(w)}>
+                the book
+              </button>
+            </div>
+          )}
           {w.reasoning && (
             <details className="reasoning">
               <summary>here&rsquo;s what I was seeing</summary>

@@ -157,6 +157,15 @@ The structural stop (SPEC §5.8 related). Consent-forward: no and yes are equall
 - **Visibility prunes itself.** A letter is visible to an address iff the address is a participant AND currently 'in' the thread. The whisper and the gap engine honour the same limb — a leaver stops being offered the thread, and gaps are not even created for it. A leaver gets 404, never 403 — absence is silence.
 - **The book is exempt.** Clause threads are commons by right — you cannot leave the household's knowing of itself. Leave/join on clause threads is refused (400).
 
+### The Whisper's Citation of the Book (2026-09-02)
+
+The house cites what it has held. When a gap whisper is created, the house embeds the whisper's own summary and searches the semantic layer for a STANDING clause that shares ground. The citation is a pointer, not a verdict — the book offers, never invokes.
+
+- **A field, not a kind.** The house's one voice carries a quiet pointer: `citedClause` (the clause thread) and `citedExcerpt` (the clause's current text, truncated, so the sidebar is self-contained). At most one clause per whisper — generosity, quiet.
+- **Only standing is held.** A proposed clause is still before the household; a contested one is held in dissent; a reversed one is no longer held. None are citable.
+- **Privacy as schema.** The book is commons by right — every resident reads it — so citing a clause leaks nothing. No new visibility limb is needed.
+- **Derived, like everything else.** Wiping the columns and re-running the gap pass yields the same citations.
+
 ## Constraints
 
 - **Async by default.** The letter waits. Nothing pushes. *Presence not pressure — hold, never ping; visible not sent.*

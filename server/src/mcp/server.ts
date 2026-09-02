@@ -445,7 +445,7 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
     {
       title: "List the whisper",
       description:
-        "List the whisper — the mailbox for the house's own letters (summaries, questions, gap offers). Presence not pressure: nothing pushes; the agent comes for it. Pass unread=true for only what the house is offering right now. Scoped to the caller: the house only whispers about correspondence the caller is party to.",
+        "List the whisper — the mailbox for the house's own letters (summaries, questions, gap offers). Presence not pressure: nothing pushes; the agent comes for it. Pass unread=true for only what the house is offering right now. Scoped to the caller: the house only whispers about correspondence the caller is party to. A whisper may carry a citation of the book (citedClause/citedExcerpt) — 'the household has held this; want to look?' — a pointer, not a verdict.",
       inputSchema: {
         unread: z.boolean().default(false).describe("only whispers not yet dismissed"),
         limit: z.number().int().min(1).max(MAX_LIMIT).default(50),

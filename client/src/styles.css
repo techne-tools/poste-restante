@@ -158,6 +158,38 @@ a:hover {
   margin: var(--space-2) 0;
 }
 
+/* The citation of the book — "the household has held this; want to
+   look?" A pointer, not a verdict. Quiet: the serif voice, the book's
+   own register, never a banner. */
+.whisper-card .citation {
+  font-size: 12px;
+  color: var(--muted);
+  border-left: 2px solid var(--border);
+  padding-left: var(--space-2);
+  margin: var(--space-2) 0;
+}
+
+.whisper-card .citation-line {
+  font-family: var(--font-display);
+  color: var(--fg);
+  margin-bottom: var(--space-1);
+}
+
+.whisper-card .citation-excerpt {
+  font-style: italic;
+  margin-bottom: var(--space-1);
+}
+
+.whisper-card .citation-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 /* A quiet whisper — no cards — is the house speaking too, so it stays in the
    serif hand. A sentence, not a dashboard. */
 .whisper .empty {

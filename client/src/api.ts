@@ -47,6 +47,12 @@ export interface Whisper {
   relatedLetterId: string | null;
   /** The room in a frame-scoped gap (gap-unvisited-corner). Null otherwise. */
   targetFrame: string | null;
+  /** The clause the house cites — "the household has held this; want to
+   *  look?" A pointer, not a verdict. Null when no citation. */
+  citedClause: string | null;
+  /** The cited clause's current text, truncated, so the sidebar is
+   *  self-contained. Null when no citation. */
+  citedExcerpt: string | null;
   summary: string;
   reasoning: string | null;
   createdAt: string;

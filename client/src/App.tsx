@@ -29,6 +29,9 @@ export default function App() {
   // A frame-scoped gap (unvisited corner) lands in the archive with that
   // frame open — the empty room, held in view.
   const [frameId, setFrameId] = useState<string | null>(null);
+  // A cited clause lands in the book with that clause open — the
+  // household's knowing of itself, held in view.
+  const [bookClause, setBookClause] = useState<string | null>(null);
 
   const refreshWhisper = useCallback(async () => {
     try {
@@ -106,6 +109,7 @@ export default function App() {
   const navigate = useCallback((v: View) => {
     setError(null);
     setFrameId(null);
+    setBookClause(null);
     setReturnTo("mailbox");
     setView(v);
   }, []);
@@ -146,6 +150,12 @@ export default function App() {
           refreshWhisper();
         }}
         onWriteBack={writeBack}
+        onCite={(w) => {
+          if (!w.citedClause) return;
+          setBookClause(w.citedClause);
+          setError(null);
+          setView("book");
+        }}
       />
       <main className="space">
         {error && (
@@ -202,7 +212,7 @@ export default function App() {
             }}
           />
         )}
-        {view === "book" && <Book onError={setError} />}
+        {view === "book" && <Book onError={setError} initialClause={bookClause} />}
         {view === "addresses" && <AddressBook onError={setError} onCompose={composeToAddress} />}
         {view === "thread" && threadId && (
           <ThreadView

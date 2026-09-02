@@ -5,6 +5,9 @@ import { renderMarkdown } from "./markdown";
 
 interface Props {
   onError: (msg: string) => void;
+  /** A clause to open on mount — the resident followed a citation from
+   *  the whisper: "the household has held this; want to look?" */
+  initialClause?: string | null;
 }
 
 /** The state voice — quiet, legible, never a verdict. */
@@ -27,7 +30,7 @@ function doorName(door: string): string {
   return door;
 }
 
-export default function Book({ onError }: Props) {
+export default function Book({ onError, initialClause }: Props) {
   const [head, setHead] = useState<BookHead | null>(null);
   const [loading, setLoading] = useState(true);
   const [openThread, setOpenThread] = useState<string | null>(null);
@@ -50,6 +53,30 @@ export default function Book({ onError }: Props) {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  // A citation lands with the clause open — the household's knowing of
+  // itself, held in view. The clause thread is fetched once the head is
+  // loaded (the thread id is only known from the head).
+  useEffect(() => {
+    if (!initialClause || !head) return;
+    const clause = head.clauses.find((c) => c.thread === initialClause);
+    if (!clause) return;
+    setOpenThread(initialClause);
+    setThreadLetters(null);
+    house
+      .clauseThread(initialClause)
+      .then((res) =>
+        setThreadLetters(
+          res.letters.map((l) => ({
+            id: l.id,
+            from: l.envelope.from,
+            body: l.body.content,
+            receivedAt: l.receivedAt,
+          })),
+        ),
+      )
+      .catch((err) => onError(err instanceof Error ? err.message : "the clause could not be read"));
+  }, [initialClause, head, onError]);
 
   const act = useCallback(
     async (role: ClauseRole, thread: string, text?: string, binding?: { door: string; value: boolean }) => {

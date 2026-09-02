@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added — the whisper's citation of the book (2026-09-02)
+
+- **The house cites what it has held.** When a gap whisper is created, the house embeds the whisper's own summary (its framing, not the raw letters), searches the semantic layer, and — if a STANDING clause shares ground above the citation threshold (0.5, deliberately below the connection threshold — a pointer, not a claim of identity) — the whisper carries `citedClause`/`citedExcerpt`. Only standing clauses are citable: "the household has held this" means settled knowing. (`server/src/db/migrations/014_whisper_citation.sql`, `server/src/whisper/service.ts`)
+- **The client's quiet pointer.** Under the whisper: "the household has held this — want to look?" with the excerpt and a link that lands in the book with that clause open. The serif voice, the book's own register — never a banner. (`client/src/WhisperSidebar.tsx`, `client/src/App.tsx`, `client/src/Book.tsx`)
+- **Privacy as schema.** The book is commons by right — every resident reads it — so citing a clause leaks nothing. No new visibility limb is needed. The citation is derived, like everything else: wiping the columns and re-running the pass yields the same citations.
+- **Tests** — 6 unit tests for `pickCitation` (best above threshold, no match, no standing, non-standing ignored, truncation, custom threshold) + 3 integration tests against live infra (standing clause → citation fires; no shared ground → no citation; proposed clause → not citable). 181/181 server, 43/43 client; typecheck and build clean.
+
 ### Added — leaving as first-class, the structural stop (2026-09-02)
 
 - **Leave/join are letters.** A resident writes a `kind: "leave"` letter to the thread (addressed to the thread's current participants — the act is the correspondence); a `kind: "join"` letter reverses it. The archive keeps the history; "current" is derived. (`server/src/db/migrations/013_leaving.sql`, `server/src/participation/`)

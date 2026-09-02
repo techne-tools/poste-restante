@@ -55,6 +55,63 @@ const SEMANTIC_HITS = 8;
 /** The house offers a few, not exhaustively — generosity, not enumeration. */
 const MAX_SEMANTIC_GAPS = 5;
 
+/**
+ * The citation threshold. A whisper cites a clause when the clause's
+ * current text shares ground with the whisper's own summary above this
+ * cosine score. Deliberately below the connection threshold (0.58) —
+ * the citation is a pointer, not a claim of identity; the house is
+ * saying "we have held this", not "this is the same thing".
+ */
+const CITATION_SCORE = 0.5;
+/** The excerpt shown in the sidebar — enough to see what the household
+ *  held, not the whole clause. The book holds the rest. */
+const CITATION_EXCERPT = 180;
+
+/** A standing clause the house may cite. */
+export interface CitableClause {
+  /** The clause thread — what the whisper points at. */
+  thread: string;
+  /** The letter id of the clause's current text — what the semantic
+   *  layer keys on. The qdrant point is the letter, not the thread. */
+  letterId: string;
+  text: string;
+}
+
+/**
+ * Pick the clause a whisper cites. Pure and deterministic: given the
+ * semantic hits for the whisper's own summary and the standing clauses,
+ * return the best standing clause above the threshold, or null.
+ *
+ * Only STANDING clauses are citable — "the household has held this"
+ * means settled knowing. A proposed clause is still before the household;
+ * a contested one is held in dissent; a reversed one is no longer held.
+ */
+export function pickCitation(
+  hits: { letterId: string; score: number }[],
+  standing: CitableClause[],
+  threshold = CITATION_SCORE,
+): { thread: string; excerpt: string } | null {
+  if (standing.length === 0) return null;
+  const byLetter = new Map(standing.map((c) => [c.letterId, c]));
+  let best: CitableClause | null = null;
+  let bestScore = 0;
+  for (const hit of hits) {
+    const clause = byLetter.get(hit.letterId);
+    if (!clause) continue;
+    if (hit.score < threshold) continue;
+    if (!best || hit.score > bestScore) {
+      best = clause;
+      bestScore = hit.score;
+    }
+  }
+  if (!best) return null;
+  const excerpt =
+    best.text.length > CITATION_EXCERPT
+      ? `${best.text.slice(0, CITATION_EXCERPT).trimEnd()}…`
+      : best.text;
+  return { thread: best.thread, excerpt };
+}
+
 export type WhisperKind =
   | "house-letter"
   | "gap-dormant-thread"
@@ -83,6 +140,17 @@ export interface Whisper {
    * anchored on the room itself, not on any one letter. Null otherwise.
    */
   targetFrame: string | null;
+  /**
+   * The clause the house cites — "the household has held this; want to
+   * look?" A pointer, not a verdict: the book offers, never invokes.
+   * At most one clause per whisper (generosity, quiet). Null when no
+   * standing clause shares ground with the whisper's own summary.
+   */
+  citedClause: string | null;
+  /** The cited clause's current text, truncated, so the sidebar is
+   *  self-contained — the resident sees what the household held without
+   *  leaving the whisper. Null when no citation. */
+  citedExcerpt: string | null;
   summary: string;
   reasoning: string | null;
   createdAt: Date;
@@ -98,6 +166,8 @@ export interface WhisperRow {
   target_thread: string | null;
   related_letter_id: string | null;
   target_frame: string | null;
+  cited_clause: string | null;
+  cited_excerpt: string | null;
   summary: string;
   reasoning: string | null;
   created_at: Date;
@@ -113,6 +183,8 @@ const toWhisper = (r: WhisperRow): Whisper => ({
   targetThread: r.target_thread,
   relatedLetterId: r.related_letter_id,
   targetFrame: r.target_frame,
+  citedClause: r.cited_clause,
+  citedExcerpt: r.cited_excerpt,
   summary: r.summary,
   reasoning: r.reasoning,
   createdAt: r.created_at,
@@ -333,10 +405,10 @@ export class WhisperService {
       const summary = `A correspondence has gone quiet — the last letter in “${name}” arrived more than a fortnight ago.`;
       const reasoning = `The last letter in ${row.thread_id} arrived more than 14 days ago, and the thread has at least two letters — a correspondence, not a one-off. The house holds it, quietly.`;
       await this.pool.query(
-        `INSERT INTO whispers (id, kind, target_thread, summary, reasoning)
-         VALUES ($1, 'gap-dormant-thread', $2, $3, $4)
+        `INSERT INTO whispers (id, kind, target_thread, summary, reasoning, cited_clause, cited_excerpt)
+         VALUES ($1, 'gap-dormant-thread', $2, $3, $4, $5, $6)
          ON CONFLICT (id) DO NOTHING`,
-        [id, row.thread_id, summary, reasoning],
+        [id, row.thread_id, summary, reasoning, null, null],
       );
       created.push({
         id,
@@ -345,6 +417,8 @@ export class WhisperService {
         targetThread: row.thread_id,
         relatedLetterId: null,
         targetFrame: null,
+        citedClause: null,
+        citedExcerpt: null,
         summary,
         reasoning,
         createdAt: now,
@@ -392,10 +466,10 @@ export class WhisperService {
       const name = row.subject?.trim() || row.thread_id;
       const summary = `A question is waiting in “${name}” — unanswered for a week.`;
       await this.pool.query(
-        `INSERT INTO whispers (id, kind, target_thread, summary, reasoning)
-         VALUES ($1, 'gap-unanswered-question', $2, $3, $4)
+        `INSERT INTO whispers (id, kind, target_thread, summary, reasoning, cited_clause, cited_excerpt)
+         VALUES ($1, 'gap-unanswered-question', $2, $3, $4, $5, $6)
          ON CONFLICT (id) DO NOTHING`,
-        [id, row.thread_id, summary, reasoning],
+        [id, row.thread_id, summary, reasoning, null, null],
       );
       created.push({
         id,
@@ -404,6 +478,8 @@ export class WhisperService {
         targetThread: row.thread_id,
         relatedLetterId: null,
         targetFrame: null,
+        citedClause: null,
+        citedExcerpt: null,
         summary,
         reasoning,
         createdAt: now,
@@ -455,10 +531,10 @@ export class WhisperService {
         const summary = `Two voices in “${name}” within ${activeFrame} — both letters here, the space between them held.`;
         const reasoning = `One thread, two correspondents, both letters in the frame ${activeFrame}. The house holds the space between them; it does not resolve it.`;
         await this.pool.query(
-          `INSERT INTO whispers (id, kind, letter_id, related_letter_id, target_thread, summary, reasoning)
-           VALUES ($1, 'gap-contradiction', $2, $3, $4, $5, $6)
+          `INSERT INTO whispers (id, kind, letter_id, related_letter_id, target_thread, summary, reasoning, cited_clause, cited_excerpt)
+           VALUES ($1, 'gap-contradiction', $2, $3, $4, $5, $6, $7, $8)
            ON CONFLICT (id) DO NOTHING`,
-          [id, row.anchor, row.related, row.thread_id, summary, reasoning],
+          [id, row.anchor, row.related, row.thread_id, summary, reasoning, null, null],
         );
         created.push({
           id,
@@ -467,6 +543,8 @@ export class WhisperService {
           targetThread: row.thread_id,
           relatedLetterId: row.related,
           targetFrame: null,
+          citedClause: null,
+          citedExcerpt: null,
           summary,
           reasoning,
           createdAt: now,
@@ -523,10 +601,10 @@ export class WhisperService {
       const summary = `An unvisited corner — “${row.frame_id}” has gone quiet while the work moves elsewhere.`;
       const reasoning = `No letter in ${row.frame_id} for 30 days, while another of your frames moved within a fortnight. The house is not telling you to go back — it is holding the empty room open.`;
       await this.pool.query(
-        `INSERT INTO whispers (id, kind, target_frame, summary, reasoning)
-         VALUES ($1, 'gap-unvisited-corner', $2, $3, $4)
+        `INSERT INTO whispers (id, kind, target_frame, summary, reasoning, cited_clause, cited_excerpt)
+         VALUES ($1, 'gap-unvisited-corner', $2, $3, $4, $5, $6)
          ON CONFLICT (id) DO NOTHING`,
-        [id, row.frame_id, summary, reasoning],
+        [id, row.frame_id, summary, reasoning, null, null],
       );
       created.push({
         id,
@@ -535,6 +613,8 @@ export class WhisperService {
         targetThread: null,
         relatedLetterId: null,
         targetFrame: row.frame_id,
+        citedClause: null,
+        citedExcerpt: null,
         summary,
         reasoning,
         createdAt: now,
@@ -617,6 +697,40 @@ export class WhisperService {
       }
     }
 
+    // The citation of the book — "the household has held this; want to
+    // look?" After the writers, the house embeds each whisper's own
+    // summary (its framing, not the raw letters) and searches the
+    // semantic layer for a STANDING clause that shares ground. The
+    // citation is a pointer, not a verdict; the book offers, never
+    // invokes. Privacy as schema: the book is commons by right, so
+    // citing a clause leaks nothing — no new visibility limb is needed.
+    if (this.semantic && this.embedder && created.length > 0) {
+      const standing = await this.pool.query<{ thread_id: string; proposed_in: string; text: string }>(
+        `SELECT thread_id, proposed_in, text FROM clauses WHERE state = 'standing'`,
+      );
+      if (standing.rows.length > 0) {
+        const citable: CitableClause[] = standing.rows.map((r) => ({
+          thread: r.thread_id,
+          letterId: r.proposed_in,
+          text: r.text,
+        }));
+        for (const w of created) {
+          if (!w.summary.trim()) continue;
+          const vector = await this.embedder.embed(w.summary);
+          const hits = await this.semantic.search(vector, SEMANTIC_HITS);
+          const citation = pickCitation(hits, citable);
+          if (!citation) continue;
+          await this.pool.query(
+            `UPDATE whispers SET cited_clause = $2, cited_excerpt = $3 WHERE id = $1`,
+            [w.id, citation.thread, citation.excerpt],
+          );
+          w.citedClause = citation.thread;
+          w.citedExcerpt = citation.excerpt;
+          this.log.info("whisper:citation", { id: w.id, clause: citation.thread });
+        }
+      }
+    }
+
     if (created.length > 0) {
       this.log.info("whisper:gaps", { count: created.length });
     }
@@ -633,10 +747,10 @@ export class WhisperService {
   ): Promise<void> {
     const { summary, reasoning } = this.pairCopy(kind, row);
     await this.pool.query(
-      `INSERT INTO whispers (id, kind, letter_id, related_letter_id, target_thread, summary, reasoning)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO whispers (id, kind, letter_id, related_letter_id, target_thread, summary, reasoning, cited_clause, cited_excerpt)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        ON CONFLICT (id) DO NOTHING`,
-      [id, kind, anchorId, relatedId, row.thread_id, summary, reasoning],
+      [id, kind, anchorId, relatedId, row.thread_id, summary, reasoning, null, null],
     );
   }
 
@@ -657,6 +771,8 @@ export class WhisperService {
       targetThread: row.thread_id,
       relatedLetterId: relatedId,
       targetFrame: null,
+      citedClause: null,
+      citedExcerpt: null,
       summary,
       reasoning,
       createdAt: now,
