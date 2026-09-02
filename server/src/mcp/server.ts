@@ -494,13 +494,13 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
     },
   );
 
-  // Read one clause thread — the correspondence is the amendment.
+  // Read one clause thread — the correspondence is the develop.
   server.registerTool(
     "read_clause",
     {
       title: "Read a clause thread",
       description:
-        "Read one clause thread — the correspondence is the amendment. The thread is the unit, not the message; the archive keeps the history, 'current' is derived.",
+        "Read one clause thread — the correspondence is the develop. The thread is the unit, not the message; the archive keeps the history, 'current' is derived.",
       inputSchema: {
         thread: z.string().min(1).describe("the clause thread id, e.g. th_clause_9f2c1"),
       },
@@ -522,29 +522,29 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
     {
       title: "Act on the house book",
       description:
-        "Perform an act on the house book — the act IS a letter. Roles: proposal (opens a thread; may carry reverses: <thread> for a reversal proposal, and binding: {door, value} for a bound door — v1: pub@house.is_public only), amendment (new text, fresh settling, objections cleared, vouches persist), objection (reopens as two voices — contested never stands), vouch (distinct per resident; orders what the house says, never what it does), withdraw (removes your objection; clearing the last objection restarts the settling clock). A clause stands after the settling period with no open objection. The house enforces stated will, never inferred will.",
+        "Perform an act on the house book — the act IS a letter. The vocabulary is the household's own — consent-forward, not parliamentary; no and yes are equally significant. Roles: offer (opens a thread; may carry reverses: <thread> for a reversal offer, and binding: {door, value} for a bound door — v1: pub@house.is_public only), develop (new text, fresh settling, stops cleared, supports persist), stop (a safe word — reopens as two voices; contested never stands), support (distinct per resident; orders what the house says, never what it does), set aside (removes your stop; clearing the last stop restarts settling — shelved, not destroyed).",
       inputSchema: {
-        role: z.enum(["proposal", "amendment", "objection", "vouch", "withdraw"]).describe("the act"),
-        amends: z.string().optional().describe("the thread this act continues (required for every role except proposal)"),
-        reverses: z.string().optional().describe("on a proposal: the thread this proposal reverses when it stands"),
+        role: z.enum(["offer", "develop", "stop", "support", "set aside"]).describe("the act"),
+        continues: z.string().optional().describe("the thread this act continues (required for every role except offer)"),
+        reverses: z.string().optional().describe("on an offer: the thread this offer reverses when it stands"),
         binding: z
           .object({
             door: z.string().describe("the door, e.g. pub@house.is_public"),
             value: z.boolean().describe("the value the door is bound to when the clause stands"),
           })
           .optional()
-          .describe("on a proposal/amendment: the door this clause binds when it stands"),
-        text: z.string().optional().describe("the clause text (required for proposal/amendment)"),
+          .describe("on an offer/develop: the door this clause binds when it stands"),
+        text: z.string().optional().describe("the clause text (required for offer/develop)"),
       },
     },
     async (args) => {
       const who = await caller();
       if (!who) return fail("the house does not know you — set POSTE_RESTANTE_TOKEN");
-      if (args.role !== "proposal" && !args.amends) {
+      if (args.role !== "offer" && !args.continues) {
         return fail("this act needs a thread to continue");
       }
-      if ((args.role === "proposal" || args.role === "amendment") && !args.text?.trim()) {
-        return fail(args.role === "proposal" ? "a proposal needs the clause text" : "an amendment needs the new text");
+      if ((args.role === "offer" || args.role === "develop") && !args.text?.trim()) {
+        return fail(args.role === "offer" ? "an offer needs the clause text" : "a develop needs the new text");
       }
       try {
         const { letterId, clause } = await house.book.act(who.address, args);

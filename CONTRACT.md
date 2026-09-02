@@ -61,7 +61,7 @@ The address book is the social graph. No follower counts, no feeds — just who 
 | `note` | a letter to yourself |
 | `task` | a letter that is a commitment |
 | `invite` | a voucher — the guest's door into the house (2026-08-31) |
-| `clause` | an act on the house book — a norm, an amendment, an objection, a vouch, a withdraw (2026-09-02) |
+| `clause` | an act on the house book — an offer, a develop, a stop, a support, a set aside (2026-09-02) |
 
 ## Threads
 
@@ -139,10 +139,10 @@ Joining the house is invitation-only, and the join flow is a letter, not a CLI c
 
 ### The House Book (2026-09-02)
 
-The commons made structural (SPEC §5.8). The book is a thread, not a table: a proposed norm is a letter to `book@house`; the amendment is the correspondence; the book's head is the current constitution, *derived* from the thread, never declared by a keeper.
+The commons made structural (SPEC §5.8). The book is a thread, not a table: an offered norm is a letter to `book@house`; the develop is the correspondence; the book's head is the current constitution, *derived* from the thread, never declared by a keeper.
 
-- **The act IS a letter.** `POST /v1/book` (and the MCP `act_on_book`) writes a `kind: "clause"` letter to the book. Roles are stated will in the body's frontmatter (a fenced `clause` block at the top of the body): `proposal` (opens a thread; may carry `reverses: <thread>` and `binding: <door>: <value>`), `amendment` (new text, fresh settling, objections cleared, vouches persist), `objection` (contested — two voices, never adjudicated), `vouch` (distinct per resident; orders what the house *says*, never what it *does*), `withdraw` (clears the objection; clearing the last restarts settling). The house enforces **stated** will, never **inferred** will.
-- **Ratification is slow by construction.** A clause stands after `BOOK_SETTLING_DAYS` (default 7) with no open objection. A standing reversal reverses its target — derived cross-thread, never declared. Amendments are reversals, not erasures: the archive keeps the history, "current" is derived.
+- **The act IS a letter.** `POST /v1/book` (and the MCP `act_on_book`) writes a `kind: "clause"` letter to the book. Roles are stated will in the body's frontmatter (a fenced `clause` block at the top of the body), and the vocabulary is the household's own — **consent-forward, not parliamentary**; no and yes are equally significant: `offer` (opens a thread; may carry `reverses: <thread>` and `binding: <door>: <value>`), `develop` (new text, fresh settling, stops cleared, supports persist), `stop` (a safe word — reopens as two voices, contested never stands; "i don't want this to happen any more"), `support` (distinct per resident; orders what the house *says*, never what it *does*), `set aside` (clears the stop; clearing the last restarts settling — shelved, not destroyed). The house enforces **stated** will, never **inferred** will.
+- **Ratification is slow by construction.** A clause stands after `BOOK_SETTLING_DAYS` (default 7) with no open stop. A standing reversal reverses its target — derived cross-thread, never declared. Develops are reversals, not erasures: the archive keeps the history, "current" is derived.
 - **Bound doors are the only mechanics.** A standing clause may bind a door (v1: `pub@house.is_public`). The door is derived from the book — the latest standing binding wins; when the last binding is reversed the door returns to its default (open). The book only writes the door when a binding's state changed, so it never fights a manual operator state while no binding stands. No ban button, no tribunal, no admin whose word outranks the book.
 - **Commons by right, never keyless.** Every resident reads the book — the one genuinely commons thing. Guests get 401: the book is the household's knowing of itself, not a public room.
 

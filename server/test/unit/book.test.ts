@@ -1,11 +1,13 @@
 /**
  * House book unit tests — the pure derivation (SPEC §5.8).
  *
- * The state machine is mechanical: proposal opens, amendment rewrites,
- * objection contests, vouch orders, withdraw clears. Settling is slow by
- * construction. Reversal is a role, not a deletion. These tests prove the
- * derivation without a database — the thread is the source of truth, the
- * table is the cache.
+ * The state machine is mechanical, and the vocabulary is the household's
+ * own — consent-forward, not parliamentary: offer opens, develop rewrites,
+ * stop contests (a safe word — no and yes are equally significant),
+ * support orders, set aside clears. Settling is slow by construction.
+ * Reversal is a role, not a deletion. These tests prove the derivation
+ * without a database — the thread is the source of truth, the table is
+ * the cache.
  */
 import { describe, it, expect } from "vitest";
 import { deriveClause } from "../../src/book/service.js";
@@ -40,38 +42,38 @@ function clause(
   };
 }
 
-const proposal = (text: string, extra = "") =>
-  `\`\`\`clause\nrole: proposal\n${extra}\`\`\`\n\n${text}`;
+const offer = (text: string, extra = "") =>
+  `\`\`\`clause\nrole: offer\n${extra}\`\`\`\n\n${text}`;
 
-const amendment = (text: string, extra = "") =>
-  `\`\`\`clause\nrole: amendment\namends: th_clause_test\n${extra}\`\`\`\n\n${text}`;
+const develop = (text: string, extra = "") =>
+  `\`\`\`clause\nrole: develop\ncontinues: th_clause_test\n${extra}\`\`\`\n\n${text}`;
 
-const objection = (from: string, at: Date, thread = "th_clause_test") =>
-  clause(from, at, "```clause\nrole: objection\namends: " + thread + "\n```\n\nI object.", thread);
+const stop = (from: string, at: Date, thread = "th_clause_test") =>
+  clause(from, at, "```clause\nrole: stop\ncontinues: " + thread + "\n```\n\nI don't want this to happen any more.", thread);
 
-const vouch = (from: string, at: Date, thread = "th_clause_test") =>
-  clause(from, at, "```clause\nrole: vouch\namends: " + thread + "\n```\n\nI vouch.", thread);
+const support = (from: string, at: Date, thread = "th_clause_test") =>
+  clause(from, at, "```clause\nrole: support\ncontinues: " + thread + "\n```\n\nI stand with this.", thread);
 
-const withdraw = (from: string, at: Date, thread = "th_clause_test") =>
-  clause(from, at, "```clause\nrole: withdraw\namends: " + thread + "\n```\n\nI withdraw my objection.", thread);
+const setAside = (from: string, at: Date, thread = "th_clause_test") =>
+  clause(from, at, "```clause\nrole: set aside\ncontinues: " + thread + "\n```\n\nI set my stop aside.", thread);
 
 describe("parseClauseFrontmatter", () => {
-  it("parses a proposal with binding and reverses", () => {
+  it("parses an offer with binding and reverses", () => {
     const fm = parseClauseFrontmatter(
-      "```clause\nrole: proposal\nreverses: th_old\nbinding: pub@house.is_public: false\n```\n\nthe pub closes at dusk",
+      "```clause\nrole: offer\nreverses: th_old\nbinding: pub@house.is_public: false\n```\n\nthe pub closes at dusk",
     );
     expect(fm).toEqual({
-      role: "proposal",
+      role: "offer",
       reverses: "th_old",
       binding: { door: "pub@house.is_public", value: false },
     });
   });
 
-  it("parses an amendment with amends", () => {
+  it("parses a develop with continues", () => {
     const fm = parseClauseFrontmatter(
-      "```clause\nrole: amendment\namends: th_clause_test\n```\n\nnew text",
+      "```clause\nrole: develop\ncontinues: th_clause_test\n```\n\nnew text",
     );
-    expect(fm).toEqual({ role: "amendment", amends: "th_clause_test" });
+    expect(fm).toEqual({ role: "develop", continues: "th_clause_test" });
   });
 
   it("returns null for a body without frontmatter", () => {
@@ -86,14 +88,14 @@ describe("parseClauseFrontmatter", () => {
 describe("stripClauseFrontmatter", () => {
   it("removes the frontmatter block, keeping the text", () => {
     expect(
-      stripClauseFrontmatter("```clause\nrole: proposal\n```\n\nthe pub closes at dusk"),
+      stripClauseFrontmatter("```clause\nrole: offer\n```\n\nthe pub closes at dusk"),
     ).toBe("the pub closes at dusk");
   });
 });
 
-describe("deriveClause — proposal and settling", () => {
-  it("a fresh proposal is proposed, settling in the future", () => {
-    const d = deriveClause([clause("you@house", T0, proposal("the pub closes at dusk"))], T0, 7);
+describe("deriveClause — offer and settling", () => {
+  it("a fresh offer is offered, settling in the future", () => {
+    const d = deriveClause([clause("you@house", T0, offer("the pub closes at dusk"))], T0, 7);
     expect(d).not.toBeNull();
     expect(d!.state).toBe("proposed");
     expect(d!.text).toBe("the pub closes at dusk");
@@ -103,18 +105,18 @@ describe("deriveClause — proposal and settling", () => {
     expect(d!.settlesAt.getTime()).toBe(T0.getTime() + 7 * DAY);
   });
 
-  it("a proposal stands after the settling period with no objection", () => {
+  it("an offer stands after the settling period with no stop", () => {
     const after = new Date(T0.getTime() + 8 * DAY);
-    const d = deriveClause([clause("you@house", T0, proposal("the pub closes at dusk"))], after, 7);
+    const d = deriveClause([clause("you@house", T0, offer("the pub closes at dusk"))], after, 7);
     expect(d!.state).toBe("standing");
     expect(d!.stoodAt!.getTime()).toBe(T0.getTime() + 7 * DAY);
   });
 
-  it("an objection contests a proposed clause — it never stands", () => {
+  it("a stop contests an offered clause — it never stands", () => {
     const after = new Date(T0.getTime() + 8 * DAY);
     const letters = [
-      clause("you@house", T0, proposal("the pub closes at dusk")),
-      objection("ben@house", new Date(T0.getTime() + DAY)),
+      clause("you@house", T0, offer("the pub closes at dusk")),
+      stop("ben@house", new Date(T0.getTime() + DAY)),
     ];
     const d = deriveClause(letters, after, 7);
     expect(d!.state).toBe("contested");
@@ -122,67 +124,67 @@ describe("deriveClause — proposal and settling", () => {
     expect(d!.stoodAt).toBeNull();
   });
 
-  it("withdrawing the last objection restarts the settling clock", () => {
+  it("setting aside the last stop restarts the settling clock", () => {
     const objAt = new Date(T0.getTime() + DAY);
     const wdAt = new Date(T0.getTime() + 2 * DAY);
     const after = new Date(T0.getTime() + 3 * DAY); // before the original settle
     const letters = [
-      clause("you@house", T0, proposal("the pub closes at dusk")),
-      objection("ben@house", objAt),
-      withdraw("ben@house", wdAt),
+      clause("you@house", T0, offer("the pub closes at dusk")),
+      stop("ben@house", objAt),
+      setAside("ben@house", wdAt),
     ];
     const d = deriveClause(letters, after, 7);
     expect(d!.state).toBe("proposed");
     expect(d!.objections).toBe(0);
-    // Fresh settlement from the withdraw, not the proposal.
+    // Fresh settlement from the set aside, not the offer.
     expect(d!.settlesAt.getTime()).toBe(wdAt.getTime() + 7 * DAY);
   });
 
-  it("a second objection from the same resident is one objection", () => {
+  it("a second stop from the same resident is one stop", () => {
     const letters = [
-      clause("you@house", T0, proposal("the pub closes at dusk")),
-      objection("ben@house", new Date(T0.getTime() + DAY)),
-      objection("ben@house", new Date(T0.getTime() + 2 * DAY)),
+      clause("you@house", T0, offer("the pub closes at dusk")),
+      stop("ben@house", new Date(T0.getTime() + DAY)),
+      stop("ben@house", new Date(T0.getTime() + 2 * DAY)),
     ];
     const d = deriveClause(letters, new Date(T0.getTime() + 8 * DAY), 7);
     expect(d!.objections).toBe(1);
     expect(d!.state).toBe("contested");
   });
 
-  it("vouches are distinct per resident and order, never command", () => {
+  it("supports are distinct per resident and order, never command", () => {
     const letters = [
-      clause("you@house", T0, proposal("the pub closes at dusk")),
-      vouch("ben@house", new Date(T0.getTime() + DAY)),
-      vouch("ben@house", new Date(T0.getTime() + 2 * DAY)),
-      vouch("sam@house", new Date(T0.getTime() + 3 * DAY)),
+      clause("you@house", T0, offer("the pub closes at dusk")),
+      support("ben@house", new Date(T0.getTime() + DAY)),
+      support("ben@house", new Date(T0.getTime() + 2 * DAY)),
+      support("sam@house", new Date(T0.getTime() + 3 * DAY)),
     ];
     const d = deriveClause(letters, new Date(T0.getTime() + 8 * DAY), 7);
     expect(d!.vouches).toBe(2);
-    expect(d!.state).toBe("standing"); // vouches never block settling
+    expect(d!.state).toBe("standing"); // supports never block settling
   });
 });
 
-describe("deriveClause — amendment", () => {
-  it("an amendment replaces the text, clears objections, keeps vouches, restarts settling", () => {
+describe("deriveClause — develop", () => {
+  it("a develop replaces the text, clears stops, keeps supports, restarts settling", () => {
     const amendAt = new Date(T0.getTime() + 2 * DAY);
     const letters = [
-      clause("you@house", T0, proposal("the pub closes at dusk")),
-      objection("ben@house", new Date(T0.getTime() + DAY)),
-      vouch("sam@house", new Date(T0.getTime() + DAY)),
-      clause("you@house", amendAt, amendment("the pub closes at midnight")),
+      clause("you@house", T0, offer("the pub closes at dusk")),
+      stop("ben@house", new Date(T0.getTime() + DAY)),
+      support("sam@house", new Date(T0.getTime() + DAY)),
+      clause("you@house", amendAt, develop("the pub closes at midnight")),
     ];
     const d = deriveClause(letters, new Date(T0.getTime() + 3 * DAY), 7);
     expect(d!.text).toBe("the pub closes at midnight");
-    expect(d!.objections).toBe(0); // the objection was to the old text
-    expect(d!.vouches).toBe(1); // the vouch is to the norm's direction
+    expect(d!.objections).toBe(0); // the stop was to the old text
+    expect(d!.vouches).toBe(1); // the support is to the norm's direction
     expect(d!.state).toBe("proposed");
     expect(d!.settlesAt.getTime()).toBe(amendAt.getTime() + 7 * DAY);
   });
 
-  it("an amendment can change the binding", () => {
+  it("a develop can change the binding", () => {
     const letters = [
-      clause("you@house", T0, proposal("the pub closes at dusk", "binding: pub@house.is_public: false\n")),
-      clause("you@house", new Date(T0.getTime() + DAY), amendment("the pub stays open", "binding: pub@house.is_public: true\n")),
+      clause("you@house", T0, offer("the pub closes at dusk", "binding: pub@house.is_public: false\n")),
+      clause("you@house", new Date(T0.getTime() + DAY), develop("the pub stays open", "binding: pub@house.is_public: true\n")),
     ];
     const d = deriveClause(letters, new Date(T0.getTime() + 8 * DAY), 7);
     expect(d!.binding).toEqual({ door: "pub@house.is_public", value: true });
@@ -191,12 +193,12 @@ describe("deriveClause — amendment", () => {
 });
 
 describe("deriveClause — reversal", () => {
-  it("a reversal proposal that stands becomes a standing norm, marked as a reversal", () => {
+  it("a reversal offer that stands becomes a standing norm, marked as a reversal", () => {
     const revAt = new Date(T0.getTime() + 2 * DAY);
     const after = new Date(T0.getTime() + 10 * DAY);
     const letters = [
-      clause("you@house", T0, proposal("the pub closes at dusk")),
-      clause("ben@house", revAt, proposal("the pub stays open", "reverses: th_clause_test\n")),
+      clause("you@house", T0, offer("the pub closes at dusk")),
+      clause("ben@house", revAt, offer("the pub stays open", "reverses: th_clause_test\n")),
     ];
     const d = deriveClause(letters, after, 7);
     expect(d!.pendingReversal).toBe(true);
@@ -208,24 +210,24 @@ describe("deriveClause — reversal", () => {
     expect(d!.stoodAt!.getTime()).toBe(revAt.getTime() + 7 * DAY);
   });
 
-  it("a reversal proposal is still proposed before settling", () => {
+  it("a reversal offer is still offered before settling", () => {
     const revAt = new Date(T0.getTime() + 2 * DAY);
     const letters = [
-      clause("you@house", T0, proposal("the pub closes at dusk")),
-      clause("ben@house", revAt, proposal("the pub stays open", "reverses: th_clause_test\n")),
+      clause("you@house", T0, offer("the pub closes at dusk")),
+      clause("ben@house", revAt, offer("the pub stays open", "reverses: th_clause_test\n")),
     ];
     const d = deriveClause(letters, new Date(T0.getTime() + 3 * DAY), 7);
     expect(d!.state).toBe("proposed");
     expect(d!.pendingReversal).toBe(true);
   });
 
-  it("an objection to a reversal proposal keeps the original standing", () => {
+  it("a stop to a reversal offer keeps the original standing", () => {
     const revAt = new Date(T0.getTime() + 2 * DAY);
     const after = new Date(T0.getTime() + 10 * DAY);
     const letters = [
-      clause("you@house", T0, proposal("the pub closes at dusk")),
-      clause("ben@house", revAt, proposal("the pub stays open", "reverses: th_clause_test\n")),
-      objection("sam@house", new Date(T0.getTime() + 3 * DAY)),
+      clause("you@house", T0, offer("the pub closes at dusk")),
+      clause("ben@house", revAt, offer("the pub stays open", "reverses: th_clause_test\n")),
+      stop("sam@house", new Date(T0.getTime() + 3 * DAY)),
     ];
     const d = deriveClause(letters, after, 7);
     expect(d!.state).toBe("contested");
@@ -238,14 +240,14 @@ describe("deriveClause — edge cases", () => {
     expect(deriveClause([], T0, 7)).toBeNull();
   });
 
-  it("returns null when no proposal ever opened the thread", () => {
-    const letters = [objection("ben@house", T0)];
+  it("returns null when no offer ever opened the thread", () => {
+    const letters = [stop("ben@house", T0)];
     expect(deriveClause(letters, T0, 7)).toBeNull();
   });
 
   it("a letter without frontmatter in the thread is prose, not an act", () => {
     const letters = [
-      clause("you@house", T0, proposal("the pub closes at dusk")),
+      clause("you@house", T0, offer("the pub closes at dusk")),
       clause("ben@house", new Date(T0.getTime() + DAY), "I think this is a good idea."),
     ];
     const d = deriveClause(letters, new Date(T0.getTime() + 8 * DAY), 7);

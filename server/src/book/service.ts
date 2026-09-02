@@ -1,34 +1,39 @@
 /**
  * The house book — the commons made structural (SPEC §5.8).
  *
- * The book is a thread, not a table. A proposed norm is a letter to
- * book@house; the amendment is the correspondence; the book's head is the
+ * The book is a thread, not a table. An offered norm is a letter to
+ * book@house; the develop is the correspondence; the book's head is the
  * current constitution, DERIVED from the thread, never declared by a keeper.
  *
  * This service is the rememberer: it reads the clause threads and derives
  * the head. It is never the author — every act is a letter, and the archive
- * keeps the history. Amendments are reversals, not erasures; "current" is
+ * keeps the history. Develops are reversals, not erasures; "current" is
  * derived, not stored.
  *
- * The state machine (mechanical, stated will only):
+ * The state machine (mechanical, stated will only). The vocabulary is the
+ * household's own — consent-forward, not parliamentary. No and yes are
+ * equally significant; stop is a safe word, solidly grounded:
  *
- *   proposal   → opens a thread; state=proposed, settling clock starts.
- *                May carry `reverses: <thread>` (a reversal proposal) and
+ *   offer      → opens a thread; state=offered, settling clock starts.
+ *                May carry `reverses: <thread>` (a reversal offer) and
  *                `binding: <door>: <value>` (a bound door).
- *   amendment  → continues a thread; new text, fresh settling clock,
- *                objections cleared (the objection was to the old text),
- *                vouches persist (the vouch is to the norm's direction).
- *   objection  → reopens as two voices; state=contested. Contested never
- *                stands. Distinct per resident — one objection per text.
- *   vouch      → distinct per resident; orders what the house SAYS, never
+ *   develop    → continues a thread; new text, fresh settling clock,
+ *                stops cleared (the stop was to the old text), supports
+ *                persist (the support is to the norm's direction).
+ *   stop       → reopens as two voices; state=contested. Contested never
+ *                stands. Distinct per resident — one stop per text. The
+ *                safe word: "i don't want this to happen any more."
+ *   support    → distinct per resident; orders what the house SAYS, never
  *                what the house DOES.
- *   withdraw   → removes the resident's objection. Clearing the last
- *                objection restarts the settling clock (fresh settlement).
+ *   set aside  → removes the resident's stop. Clearing the last stop
+ *                restarts the settling clock (fresh settlement). Set
+ *                aside is provisional by construction — the stop is
+ *                shelved, not destroyed.
  *
- * Settling: a proposed clause stands when the settling period has passed
- * with no open objection. A reversal proposal that stands reverses its
- * target (the target must be standing). A reversed clause is terminal until
- * an amendment re-proposes it.
+ * Settling: an offered clause stands when the settling period has passed
+ * with no open stop. A reversal offer that stands reverses its target
+ * (the target must be standing). A reversed clause is terminal until a
+ * develop re-offers it.
  *
  * Bound doors: a standing clause may bind a door (v1: pub@house.is_public).
  * The door is DERIVED from the book — the latest standing binding wins;
@@ -60,14 +65,14 @@ export const PUB_DOOR = "pub@house.is_public";
 export type ClauseState = "proposed" | "contested" | "standing" | "reversed";
 
 export interface ClauseAction {
-  role: "proposal" | "amendment" | "objection" | "vouch" | "withdraw";
-  /** The thread this act continues. Required for every role except proposal. */
-  amends?: string;
-  /** On a proposal: the thread this proposal reverses when it stands. */
+  role: "offer" | "develop" | "stop" | "support" | "set aside";
+  /** The thread this act continues. Required for every role except offer. */
+  continues?: string;
+  /** On an offer: the thread this offer reverses when it stands. */
   reverses?: string;
-  /** On a proposal/amendment: the door this clause binds when it stands. */
+  /** On an offer/develop: the door this clause binds when it stands. */
   binding?: { door: string; value: boolean };
-  /** The clause text (the norm). Required for proposal/amendment. */
+  /** The clause text (the norm). Required for offer/develop. */
   text?: string;
 }
 
@@ -123,7 +128,7 @@ export function deriveClause(
     const letterId = letter.id ?? "";
 
     switch (fm.role) {
-      case "proposal": {
+      case "offer": {
         text = stripClauseFrontmatter(letter.body.content);
         proposedBy = letter.envelope.from;
         proposedIn = letterId;
@@ -136,7 +141,7 @@ export function deriveClause(
         vouchers.clear();
         break;
       }
-      case "amendment": {
+      case "develop": {
         text = stripClauseFrontmatter(letter.body.content);
         proposedBy = letter.envelope.from;
         proposedIn = letterId;
@@ -148,22 +153,22 @@ export function deriveClause(
         objectors.clear();
         break;
       }
-      case "objection": {
+      case "stop": {
         objectors.add(letter.envelope.from);
         if (state === "proposed") {
           state = "contested";
         }
         break;
       }
-      case "vouch": {
+      case "support": {
         vouchers.add(letter.envelope.from);
         break;
       }
-      case "withdraw": {
+      case "set aside": {
         objectors.delete(letter.envelope.from);
         if (objectors.size === 0 && state === "contested") {
           state = "proposed";
-          settlingFrom = at; // fresh settlement — the objection is gone
+          settlingFrom = at; // fresh settlement — the stop is gone
         }
         break;
       }
@@ -220,14 +225,14 @@ export class BookService {
    * the changed state binds. Returns the letter id and the derived clause.
    */
   async act(who: string, action: ClauseAction): Promise<{ letterId: string; clause: DerivedClause }> {
-    const thread = action.amends ?? `th_clause_${crypto.randomUUID().slice(0, 8)}`;
+    const thread = action.continues ?? `th_clause_${crypto.randomUUID().slice(0, 8)}`;
     const fm: ClauseFrontmatter = { role: action.role };
-    if (action.amends) fm.amends = action.amends;
+    if (action.continues) fm.continues = action.continues;
     if (action.reverses) fm.reverses = action.reverses;
     if (action.binding) fm.binding = action.binding;
 
     const lines = ["```clause", `role: ${action.role}`];
-    if (action.amends) lines.push(`amends: ${action.amends}`);
+    if (action.continues) lines.push(`continues: ${action.continues}`);
     if (action.reverses) lines.push(`reverses: ${action.reverses}`);
     if (action.binding) lines.push(`binding: ${action.binding.door}: ${action.binding.value}`);
     lines.push("```", "");

@@ -65,13 +65,17 @@ export const RedeemSchema = z.object({
 /**
  * The house book — an act is a letter (SPEC §5.8). The role is stated
  * will; the house enforces what is declared, never what is inferred.
- * A proposal opens a thread; every other role continues one (`amends`).
- * A proposal may carry `reverses` (a reversal proposal) and `binding`
- * (a bound door — v1: pub@house.is_public only).
+ * The vocabulary is the household's own — consent-forward, not
+ * parliamentary: offer (a norm is a gift the household may accept),
+ * develop (it grows), stop (a safe word — no and yes are equally
+ * significant), support (standing with), set aside (shelved, not
+ * destroyed). An offer opens a thread; every other role continues one
+ * (`continues`). An offer may carry `reverses` (a reversal offer) and
+ * `binding` (a bound door — v1: pub@house.is_public only).
  */
 export const ClauseActionSchema = z.object({
-  role: z.enum(["proposal", "amendment", "objection", "vouch", "withdraw"]),
-  amends: z.string().min(1).optional(),
+  role: z.enum(["offer", "develop", "stop", "support", "set aside"]),
+  continues: z.string().min(1).optional(),
   reverses: z.string().min(1).optional(),
   binding: z
     .object({

@@ -1,8 +1,8 @@
 -- 012_book.sql
 -- The house book (SPEC §5.8) — the commons made structural.
 --
--- The book is a thread, not a table. A proposed norm is a letter to
--- book@house; the amendment is the correspondence; the book's head is the
+-- The book is a thread, not a table. An offered norm is a letter to
+-- book@house; the develop is the correspondence; the book's head is the
 -- current constitution, DERIVED from the thread, never declared by a keeper.
 --
 -- This table is the rememberer's cache: it holds the derived head so the
@@ -13,12 +13,16 @@
 --
 -- House invariants enforced here:
 --   * Anti-hierarchy: no admin class, no tribunal. A clause is a thread;
---     any resident may propose, any may object. The state machine is
+--     any resident may offer, any may stop. The state machine is
 --     mechanical — the house enforces stated will, never inferred will.
---   * Amendments are reversals, not erasures: the archive keeps the history;
+--   * Consent-forward: no and yes are equally significant. Stop is a safe
+--     word, solidly grounded — a stop reopens the clause as two voices
+--     and contested never stands. The vocabulary is the household's own
+--     (offer, develop, stop, support, set aside), not parliamentary.
+--   * Develops are reversals, not erasures: the archive keeps the history;
 --     "current" is derived. Reversal is a role, not a deletion.
 --   * Ratification is slow by construction: a clause stands only after a
---     settling period with no open objection. Objection reopens it as two
+--     settling period with no open stop. A stop reopens it as two
 --     voices — divergence held, never adjudicated.
 --   * Bound doors are the only mechanics: a ratified clause may bind a
 --     door (v1: the pub's is_public). Enforcement is collective, slow,
@@ -33,7 +37,7 @@
 
 CREATE TABLE IF NOT EXISTS clauses (
     -- The thread IS the clause. One clause per thread; amendments continue
-    -- the thread (the correspondence is the amendment).
+    -- the thread (the correspondence is the develop).
     thread_id    text PRIMARY KEY REFERENCES threads(id) ON DELETE CASCADE,
     -- The current text of the clause (derived from the latest
     -- proposal/amendment/reversal, frontmatter stripped).
@@ -45,9 +49,9 @@ CREATE TABLE IF NOT EXISTS clauses (
     -- The derived state. 'reversed' is terminal until an amendment
     -- re-proposes the clause.
     state        text NOT NULL CHECK (state IN ('proposed','contested','standing','reversed')),
-    -- The settling clock: the time of the latest proposal/amendment, or of
-    -- the withdraw that cleared the last objection. A clause stands when
-    -- settling_from + settling_days has passed with no open objection.
+    -- The settling clock: the time of the latest offer/develop, or of
+    -- the set aside that cleared the last stop. A clause stands when
+    -- settling_from + settling_days has passed with no open stop.
     settling_from timestamptz NOT NULL,
     -- True when the current text came from a reversal — when it settles it
     -- becomes 'reversed', not 'standing'.
@@ -58,10 +62,12 @@ CREATE TABLE IF NOT EXISTS clauses (
     reversed_at  timestamptz,
     -- The letter that reversed the clause (the reversal that stood).
     reversed_in  text REFERENCES letters(id) ON DELETE SET NULL,
-    -- Open objections (distinct residents who object to the current text).
+    -- Open stops (distinct residents who stop the current text). A stop is
+    -- a safe word — no and yes are equally significant; contested never
+    -- stands.
     objections   integer NOT NULL DEFAULT 0,
-    -- Vouches for the current text (distinct residents). Weight orders what
-    -- the house SAYS, never what the house DOES.
+    -- Supports for the current text (distinct residents). Weight orders
+    -- what the house SAYS, never what the house DOES.
     vouches      integer NOT NULL DEFAULT 0,
     -- The door this clause binds, if any. v1: 'pub@house.is_public' only.
     -- Nullable: a norm may be unbound — it orders what the house says,
@@ -69,17 +75,17 @@ CREATE TABLE IF NOT EXISTS clauses (
     binding_door text,
     -- The value the door is bound to when the clause stands.
     binding_value boolean,
-    -- On a reversal proposal: the thread this proposal reverses when it
-    -- stands. Nullable: only reversal proposals carry a target.
+    -- On a reversal offer: the thread this offer reverses when it
+    -- stands. Nullable: only reversal offers carry a target.
     reverses_thread text REFERENCES threads(id) ON DELETE SET NULL
 );
 
 CREATE INDEX IF NOT EXISTS clauses_state_idx ON clauses (state);
 
--- Distinct-resident objectors and vouchers for the current text of a clause.
--- The counts in `clauses` are derived from these sets — a resident objecting
--- twice is one objection, not two. The sets are cleared when the text
--- changes (amendment/proposal) and re-derived from the thread's letters.
+-- Distinct-resident stops and supports for the current text of a clause.
+-- The counts in `clauses` are derived from these sets — a resident stopping
+-- twice is one stop, not two. The sets are cleared when the text changes
+-- (develop/offer) and re-derived from the thread's letters.
 CREATE TABLE IF NOT EXISTS clause_objectors (
     thread_id text NOT NULL REFERENCES clauses(thread_id) ON DELETE CASCADE,
     address   text NOT NULL REFERENCES addresses(id) ON DELETE CASCADE,

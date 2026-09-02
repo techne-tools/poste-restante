@@ -4,11 +4,15 @@
  *
  * These prove the whole arc:
  *
- *   propose → settle → bind the pub door → reverse → the door returns
+ *   offer → settle → bind the pub door → reverse → the door returns
  *
  * And the privacy rules: the book is commons by right (every resident reads
  * it), but it is NOT a keyless door — a guest gets 401, never the book.
  * Absence is silence; the book is the household's knowing of itself.
+ *
+ * The vocabulary is the household's own — consent-forward, not
+ * parliamentary: offer, develop, stop (a safe word), support, set aside.
+ * No and yes are equally significant.
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { buildHouse } from "../../src/index.js";
@@ -68,12 +72,12 @@ describe.skipIf(!INTEGRATION)("house book (integration)", () => {
     expect(addr!.is_public).toBe(false); // commons by right, never keyless
   });
 
-  it("proposes a clause — the act is a letter, the head derives it", async () => {
+  it("offers a clause — the act is a letter, the head derives it", async () => {
     const res = await app.request("/v1/book", {
       method: "POST",
       headers: { Authorization: basic("you@house", "youyouyou") },
       body: JSON.stringify({
-        role: "proposal",
+        role: "offer",
         text: "the pub closes at dusk",
         binding: { door: PUB_DOOR, value: false },
       }),
@@ -95,23 +99,23 @@ describe.skipIf(!INTEGRATION)("house book (integration)", () => {
     expect(head.doors).toHaveLength(0); // not standing yet — no binding
   });
 
-  it("a resident can vouch and object — distinct voices", async () => {
+  it("a resident can support and stop — distinct voices", async () => {
     const head0 = await book.head();
     const thread = head0.clauses[0]!.thread;
 
-    const vouch = await app.request("/v1/book", {
+    const support = await app.request("/v1/book", {
       method: "POST",
       headers: { Authorization: basic("ben@house", "benbenben") },
-      body: JSON.stringify({ role: "vouch", amends: thread }),
+      body: JSON.stringify({ role: "support", continues: thread }),
     });
-    expect(vouch.status).toBe(201);
+    expect(support.status).toBe(201);
 
-    const object = await app.request("/v1/book", {
+    const stop = await app.request("/v1/book", {
       method: "POST",
       headers: { Authorization: basic("sam@house", "samsamsam") },
-      body: JSON.stringify({ role: "objection", amends: thread }),
+      body: JSON.stringify({ role: "stop", continues: thread }),
     });
-    expect(object.status).toBe(201);
+    expect(stop.status).toBe(201);
 
     const head1 = await book.head();
     expect(head1.clauses[0]!.vouches).toBe(1);
@@ -119,14 +123,14 @@ describe.skipIf(!INTEGRATION)("house book (integration)", () => {
     expect(head1.clauses[0]!.state).toBe("contested");
   });
 
-  it("withdrawing the last objection restarts settling", async () => {
+  it("setting aside the last stop restarts settling", async () => {
     const head0 = await book.head();
     const thread = head0.clauses[0]!.thread;
 
     const wd = await app.request("/v1/book", {
       method: "POST",
       headers: { Authorization: basic("sam@house", "samsamsam") },
-      body: JSON.stringify({ role: "withdraw", amends: thread }),
+      body: JSON.stringify({ role: "set aside", continues: thread }),
     });
     expect(wd.status).toBe(201);
 
@@ -180,7 +184,7 @@ describe.skipIf(!INTEGRATION)("house book (integration)", () => {
       method: "POST",
       headers: { Authorization: basic("ben@house", "benbenben") },
       body: JSON.stringify({
-        role: "proposal",
+        role: "offer",
         text: "the pub stays open",
         reverses: thread,
       }),
@@ -215,16 +219,16 @@ describe.skipIf(!INTEGRATION)("house book (integration)", () => {
     const res = await app.request("/v1/book", {
       method: "POST",
       headers: { Authorization: basic("you@house", "youyouyou") },
-      body: JSON.stringify({ role: "objection" }),
+      body: JSON.stringify({ role: "stop" }),
     });
     expect(res.status).toBe(400);
   });
 
-  it("a proposal without text is refused", async () => {
+  it("an offer without text is refused", async () => {
     const res = await app.request("/v1/book", {
       method: "POST",
       headers: { Authorization: basic("you@house", "youyouyou") },
-      body: JSON.stringify({ role: "proposal" }),
+      body: JSON.stringify({ role: "offer" }),
     });
     expect(res.status).toBe(400);
   });
@@ -232,7 +236,7 @@ describe.skipIf(!INTEGRATION)("house book (integration)", () => {
   it("a guest cannot act on the book", async () => {
     const res = await app.request("/v1/book", {
       method: "POST",
-      body: JSON.stringify({ role: "proposal", text: "the house is quiet" }),
+      body: JSON.stringify({ role: "offer", text: "the house is quiet" }),
     });
     expect(res.status).toBe(401);
   });

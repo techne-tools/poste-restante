@@ -9,7 +9,7 @@ interface Props {
 
 /** The state voice — quiet, legible, never a verdict. */
 const STATE_LABEL: Record<Clause["state"], string> = {
-  proposed: "proposed",
+  proposed: "offered",
   contested: "contested — two voices",
   standing: "standing",
   reversed: "reversed",
@@ -55,7 +55,7 @@ export default function Book({ onError }: Props) {
     async (role: ClauseRole, thread: string, text?: string, binding?: { door: string; value: boolean }) => {
       setActing(thread);
       try {
-        await house.actOnBook({ role, amends: thread, text, binding });
+        await house.actOnBook({ role, continues: thread, text, binding });
         await refresh();
       } catch (err) {
         onError(err instanceof Error ? err.message : "the book could not hold this act");
@@ -71,7 +71,7 @@ export default function Book({ onError }: Props) {
     setProposing(true);
     try {
       await house.actOnBook({
-        role: "proposal",
+        role: "offer",
         text: draft,
         binding: draftBinding ? { door: "pub@house.is_public", value: false } : undefined,
       });
@@ -79,7 +79,7 @@ export default function Book({ onError }: Props) {
       setDraftBinding(false);
       await refresh();
     } catch (err) {
-      onError(err instanceof Error ? err.message : "the book could not hold this proposal");
+      onError(err instanceof Error ? err.message : "the book could not hold this offer");
     } finally {
       setProposing(false);
     }
@@ -151,9 +151,9 @@ export default function Book({ onError }: Props) {
               </div>
               <div className="clause-text">{renderMarkdown(c.text)}</div>
               <div className="clause-meta">
-                <span>proposed by {c.proposedBy}</span>
-                {c.vouches > 0 && <span>{c.vouches} vouch{c.vouches === 1 ? "" : "es"}</span>}
-                {c.objections > 0 && <span>{c.objections} objection{c.objections === 1 ? "" : "s"}</span>}
+                <span>offered by {c.proposedBy}</span>
+                {c.vouches > 0 && <span>{c.vouches} support{c.vouches === 1 ? "" : "s"}</span>}
+                {c.objections > 0 && <span>{c.objections} stop{c.objections === 1 ? "" : "s"}</span>}
                 <button className="clause-toggle" onClick={() => openClause(c.thread)}>
                   {openThread === c.thread ? "the correspondence" : "the correspondence"}
                 </button>
@@ -192,37 +192,37 @@ export default function Book({ onError }: Props) {
               </div>
               <div className="clause-text">{renderMarkdown(c.text)}</div>
               <div className="clause-meta">
-                <span>proposed by {c.proposedBy}</span>
+                <span>offered by {c.proposedBy}</span>
                 <span>
                   {c.state === "contested"
                     ? "held in dissent"
                     : `settles in ${daysUntil(c.settlesAt)} day${daysUntil(c.settlesAt) === 1 ? "" : "s"}`}
                 </span>
-                {c.vouches > 0 && <span>{c.vouches} vouch{c.vouches === 1 ? "" : "es"}</span>}
-                {c.objections > 0 && <span>{c.objections} objection{c.objections === 1 ? "" : "s"}</span>}
+                {c.vouches > 0 && <span>{c.vouches} support{c.vouches === 1 ? "" : "s"}</span>}
+                {c.objections > 0 && <span>{c.objections} stop{c.objections === 1 ? "" : "s"}</span>}
               </div>
               <div className="clause-actions">
                 <button
                   className="clause-act"
                   disabled={acting === c.thread}
-                  onClick={() => act("vouch", c.thread)}
+                  onClick={() => act("support", c.thread)}
                 >
-                  {acting === c.thread ? "…" : "vouch"}
+                  {acting === c.thread ? "…" : "support"}
                 </button>
                 <button
                   className="clause-act"
                   disabled={acting === c.thread}
-                  onClick={() => act("objection", c.thread)}
+                  onClick={() => act("stop", c.thread)}
                 >
-                  {acting === c.thread ? "…" : "object"}
+                  {acting === c.thread ? "…" : "stop"}
                 </button>
                 {c.objections > 0 && (
                   <button
                     className="clause-act"
                     disabled={acting === c.thread}
-                    onClick={() => act("withdraw", c.thread)}
+                    onClick={() => act("set aside", c.thread)}
                   >
-                    {acting === c.thread ? "…" : "withdraw"}
+                    {acting === c.thread ? "…" : "set aside"}
                   </button>
                 )}
                 <button className="clause-toggle" onClick={() => openClause(c.thread)}>
@@ -270,10 +270,11 @@ export default function Book({ onError }: Props) {
       )}
 
       <section className="book-section book-propose">
-        <h3>Propose a norm</h3>
+        <h3>Offer a norm</h3>
         <p className="book-hint">
-          A proposal is a letter to the book. It stands after {head.settlingDays} days with no
-          objection — slow by construction, reversible by amendment.
+          An offer is a letter to the book. It stands after {head.settlingDays} days with no
+          stop — slow by construction, reversible by develop. No and yes are equally significant:
+          anyone may stop it, and a stop holds the norm in dissent until it is set aside.
         </p>
         <textarea
           className="book-draft"
@@ -292,7 +293,7 @@ export default function Book({ onError }: Props) {
         </label>
         <div className="book-propose-actions">
           <button className="primary" onClick={propose} disabled={proposing || !draft.trim()}>
-            {proposing ? "Writing…" : "Propose to the book"}
+            {proposing ? "Writing…" : "Offer to the book"}
           </button>
         </div>
       </section>

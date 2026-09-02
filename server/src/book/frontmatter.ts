@@ -3,16 +3,23 @@
  *
  * A clause letter is a letter to book@house with a small frontmatter block
  * at the top of the body. The house enforces STATED will, never inferred
- * will: every act (propose, amend, object, vouch, withdraw) is declared in
+ * will: every act (offer, develop, stop, support, set aside) is declared in
  * the letter, never guessed from the prose.
+ *
+ * The vocabulary is the household's own — consent-forward, not
+ * parliamentary. A norm is *offered* (a gift the household may accept),
+ * *developed* (it grows), *stopped* (a safe word — no and yes are equally
+ * significant), *supported* (standing with), *set aside* (shelved, not
+ * destroyed). The mechanics stay mechanical: the derivation, the settling
+ * period, the bound doors. Care in the register, strength in the engine.
  *
  * Frontmatter shape (the first fenced block of the body):
  *
  *   ```clause
- *   role: proposal
- *   amends: th_9f2c1        # required for amendment/objection/vouch/withdraw
- *   reverses: th_9f2c1      # optional on proposal — a reversal proposal
- *   binding: pub@house.is_public: true   # optional on proposal/amendment
+ *   role: offer
+ *   continues: th_9f2c1        # required for develop/stop/support/set aside
+ *   reverses: th_9f2c1        # optional on offer — a reversal offer
+ *   binding: pub@house.is_public: true   # optional on offer/develop
  *   ```
  *
  * The rest of the body is the clause text (the norm itself). The house
@@ -20,20 +27,20 @@
  */
 import type { Letter } from "../types.js";
 
-export type ClauseRole = "proposal" | "amendment" | "objection" | "vouch" | "withdraw";
+export type ClauseRole = "offer" | "develop" | "stop" | "support" | "set aside";
 
 export interface ClauseFrontmatter {
   role: ClauseRole;
-  /** The thread this act continues. Required for every role except proposal. */
-  amends?: string;
-  /** On a proposal: the thread this proposal reverses when it stands. */
+  /** The thread this act continues. Required for every role except offer. */
+  continues?: string;
+  /** On an offer: the thread this offer reverses when it stands. */
   reverses?: string;
-  /** On a proposal/amendment: the door this clause binds when it stands. */
+  /** On an offer/develop: the door this clause binds when it stands. */
   binding?: { door: string; value: boolean };
 }
 
-const ROLE_RE = /^role:\s*(\S+)\s*$/m;
-const AMENDS_RE = /^amends:\s*(\S+)\s*$/m;
+const ROLE_RE = /^role:\s*(.+?)\s*$/m;
+const CONTINUES_RE = /^continues:\s*(\S+)\s*$/m;
 const REVERSES_RE = /^reverses:\s*(\S+)\s*$/m;
 const BINDING_RE = /^binding:\s*(\S+):\s*(true|false)\s*$/m;
 
@@ -41,11 +48,11 @@ const BINDING_RE = /^binding:\s*(\S+):\s*(true|false)\s*$/m;
 const FRONTMATTER_RE = /^```clause\s*\n([\s\S]*?)\n```\s*\n?/;
 
 export const CLAUSE_ROLES: ClauseRole[] = [
-  "proposal",
-  "amendment",
-  "objection",
-  "vouch",
-  "withdraw",
+  "offer",
+  "develop",
+  "stop",
+  "support",
+  "set aside",
 ];
 
 /** Parse the frontmatter from a clause body. Returns null when absent. */
@@ -59,8 +66,8 @@ export function parseClauseFrontmatter(body: string): ClauseFrontmatter | null {
   if (!CLAUSE_ROLES.includes(role)) return null;
 
   const fm: ClauseFrontmatter = { role };
-  const amends = block.match(AMENDS_RE)?.[1];
-  if (amends) fm.amends = amends;
+  const continues = block.match(CONTINUES_RE)?.[1];
+  if (continues) fm.continues = continues;
   const reverses = block.match(REVERSES_RE)?.[1];
   if (reverses) fm.reverses = reverses;
   const binding = block.match(BINDING_RE);

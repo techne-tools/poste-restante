@@ -86,7 +86,7 @@ export interface BookHead {
   settlingDays: number;
 }
 
-export type ClauseRole = "proposal" | "amendment" | "objection" | "vouch" | "withdraw";
+export type ClauseRole = "offer" | "develop" | "stop" | "support" | "set aside";
 
 export interface SearchHit {
   letterId: string;
@@ -253,7 +253,7 @@ export const house = {
     return request<BookHead>("/book");
   },
 
-  /** Read one clause thread — the correspondence is the amendment. */
+  /** Read one clause thread — the correspondence is the develop. */
   clauseThread(thread: string) {
     return request<{ thread: string; letters: Letter[] }>(
       `/book/threads/${encodeURIComponent(thread)}`,
@@ -263,7 +263,7 @@ export const house = {
   /** Perform an act on the book — the act IS a letter. */
   actOnBook(action: {
     role: ClauseRole;
-    amends?: string;
+    continues?: string;
     reverses?: string;
     binding?: { door: string; value: boolean };
     text?: string;

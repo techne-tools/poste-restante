@@ -188,14 +188,14 @@ describe("house book client", () => {
       clause: { thread: "th_clause_1", state: "proposed" },
     });
     const res = await house.actOnBook({
-      role: "objection",
-      amends: "th_clause_1",
+      role: "stop",
+      continues: "th_clause_1",
     });
     expect(res.clause.state).toBe("proposed");
     const [url, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(url).toBe("/v1/book");
     expect(init.method).toBe("POST");
-    expect(JSON.parse(init.body)).toEqual({ role: "objection", amends: "th_clause_1" });
+    expect(JSON.parse(init.body)).toEqual({ role: "stop", continues: "th_clause_1" });
   });
 
   it("reads a clause thread as a GET to /v1/book/threads/:id", async () => {

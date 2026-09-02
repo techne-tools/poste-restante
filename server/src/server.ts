@@ -535,7 +535,7 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
     return c.json(head);
   });
 
-  // Read one clause thread — the correspondence is the amendment.
+  // Read one clause thread — the correspondence is the develop.
   app.get("/v1/book/threads/:id", async (c) => {
     const who = await caller(c);
     if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
@@ -579,24 +579,24 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
       );
     }
     const action = parsed.data;
-    // A proposal opens a thread; every other role continues one.
-    if (action.role !== "proposal" && !action.amends) {
+    // An offer opens a thread; every other role continues one.
+    if (action.role !== "offer" && !action.continues) {
       return c.json(
         { error: { code: "invalid_clause", message: "this act needs a thread to continue" } },
         400,
       );
     }
-    // A proposal needs text — the norm itself.
-    if (action.role === "proposal" && !action.text?.trim()) {
+    // An offer needs text — the norm itself.
+    if (action.role === "offer" && !action.text?.trim()) {
       return c.json(
-        { error: { code: "invalid_clause", message: "a proposal needs the clause text" } },
+        { error: { code: "invalid_clause", message: "an offer needs the clause text" } },
         400,
       );
     }
-    // An amendment needs text — the new wording.
-    if (action.role === "amendment" && !action.text?.trim()) {
+    // A develop needs text — the new wording.
+    if (action.role === "develop" && !action.text?.trim()) {
       return c.json(
-        { error: { code: "invalid_clause", message: "an amendment needs the new text" } },
+        { error: { code: "invalid_clause", message: "a develop needs the new text" } },
         400,
       );
     }
