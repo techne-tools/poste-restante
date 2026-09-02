@@ -13,6 +13,8 @@ const KIND_META: Record<string, { glyph: string }> = {
   task: { glyph: "t" },
   invite: { glyph: "i" },
   clause: { glyph: "c" },
+  leave: { glyph: "↩" },
+  join: { glyph: "→" },
 };
 
 export default function KindTag({ kind }: { kind: string }) {

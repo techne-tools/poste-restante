@@ -22,7 +22,7 @@ import { deliverLetter } from "../deliver.js";
 import type { House } from "../house.js";
 import type { RetrievalQuery } from "../retrieval/retrieval.js";
 import type { AuthService, Authenticated } from "../auth/service.js";
-import { isVisibleTo, isPublicAddress, PUB_ADDRESS } from "../auth/visibility.js";
+import { isVisibleTo, isPublicAddress, filterVisible, PUB_ADDRESS } from "../auth/visibility.js";
 
 const MAX_LIMIT = 100;
 const DEFAULT_LIMIT = 20;
@@ -142,8 +142,14 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
 
         const hits = await house.retrieval.search(query);
         const letters = await house.repo.getLetters(hits.map((h) => h.letterId));
-        // Private by default: only letters the caller is party to (or public).
-        const visible = letters.filter((l) => isVisibleTo(l, who.address));
+        // Private by default: only letters the caller is party to (or public),
+        // and only threads the caller is currently 'in' — a leaver's edges
+        // dissolve (leaving as first-class).
+        const participation = await house.repo.participationStates(
+          letters.map((l) => l.thread_id),
+          who.address,
+        );
+        const visible = filterVisible(letters, who.address, participation);
         const visibleIds = new Set(visible.map((l) => l.id));
         return text({
           hits: hits.filter((h) => visibleIds.has(h.letterId)).map((h) => ({
@@ -174,7 +180,9 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
       const who = await caller();
       if (!who) return fail("the house does not know you — set POSTE_RESTANTE_TOKEN");
       const row = await house.repo.getLetter(id);
-      if (!row || !isVisibleTo(row, who.address)) return fail("no such letter");
+      if (!row) return fail("no such letter");
+      const state = await house.repo.participationStates([row.thread_id], who.address);
+      if (!isVisibleTo(row, who.address, state.get(row.thread_id) ?? "in")) return fail("no such letter");
       return text(toLetter(row));
     },
   );
@@ -194,7 +202,9 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
       const who = await caller();
       if (!who) return fail("the house does not know you — set POSTE_RESTANTE_TOKEN");
       const row = await house.repo.getLetter(id);
-      if (!row || !isVisibleTo(row, who.address)) return fail("no such letter");
+      if (!row) return fail("no such letter");
+      const state = await house.repo.participationStates([row.thread_id], who.address);
+      if (!isVisibleTo(row, who.address, state.get(row.thread_id) ?? "in")) return fail("no such letter");
       const removed = await house.pipeline.delete(id);
       if (!removed) return fail("no such letter");
       return text({ deleted: true, id });
@@ -215,7 +225,9 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
       const who = await caller();
       if (!who) return fail("the house does not know you — set POSTE_RESTANTE_TOKEN");
       const row = await house.repo.getLetter(id);
-      if (!row || !isVisibleTo(row, who.address)) return fail("no such letter");
+      if (!row) return fail("no such letter");
+      const state = await house.repo.participationStates([row.thread_id], who.address);
+      if (!isVisibleTo(row, who.address, state.get(row.thread_id) ?? "in")) return fail("no such letter");
       await house.repo.pinLetter(id, who.address);
       return text({ pinned: true, id });
     },
@@ -234,7 +246,9 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
       const who = await caller();
       if (!who) return fail("the house does not know you — set POSTE_RESTANTE_TOKEN");
       const row = await house.repo.getLetter(id);
-      if (!row || !isVisibleTo(row, who.address)) return fail("no such letter");
+      if (!row) return fail("no such letter");
+      const state = await house.repo.participationStates([row.thread_id], who.address);
+      if (!isVisibleTo(row, who.address, state.get(row.thread_id) ?? "in")) return fail("no such letter");
       await house.repo.unpinLetter(id);
       return text({ pinned: false, id });
     },
@@ -336,7 +350,8 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
     "read_thread",
     {
       title: "Read a thread",
-      description: "Read a correspondence thread, oldest first. The thread is the unit, not the message.",
+      description:
+        "Read a correspondence thread, oldest first. The thread is the unit, not the message. A leaver's edges dissolve — the thread is not visible to an address that has left it (leaving as first-class).",
       inputSchema: {
         thread: z.string().min(1).describe("the thread id, e.g. th_9f2c1"),
       },
@@ -345,9 +360,61 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
       const who = await caller();
       if (!who) return fail("the house does not know you — set POSTE_RESTANTE_TOKEN");
       const letters = await house.repo.listThread(thread);
-      const visible = letters.filter((l) => isVisibleTo(l, who.address));
+      const state = await house.repo.participationStates([thread], who.address);
+      const visible = filterVisible(letters, who.address, state);
       if (visible.length === 0) return fail("no such thread");
-      return text({ thread, letters: visible.map(toLetter) });
+      return text({ thread, participation: state.get(thread) ?? "in", letters: visible.map(toLetter) });
+    },
+  );
+
+  // Leave a thread — the structural stop. The act IS a letter; the archive
+  // keeps the history; participation is derived. The book is exempt.
+  server.registerTool(
+    "leave_thread",
+    {
+      title: "Leave a thread",
+      description:
+        "Leave a correspondence thread — the structural stop. The act IS a letter; the archive keeps the history; participation is derived. Your edges dissolve — the thread is no longer visible to you, and the house stops whispering about it. Symmetric by construction: the move that protects you from someone protects them from you. The book is exempt — clause threads are commons by right.",
+      inputSchema: {
+        thread: z.string().min(1).describe("the thread id, e.g. th_9f2c1"),
+      },
+    },
+    async ({ thread }) => {
+      const who = await caller();
+      if (!who) return fail("the house does not know you — set POSTE_RESTANTE_TOKEN");
+      const letters = await house.repo.listThread(thread);
+      const state = await house.repo.participationStates([thread], who.address);
+      const visible = filterVisible(letters, who.address, state);
+      if (visible.length === 0) return fail("no such thread");
+      if (letters.some((l) => l.kind === "clause")) {
+        return fail("the book is commons by right — you cannot leave it");
+      }
+      const { letterId, state: newState } = await house.participation.act(who.address, thread, "leave");
+      return text({ id: letterId, thread, participation: newState });
+    },
+  );
+
+  // Rejoin a thread — the historical edges stand again.
+  server.registerTool(
+    "join_thread",
+    {
+      title: "Rejoin a thread",
+      description:
+        "Rejoin a correspondence thread you left — the historical edges stand again. The act IS a letter; the archive keeps the history; participation is derived.",
+      inputSchema: {
+        thread: z.string().min(1).describe("the thread id, e.g. th_9f2c1"),
+      },
+    },
+    async ({ thread }) => {
+      const who = await caller();
+      if (!who) return fail("the house does not know you — set POSTE_RESTANTE_TOKEN");
+      const letters = await house.repo.listThread(thread);
+      if (letters.length === 0) return fail("no such thread");
+      if (letters.some((l) => l.kind === "clause")) {
+        return fail("the book is commons by right — you cannot leave it");
+      }
+      const { letterId, state: newState } = await house.participation.act(who.address, thread, "join");
+      return text({ id: letterId, thread, participation: newState });
     },
   );
 

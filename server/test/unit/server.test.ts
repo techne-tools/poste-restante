@@ -107,8 +107,15 @@ function fakeHouse(): House {
         }
         return rows;
       },
+      participationStates: async () => new Map<string, "in" | "out">(),
       pinLetter: async () => {},
       unpinLetter: async () => {},
+    },
+    participation: {
+      act: async (who: string, threadId: string, kind: "leave" | "join") => {
+        const id = `leave-${threadId}-${who}-${kind}`;
+        return { letterId: id, state: kind === "leave" ? "out" : "in" };
+      },
     },
     pipeline: {
       ingest: async (letter: Letter) => {

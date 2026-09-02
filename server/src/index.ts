@@ -19,6 +19,11 @@ export { createLogger, silentLogger, type Logger } from "./pipeline/logger.js";
 export { Retrieval, rrf, type RetrievalQuery, type RetrievalHit } from "./retrieval/retrieval.js";
 export { WhisperService, type Whisper, type WhisperKind } from "./whisper/service.js";
 export {
+  ParticipationService,
+  type ParticipationState,
+  type ParticipationRow,
+} from "./participation/service.js";
+export {
   InviteService,
   generateInviteCode,
   hashInviteCode,
@@ -55,6 +60,7 @@ import { NoopPayloadStore } from "./minio/store.js";
 import { IngestionPipeline } from "./pipeline/pipeline.js";
 import { Retrieval } from "./retrieval/retrieval.js";
 import { WhisperService } from "./whisper/service.js";
+import { ParticipationService } from "./participation/service.js";
 import { BookService } from "./book/service.js";
 import { createLogger, silentLogger, type Logger } from "./pipeline/logger.js";
 
@@ -78,9 +84,22 @@ export async function buildHouse(
   await semantic.ensureCollection();
   const repo = new PostgresRepository(db.pool);
   const payloads = new NoopPayloadStore();
-  const pipeline = new IngestionPipeline(repo, semantic, embedder, payloads, log);
+  // The participation hook is a closure over a late-bound service — the
+  // pipeline is the single write path, and the ParticipationService uses
+  // the pipeline to write its own letters. By the time any letter is
+  // ingested, `participation` is assigned.
+  let participation: ParticipationService;
+  const pipeline = new IngestionPipeline(
+    repo,
+    semantic,
+    embedder,
+    payloads,
+    log,
+    (letter) => participation.record(letter),
+  );
   const retrieval = new Retrieval(db.pool, semantic, embedder);
   const whisper = new WhisperService(db.pool, log, semantic, embedder);
+  participation = new ParticipationService(db.pool, pipeline, log);
   const book = new BookService(
     db.pool,
     pipeline,
@@ -99,6 +118,7 @@ export async function buildHouse(
     pipeline,
     retrieval,
     whisper,
+    participation,
     book,
     log,
     async close() {

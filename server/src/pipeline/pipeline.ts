@@ -25,6 +25,12 @@ export interface IngestResult {
   created: boolean;
 }
 
+/** A hook fired after a leave/join letter is stored — the participation
+ *  cache is derived from the letters, and the pipeline is the single write
+ *  path. Wired by the house to avoid a circular dependency (the
+ *  ParticipationService uses the pipeline to write its own letters). */
+export type LeaveJoinHook = (letter: Letter) => Promise<unknown>;
+
 export class IngestionPipeline {
   constructor(
     private readonly repo: PostgresRepository,
@@ -32,6 +38,7 @@ export class IngestionPipeline {
     private readonly embedder: Embedder,
     private readonly payloads: PayloadStore,
     private readonly log: Logger,
+    private readonly onLeaveJoin?: LeaveJoinHook,
   ) {}
 
   /**
@@ -70,6 +77,12 @@ export class IngestionPipeline {
 
     // 5. Payloads are out of scope this phase; the seam is stubbed.
     //    await this.payloads.put(id, ...);
+
+    // 6. A leave/join letter updates the participation cache — the
+    //    structural stop is derived from the letters, not declared.
+    if (this.onLeaveJoin && (letter.envelope.kind === "leave" || letter.envelope.kind === "join")) {
+      await this.onLeaveJoin(stored);
+    }
 
     return { letterId: id, created: true };
   }

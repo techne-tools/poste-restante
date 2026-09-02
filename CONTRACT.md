@@ -62,6 +62,8 @@ The address book is the social graph. No follower counts, no feeds — just who 
 | `task` | a letter that is a commitment |
 | `invite` | a voucher — the guest's door into the house (2026-08-31) |
 | `clause` | an act on the house book — an offer, a develop, a stop, a support, a set aside (2026-09-02) |
+| `leave` | the structural stop — a resident leaves a thread; their edges dissolve (2026-09-02) |
+| `join` | the reversal — a resident rejoins a thread; the historical edges stand again (2026-09-02) |
 
 ## Threads
 
@@ -145,6 +147,15 @@ The commons made structural (SPEC §5.8). The book is a thread, not a table: an 
 - **Ratification is slow by construction.** A clause stands after `BOOK_SETTLING_DAYS` (default 7) with no open stop. A standing reversal reverses its target — derived cross-thread, never declared. Develops are reversals, not erasures: the archive keeps the history, "current" is derived.
 - **Bound doors are the only mechanics.** A standing clause may bind a door (v1: `pub@house.is_public`). The door is derived from the book — the latest standing binding wins; when the last binding is reversed the door returns to its default (open). The book only writes the door when a binding's state changed, so it never fights a manual operator state while no binding stands. No ban button, no tribunal, no admin whose word outranks the book.
 - **Commons by right, never keyless.** Every resident reads the book — the one genuinely commons thing. Guests get 401: the book is the household's knowing of itself, not a public room.
+
+### Leaving as First-Class (2026-09-02)
+
+The structural stop (SPEC §5.8 related). Consent-forward: no and yes are equally significant. Leaving is the move that protects you from someone, and it protects them from you — symmetric by construction.
+
+- **Leave/join are letters.** A resident writes a `kind: "leave"` letter to the thread (addressed to the thread's current participants — the act is the correspondence); a `kind: "join"` letter reverses it. The archive keeps the history; "current" is derived.
+- **Participation is derived.** The `thread_participation` cache holds the current state per (thread, address): 'in' or 'out', set by the latest leave/join letter (by received_at — the upsert guard refuses out-of-order writes). Addresses with no leave/join letter are 'in' by default — the historical edges stand. Wiping and re-deriving from the letters yields the same rows.
+- **Visibility prunes itself.** A letter is visible to an address iff the address is a participant AND currently 'in' the thread. The whisper and the gap engine honour the same limb — a leaver stops being offered the thread, and gaps are not even created for it. A leaver gets 404, never 403 — absence is silence.
+- **The book is exempt.** Clause threads are commons by right — you cannot leave the household's knowing of itself. Leave/join on clause threads is refused (400).
 
 ## Constraints
 

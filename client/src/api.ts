@@ -208,10 +208,30 @@ export const house = {
     );
   },
 
-  /** Threads are correspondences. */
+  /** Threads are correspondences. The thread is the unit, not the message.
+   *  `participation` is the caller's derived state — 'in' by default; 'out'
+   *  when the caller has left (leaving as first-class, the structural stop). */
   thread(id: string) {
-    return request<{ thread: string; letters: Letter[] }>(
+    return request<{ thread: string; participation: "in" | "out"; letters: Letter[] }>(
       `/threads/${encodeURIComponent(id)}`,
+    );
+  },
+
+  /** Leave a thread — the structural stop. The act IS a letter; the archive
+   *  keeps the history; participation is derived. The leaver's edges
+   *  dissolve — visibility prunes itself. Symmetric by construction. */
+  leaveThread(id: string) {
+    return request<{ id: string; thread: string; participation: "in" | "out" }>(
+      `/threads/${encodeURIComponent(id)}/leave`,
+      { method: "POST" },
+    );
+  },
+
+  /** Rejoin a thread — the historical edges stand again. */
+  joinThread(id: string) {
+    return request<{ id: string; thread: string; participation: "in" | "out" }>(
+      `/threads/${encodeURIComponent(id)}/join`,
+      { method: "POST" },
     );
   },
 

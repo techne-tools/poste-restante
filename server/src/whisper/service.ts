@@ -15,10 +15,13 @@
  *
  * Multi-user privacy: the whisper is scoped to an address. A whisper is
  * visible to an address iff that address is a participant in the whisper's
- * target thread (derived from letter_addresses — the social graph). The
- * house never gossips about correspondence you are not party to, and you
- * cannot open, dismiss, or undismiss a whisper about someone else's thread.
- * This is privacy as schema: the visibility rule is derived, not a policy.
+ * target thread (derived from letter_addresses — the social graph) AND
+ * currently 'in' that thread (derived from the leave/join letters — the
+ * structural stop). A leaver stops being offered the thread, and gaps are
+ * not even created for it (convergent by construction). The house never
+ * gossips about correspondence you are not party to, and you cannot open,
+ * dismiss, or undismiss a whisper about someone else's thread. This is
+ * privacy as schema: the visibility rule is derived, not a policy.
  *
  * Pair gaps (gap-contradiction, gap-uncited-connection, gap-echo) add a
  * second limb: the whisper is only visible to an address party to BOTH
@@ -149,6 +152,12 @@ const VISIBLE_TO = `
         JOIN letter_addresses la ON la.letter_id = l.id
         WHERE l.thread_id = w.target_thread
           AND la.address_id = $1
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM thread_participation tp
+        WHERE tp.thread_id = w.target_thread
+          AND tp.address_id = $1
+          AND tp.state = 'out'
       )
       AND (
         w.related_letter_id IS NULL
@@ -305,7 +314,11 @@ export class WhisperService {
            SELECT 1 FROM letters l2
            JOIN letter_addresses la ON la.letter_id = l2.id
            WHERE l2.thread_id = t.id AND la.address_id = $3
-         )`,
+         )
+         AND NOT EXISTS (
+           SELECT 1 FROM thread_participation tp
+           WHERE tp.thread_id = t.id AND tp.address_id = $3 AND tp.state = 'out'
+        )`,
       [
         new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000),
         new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000),
@@ -366,7 +379,11 @@ export class WhisperService {
            SELECT 1 FROM letters l3
            JOIN letter_addresses la ON la.letter_id = l3.id
            WHERE l3.thread_id = l.thread_id AND la.address_id = $2
-         )`,
+         )
+         AND NOT EXISTS (
+           SELECT 1 FROM thread_participation tp
+           WHERE tp.thread_id = l.thread_id AND tp.address_id = $2 AND tp.state = 'out'
+        )`,
       [new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000), address],
     );
     for (const row of questions.rows) {

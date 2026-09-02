@@ -240,8 +240,8 @@ export class PostgresRepository {
          (SELECT json_agg(json_build_object('frame', f.name, 'value', f.value))
           FROM letter_frames lf JOIN frames f ON f.id = lf.frame_id
           WHERE lf.letter_id = l.id), '[]'::json) AS frames
-       FROM letters l
-       WHERE l.id = ANY($1)`,
+      FROM letters l
+      WHERE l.id = ANY($1)`,
       [ids],
     );
     const byId = new Map(rows.map((r) => [r.id, r]));
@@ -249,6 +249,22 @@ export class PostgresRepository {
       const row = byId.get(id);
       return row ? [row] : [];
     });
+  }
+
+  /** The participation states of an address across a set of threads. 'in'
+   *  by default — an address with no leave/join letter has no row, and the
+   *  historical edges stand. Returns a map thread_id → state. */
+  async participationStates(
+    threadIds: string[],
+    address: string,
+  ): Promise<Map<string, "in" | "out">> {
+    if (threadIds.length === 0) return new Map();
+    const { rows } = await this.pool.query<{ thread_id: string; state: "in" | "out" }>(
+      `SELECT thread_id, state FROM thread_participation
+       WHERE address_id = $1 AND thread_id = ANY($2)`,
+      [address, threadIds],
+    );
+    return new Map(rows.map((r) => [r.thread_id, r.state]));
   }
 
   /** Pin a letter (explicit house ranking signal). */

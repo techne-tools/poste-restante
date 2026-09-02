@@ -15,6 +15,8 @@ export const LETTER_KINDS = [
   "task",
   "invite",
   "clause",
+  "leave",
+  "join",
 ] as const;
 
 export type LetterKind = (typeof LETTER_KINDS)[number];

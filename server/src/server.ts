@@ -25,7 +25,7 @@ import { deliverLetter } from "./deliver.js";
 import type { House } from "./house.js";
 import type { RetrievalQuery } from "./retrieval/retrieval.js";
 import type { AuthService, Authenticated } from "./auth/service.js";
-import { isVisibleTo, isPublicAddress, visibleToSql, PUB_ADDRESS } from "./auth/visibility.js";
+import { isVisibleTo, isPublicAddress, visibleToSql, filterVisible, PUB_ADDRESS } from "./auth/visibility.js";
 import type { InviteService } from "./invites/service.js";
 import type { BookService } from "./book/service.js";
 import { BOOK_ADDRESS } from "./book/service.js";
@@ -259,8 +259,14 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
 
     const hits = await house.retrieval.search(query);
     const letters = await house.repo.getLetters(hits.map((h) => h.letterId));
-    // Private by default: only letters the caller is party to (or public).
-    const visible = letters.filter((l) => isVisibleTo(l, who.address));
+    // Private by default: only letters the caller is party to (or public),
+    // and only threads the caller is currently 'in' — a leaver's edges
+    // dissolve (leaving as first-class).
+    const participation = await house.repo.participationStates(
+      letters.map((l) => l.thread_id),
+      who.address,
+    );
+    const visible = filterVisible(letters, who.address, participation);
     const visibleIds = new Set(visible.map((l) => l.id));
     return c.json({
       hits: hits.filter((h) => visibleIds.has(h.letterId)).map((h) => ({
@@ -279,7 +285,9 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
     const who = await caller(c);
     if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
     const row = await house.repo.getLetter(c.req.param("id"));
-    if (!row || !isVisibleTo(row, who.address)) {
+    if (!row) return c.json({ error: { code: "not_found", message: "no such letter" } }, 404);
+    const state = await house.repo.participationStates([row.thread_id], who.address);
+    if (!isVisibleTo(row, who.address, state.get(row.thread_id) ?? "in")) {
       return c.json({ error: { code: "not_found", message: "no such letter" } }, 404);
     }
     return c.json(toLetter(row));
@@ -292,7 +300,9 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
     if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
     const id = c.req.param("id");
     const row = await house.repo.getLetter(id);
-    if (!row || !isVisibleTo(row, who.address)) {
+    if (!row) return c.json({ error: { code: "not_found", message: "no such letter" } }, 404);
+    const state = await house.repo.participationStates([row.thread_id], who.address);
+    if (!isVisibleTo(row, who.address, state.get(row.thread_id) ?? "in")) {
       return c.json({ error: { code: "not_found", message: "no such letter" } }, 404);
     }
     const removed = await house.pipeline.delete(id);
@@ -308,7 +318,9 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
     if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
     const id = c.req.param("id");
     const row = await house.repo.getLetter(id);
-    if (!row || !isVisibleTo(row, who.address)) {
+    if (!row) return c.json({ error: { code: "not_found", message: "no such letter" } }, 404);
+    const state = await house.repo.participationStates([row.thread_id], who.address);
+    if (!isVisibleTo(row, who.address, state.get(row.thread_id) ?? "in")) {
       return c.json({ error: { code: "not_found", message: "no such letter" } }, 404);
     }
     await house.repo.pinLetter(id, who.address);
@@ -320,7 +332,9 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
     if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
     const id = c.req.param("id");
     const row = await house.repo.getLetter(id);
-    if (!row || !isVisibleTo(row, who.address)) {
+    if (!row) return c.json({ error: { code: "not_found", message: "no such letter" } }, 404);
+    const state = await house.repo.participationStates([row.thread_id], who.address);
+    if (!isVisibleTo(row, who.address, state.get(row.thread_id) ?? "in")) {
       return c.json({ error: { code: "not_found", message: "no such letter" } }, 404);
     }
     await house.repo.unpinLetter(id);
@@ -429,17 +443,68 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
   // ── Threads & frames ──────────────────────────────────────────────────────
 
   // Threads are correspondences. The thread is the unit, not the message.
-  // Private by default: only participants may read a thread.
+  // Private by default: only participants may read a thread, and only
+  // threads the caller is currently 'in' — a leaver's edges dissolve.
   app.get("/v1/threads/:id", async (c) => {
     const who = await caller(c);
     if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
     const threadId = c.req.param("id");
     const letters = await house.repo.listThread(threadId);
-    const visible = letters.filter((l) => isVisibleTo(l, who.address));
+    const state = await house.repo.participationStates([threadId], who.address);
+    const visible = filterVisible(letters, who.address, state);
     if (visible.length === 0) {
       return c.json({ error: { code: "not_found", message: "no such thread" } }, 404);
     }
-    return c.json({ thread: threadId, letters: visible.map(toLetter) });
+    return c.json({
+      thread: threadId,
+      participation: state.get(threadId) ?? "in",
+      letters: visible.map(toLetter),
+    });
+  });
+
+  // Leave a thread — the structural stop. The act IS a letter; the archive
+  // keeps the history; participation is derived. The leaver's edges
+  // dissolve — visibility prunes itself. The book is exempt: clause
+  // threads are commons by right — you cannot leave the household's
+  // knowing of itself.
+  app.post("/v1/threads/:id/leave", async (c) => {
+    const who = await caller(c);
+    if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
+    const threadId = c.req.param("id");
+    const letters = await house.repo.listThread(threadId);
+    const state = await house.repo.participationStates([threadId], who.address);
+    const visible = filterVisible(letters, who.address, state);
+    if (visible.length === 0) {
+      return c.json({ error: { code: "not_found", message: "no such thread" } }, 404);
+    }
+    if (letters.some((l) => l.kind === "clause")) {
+      return c.json(
+        { error: { code: "invalid_leave", message: "the book is commons by right — you cannot leave it" } },
+        400,
+      );
+    }
+    const { letterId, state: newState } = await house.participation.act(who.address, threadId, "leave");
+    return c.json({ id: letterId, thread: threadId, participation: newState }, 201);
+  });
+
+  // Rejoin a thread — the historical edges stand again. The act IS a
+  // letter; the archive keeps the history; participation is derived.
+  app.post("/v1/threads/:id/join", async (c) => {
+    const who = await caller(c);
+    if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
+    const threadId = c.req.param("id");
+    const letters = await house.repo.listThread(threadId);
+    if (letters.length === 0) {
+      return c.json({ error: { code: "not_found", message: "no such thread" } }, 404);
+    }
+    if (letters.some((l) => l.kind === "clause")) {
+      return c.json(
+        { error: { code: "invalid_join", message: "the book is commons by right — you cannot leave it" } },
+        400,
+      );
+    }
+    const { letterId, state: newState } = await house.participation.act(who.address, threadId, "join");
+    return c.json({ id: letterId, thread: threadId, participation: newState }, 201);
   });
 
   // Frames — plural time navigation. Queries work in any frame.
