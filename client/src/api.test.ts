@@ -137,3 +137,72 @@ describe("house client", () => {
     ).rejects.toThrow("the house has no invitation for you — check the code and address");
   });
 });
+
+describe("house book client", () => {
+  const originalFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    globalThis.fetch = vi.fn();
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("reads the book head as a GET to /v1/book", async () => {
+    const head = {
+      clauses: [
+        {
+          thread: "th_clause_1",
+          text: "the pub closes at dusk",
+          proposedBy: "you@house",
+          proposedIn: "l1",
+          state: "standing",
+          settlingFrom: "2026-09-01T00:00:00Z",
+          settlesAt: "2026-09-08T00:00:00Z",
+          stoodAt: "2026-09-08T00:00:00Z",
+          reversedAt: null,
+          reversedIn: null,
+          pendingReversal: false,
+          reversesThread: null,
+          objections: 0,
+          vouches: 2,
+          binding: { door: "pub@house.is_public", value: false },
+        },
+      ],
+      doors: [{ door: "pub@house.is_public", value: false, boundBy: "th_clause_1" }],
+      settlingDays: 7,
+    };
+    globalThis.fetch = mockFetch(200, head);
+    const res = await house.book();
+    expect(res.clauses).toHaveLength(1);
+    expect(res.clauses[0]!.state).toBe("standing");
+    expect(res.doors[0]!.value).toBe(false);
+    const [url] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe("/v1/book");
+  });
+
+  it("performs an act as a POST to /v1/book", async () => {
+    globalThis.fetch = mockFetch(201, {
+      id: "l_act",
+      clause: { thread: "th_clause_1", state: "proposed" },
+    });
+    const res = await house.actOnBook({
+      role: "objection",
+      amends: "th_clause_1",
+    });
+    expect(res.clause.state).toBe("proposed");
+    const [url, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe("/v1/book");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body)).toEqual({ role: "objection", amends: "th_clause_1" });
+  });
+
+  it("reads a clause thread as a GET to /v1/book/threads/:id", async () => {
+    globalThis.fetch = mockFetch(200, { thread: "th_clause_1", letters: [] });
+    const res = await house.clauseThread("th_clause_1");
+    expect(res.thread).toBe("th_clause_1");
+    const [url] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe("/v1/book/threads/th_clause_1");
+  });
+});

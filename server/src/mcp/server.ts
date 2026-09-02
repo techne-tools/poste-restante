@@ -473,5 +473,87 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
     },
   );
 
+  // ── The house book ─────────────────────────────────────────────────────────
+
+  // The book's head — the derived constitution. Commons by right: every
+  // resident reads it. The book is NOT a keyless door — guests are not
+  // residents; the book is the household's knowing of itself.
+  server.registerTool(
+    "read_book",
+    {
+      title: "Read the house book",
+      description:
+        "Read the house book — the derived constitution. Every clause, its state (proposed/contested/standing/reversed), its text, its voices (objections, vouches), and the doors it binds. Commons by right: every resident reads it. The book is the household's knowing of itself — guests are not residents.",
+      inputSchema: {},
+    },
+    async () => {
+      const who = await caller();
+      if (!who) return fail("the house does not know you — set POSTE_RESTANTE_TOKEN");
+      const head = await house.book.head();
+      return text(head);
+    },
+  );
+
+  // Read one clause thread — the correspondence is the amendment.
+  server.registerTool(
+    "read_clause",
+    {
+      title: "Read a clause thread",
+      description:
+        "Read one clause thread — the correspondence is the amendment. The thread is the unit, not the message; the archive keeps the history, 'current' is derived.",
+      inputSchema: {
+        thread: z.string().min(1).describe("the clause thread id, e.g. th_clause_9f2c1"),
+      },
+    },
+    async ({ thread }) => {
+      const who = await caller();
+      if (!who) return fail("the house does not know you — set POSTE_RESTANTE_TOKEN");
+      const letters = await house.repo.listThread(thread);
+      const clauseLetters = letters.filter((l) => l.kind === "clause");
+      if (clauseLetters.length === 0) return fail("no such clause");
+      return text({ thread, letters: clauseLetters.map(toLetter) });
+    },
+  );
+
+  // Perform an act — the act IS a letter to the book. The house enforces
+  // stated will: the role is declared, never guessed from the prose.
+  server.registerTool(
+    "act_on_book",
+    {
+      title: "Act on the house book",
+      description:
+        "Perform an act on the house book — the act IS a letter. Roles: proposal (opens a thread; may carry reverses: <thread> for a reversal proposal, and binding: {door, value} for a bound door — v1: pub@house.is_public only), amendment (new text, fresh settling, objections cleared, vouches persist), objection (reopens as two voices — contested never stands), vouch (distinct per resident; orders what the house says, never what it does), withdraw (removes your objection; clearing the last objection restarts the settling clock). A clause stands after the settling period with no open objection. The house enforces stated will, never inferred will.",
+      inputSchema: {
+        role: z.enum(["proposal", "amendment", "objection", "vouch", "withdraw"]).describe("the act"),
+        amends: z.string().optional().describe("the thread this act continues (required for every role except proposal)"),
+        reverses: z.string().optional().describe("on a proposal: the thread this proposal reverses when it stands"),
+        binding: z
+          .object({
+            door: z.string().describe("the door, e.g. pub@house.is_public"),
+            value: z.boolean().describe("the value the door is bound to when the clause stands"),
+          })
+          .optional()
+          .describe("on a proposal/amendment: the door this clause binds when it stands"),
+        text: z.string().optional().describe("the clause text (required for proposal/amendment)"),
+      },
+    },
+    async (args) => {
+      const who = await caller();
+      if (!who) return fail("the house does not know you — set POSTE_RESTANTE_TOKEN");
+      if (args.role !== "proposal" && !args.amends) {
+        return fail("this act needs a thread to continue");
+      }
+      if ((args.role === "proposal" || args.role === "amendment") && !args.text?.trim()) {
+        return fail(args.role === "proposal" ? "a proposal needs the clause text" : "an amendment needs the new text");
+      }
+      try {
+        const { letterId, clause } = await house.book.act(who.address, args);
+        return text({ id: letterId, clause });
+      } catch (err) {
+        return fail(err instanceof Error ? err.message : "the book could not hold this act");
+      }
+    },
+  );
+
   return server;
 }

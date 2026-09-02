@@ -48,6 +48,10 @@ export interface HouseConfig {
   integration: boolean;
   /** Authentication configuration. */
   auth: AuthConfig;
+  /** The house book's settling period — how long a clause must stand
+   *  unopposed before it becomes the household's norm. Slow by
+   *  construction; configurable per house. */
+  bookSettlingDays: number;
 }
 
 const AuthConfigSchema = z.object({
@@ -96,5 +100,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): HouseConfig {
     minioEndpoint: env.MINIO_ENDPOINT ?? "http://localhost:9000",
     integration: boolFromEnv(env.POSTE_RESTANTE_INTEGRATION, false),
     auth,
+    bookSettlingDays: intFromEnv(env.BOOK_SETTLING_DAYS, 7),
   };
 }

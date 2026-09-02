@@ -12,6 +12,7 @@ import type { IngestionPipeline } from "./pipeline/pipeline.js";
 import type { Logger } from "./pipeline/logger.js";
 import type { Retrieval } from "./retrieval/retrieval.js";
 import type { WhisperService } from "./whisper/service.js";
+import type { BookService } from "./book/service.js";
 
 export interface House {
   config: HouseConfig;
@@ -23,6 +24,7 @@ export interface House {
   pipeline: IngestionPipeline;
   retrieval: Retrieval;
   whisper: WhisperService;
+  book: BookService;
   log: Logger;
   close(): Promise<void>;
 }

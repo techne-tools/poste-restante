@@ -11,6 +11,8 @@ const KIND_META: Record<string, { glyph: string }> = {
   audio: { glyph: "a" },
   note: { glyph: "n" },
   task: { glyph: "t" },
+  invite: { glyph: "i" },
+  clause: { glyph: "c" },
 };
 
 export default function KindTag({ kind }: { kind: string }) {

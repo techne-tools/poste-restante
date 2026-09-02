@@ -871,3 +871,228 @@ button.door-link:hover {
   color: var(--ink-faint);
   margin-bottom: var(--space-1);
 }
+
+/* The house book — the commons made structural. The clause text is the
+   household's own words, set in the serif hand (the letter voice); the
+   machine metadata stays mono. States are quiet labels, never verdicts. */
+.book {
+  max-width: 720px;
+}
+
+.book-ledger {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  border-bottom: var(--rule-strong);
+  padding-bottom: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.book-ledger h2 {
+  margin: 0;
+  font-size: 16px;
+  color: var(--fg);
+}
+
+.book-ledger .address {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.book-doors {
+  border: var(--rule);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-4);
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.book-doors .door-state {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fg);
+}
+
+.book-section {
+  margin-bottom: var(--space-5);
+}
+
+.book-section h3 {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin: 0 0 var(--space-3);
+}
+
+.book-section h3::after {
+  content: "";
+  display: block;
+  width: 2rem;
+  height: 2px;
+  background: var(--accent);
+  margin-top: var(--space-1);
+}
+
+/* A clause — a norm, held. The text is the household's own words. */
+.clause {
+  background: var(--surface-raised);
+  border: var(--rule);
+  border-radius: var(--radius);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-3);
+}
+
+.clause-reversed {
+  opacity: 0.6;
+}
+
+.clause-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: baseline;
+  margin-bottom: var(--space-2);
+}
+
+.clause-state {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-faint);
+}
+
+.clause-standing .clause-state {
+  color: var(--accent);
+}
+
+.clause-contested .clause-state {
+  color: var(--fg);
+}
+
+.clause-binding {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.clause-text {
+  font-family: var(--font-display);
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--fg);
+  margin-bottom: var(--space-2);
+}
+
+.clause-text p {
+  margin: 0;
+}
+
+.clause-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.clause-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.clause-act {
+  font-size: 12px;
+}
+
+.clause-toggle {
+  font-size: 12px;
+}
+
+/* The correspondence — the amendment is the thread. */
+.clause-thread {
+  margin-top: var(--space-3);
+  border-top: var(--rule);
+  padding-top: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.clause-letter {
+  border-left: 2px solid var(--border);
+  padding-left: var(--space-3);
+}
+
+.clause-letter-meta {
+  display: flex;
+  gap: var(--space-3);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: var(--space-1);
+}
+
+.clause-letter-body {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--fg);
+}
+
+.clause-letter-body p {
+  margin: 0 0 var(--space-1);
+}
+
+/* The proposal desk — a letter being written to the book. */
+.book-propose {
+  border-top: var(--rule);
+  padding-top: var(--space-4);
+}
+
+.book-hint {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0 0 var(--space-3);
+}
+
+.book-draft {
+  font-family: var(--font-display);
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--fg);
+  background: var(--surface-sunken);
+  border: var(--rule);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  width: 100%;
+  resize: vertical;
+  min-height: 120px;
+}
+
+.book-draft:focus {
+  border-color: var(--accent);
+}
+
+.book-binding-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-2) 0;
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.book-propose-actions {
+  margin-top: var(--space-2);
+}

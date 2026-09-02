@@ -248,6 +248,7 @@ describe("mcp house", () => {
     const names = tools.tools.map((t) => t.name).sort();
     expect(names).toEqual(
       [
+        "act_on_book",
         "delete_letter",
         "deliver_letter",
         "detect_gaps",
@@ -259,6 +260,8 @@ describe("mcp house", () => {
         "list_whispers",
         "open_whisper",
         "pin_letter",
+        "read_book",
+        "read_clause",
         "read_mailbox",
         "read_thread",
         "search_letters",

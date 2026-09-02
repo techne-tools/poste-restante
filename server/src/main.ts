@@ -16,18 +16,27 @@ import { buildHouse } from "./index.js";
 import { createLetterServer } from "./server.js";
 import { AuthService } from "./auth/service.js";
 import { InviteService } from "./invites/service.js";
+import { BookService } from "./book/service.js";
 
 const PORT = Number.parseInt(process.env.PORT ?? "8787", 10);
 
 const house = await buildHouse();
 const auth = new AuthService(house.db.pool, house.log, house.config.auth);
 const invites = new InviteService(house.db.pool, house.pipeline, auth);
+const book = new BookService(
+  house.db.pool,
+  house.pipeline,
+  house.repo,
+  house.log,
+  house.config.bookSettlingDays,
+);
 const app = createLetterServer(house, {
   // AUTH_MODE=none is development only: the house runs unauthenticated and
   // the caller is the default owner. The invite service still gets the
   // AuthService for its own checks (hasCredential).
   auth: auth.enabled ? auth : undefined,
   invites,
+  book,
 });
 
 serve({ fetch: app.fetch, port: PORT }, (info) => {

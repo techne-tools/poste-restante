@@ -61,6 +61,33 @@ export interface Address {
   pronouns: string | null;
 }
 
+/** The house book — the derived constitution (SPEC §5.8). */
+export interface Clause {
+  thread: string;
+  text: string;
+  proposedBy: string;
+  proposedIn: string;
+  state: "proposed" | "contested" | "standing" | "reversed";
+  settlingFrom: string;
+  settlesAt: string;
+  stoodAt: string | null;
+  reversedAt: string | null;
+  reversedIn: string | null;
+  pendingReversal: boolean;
+  reversesThread: string | null;
+  objections: number;
+  vouches: number;
+  binding: { door: string; value: boolean } | null;
+}
+
+export interface BookHead {
+  clauses: Clause[];
+  doors: { door: string; value: boolean; boundBy: string }[];
+  settlingDays: number;
+}
+
+export type ClauseRole = "proposal" | "amendment" | "objection" | "vouch" | "withdraw";
+
 export interface SearchHit {
   letterId: string;
   score: number;
@@ -219,6 +246,32 @@ export const house = {
   /** Gap detection — cheap structural checks, on demand. */
   detectGaps() {
     return request<{ created: string[] }>("/whisper/gaps", { method: "POST" });
+  },
+
+  /** The house book — the derived constitution. Commons by right. */
+  book() {
+    return request<BookHead>("/book");
+  },
+
+  /** Read one clause thread — the correspondence is the amendment. */
+  clauseThread(thread: string) {
+    return request<{ thread: string; letters: Letter[] }>(
+      `/book/threads/${encodeURIComponent(thread)}`,
+    );
+  },
+
+  /** Perform an act on the book — the act IS a letter. */
+  actOnBook(action: {
+    role: ClauseRole;
+    amends?: string;
+    reverses?: string;
+    binding?: { door: string; value: boolean };
+    text?: string;
+  }) {
+    return request<{ id: string; clause: Clause }>("/book", {
+      method: "POST",
+      body: JSON.stringify(action),
+    });
   },
 
   /** Start the OIDC dance. Returns the provider URL to redirect to. */

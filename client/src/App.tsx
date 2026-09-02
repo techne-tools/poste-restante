@@ -10,8 +10,9 @@ import AddressBook from "./AddressBook";
 import Compose from "./Compose";
 import Pub from "./Pub";
 import ThreadView from "./ThreadView";
+import Book from "./Book";
 
-type View = "mailbox" | "archive" | "addresses" | "compose" | "pub" | "thread";
+type View = "mailbox" | "archive" | "addresses" | "compose" | "pub" | "thread" | "book";
 
 export default function App() {
   const [auth, setAuth] = useState(() => loadAuth());
@@ -170,6 +171,9 @@ export default function App() {
           <button className={view === "pub" ? "active" : ""} onClick={() => navigate("pub")}>
             Pub
           </button>
+          <button className={view === "book" ? "active" : ""} onClick={() => navigate("book")}>
+            Book
+          </button>
           <button className={view === "addresses" ? "active" : ""} onClick={() => navigate("addresses")}>
             Addresses
           </button>
@@ -198,6 +202,7 @@ export default function App() {
             }}
           />
         )}
+        {view === "book" && <Book onError={setError} />}
         {view === "addresses" && <AddressBook onError={setError} onCompose={composeToAddress} />}
         {view === "thread" && threadId && (
           <ThreadView

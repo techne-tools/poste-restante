@@ -25,6 +25,24 @@ export {
   type MintedInvite,
   type RedeemInput,
 } from "./invites/service.js";
+export {
+  BookService,
+  BOOK_ADDRESS,
+  PUB_DOOR,
+  deriveClause,
+  type ClauseAction,
+  type ClauseState,
+  type DerivedClause,
+  type BookHead,
+} from "./book/service.js";
+export {
+  parseClauseFrontmatter,
+  stripClauseFrontmatter,
+  isClauseLetter,
+  CLAUSE_ROLES,
+  type ClauseFrontmatter,
+  type ClauseRole,
+} from "./book/frontmatter.js";
 export { RedeemSchema } from "./schemas.js";
 export type { House } from "./house.js";
 
@@ -37,6 +55,7 @@ import { NoopPayloadStore } from "./minio/store.js";
 import { IngestionPipeline } from "./pipeline/pipeline.js";
 import { Retrieval } from "./retrieval/retrieval.js";
 import { WhisperService } from "./whisper/service.js";
+import { BookService } from "./book/service.js";
 import { createLogger, silentLogger, type Logger } from "./pipeline/logger.js";
 
 /**
@@ -62,6 +81,13 @@ export async function buildHouse(
   const pipeline = new IngestionPipeline(repo, semantic, embedder, payloads, log);
   const retrieval = new Retrieval(db.pool, semantic, embedder);
   const whisper = new WhisperService(db.pool, log, semantic, embedder);
+  const book = new BookService(
+    db.pool,
+    pipeline,
+    repo,
+    log,
+    config.bookSettlingDays,
+  );
 
   return {
     config,
@@ -73,6 +99,7 @@ export async function buildHouse(
     pipeline,
     retrieval,
     whisper,
+    book,
     log,
     async close() {
       await db.close();

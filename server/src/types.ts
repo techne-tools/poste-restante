@@ -14,6 +14,7 @@ export const LETTER_KINDS = [
   "note",
   "task",
   "invite",
+  "clause",
 ] as const;
 
 export type LetterKind = (typeof LETTER_KINDS)[number];
