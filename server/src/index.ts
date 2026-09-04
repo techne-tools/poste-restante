@@ -34,6 +34,20 @@ export {
 } from "./bridge/smtp.js";
 export { findThreadBySubject } from "./bridge/threads.js";
 export {
+  uidForLetter,
+  frameFolder,
+  folderForLetter,
+  translateToMailbox,
+  INBOX,
+  SENT,
+  ARCHIVE,
+  type MailboxFolder,
+  type MailFlagState,
+  type FolderInput,
+  type MailboxTranslationInput,
+  type MailboxLetter,
+} from "./bridge/mailbox.js";
+export {
   startOutbound,
   translateToMail,
   externalRecipients,

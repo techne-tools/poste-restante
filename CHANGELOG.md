@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added — the mailbox materialisation engine, movement B's pure core (2026-09-04)
+
+The read-side bridge's first slice (SPEC §5 #12): the letter contract → IMAP's fixed-shaped world (folders, UIDs, headers, flags) as a **pure, deterministic derivation** — `server/src/bridge/mailbox.ts` + exports, with 17 hermetic unit tests. No sidecar, no new dependency: this bite locks the mapping the B2 sync layer (Stalwart + imapflow) will drive against the live archive.
+
+- **UIDs are derived.** `uidForLetter` — the first 32 bits of the letter's own sha256 id. Same letter → same UID, on every sync, on any machine. Wiping the mailbox and re-syncing yields the same rows (the house's derivation invariant, same as `clauses` and `thread_participation`).
+- **Folders are frames, not threads.** `folderForLetter` — a letter's most recent active frame (its own plural-time frame order is the precedence; the resident's active frames are a membership test, never an ordering), else **Sent** (the resident wrote it), else **Inbox**. Archive is a separate constant the caller composes (every visible letter lands there too).
+- **Threading without folders.** `translateToMailbox` emits a stable `Message-ID` (`<letterId@house>`), a synthetic `References: <threadId@house>`, and a null `In-Reply-To` — IMAP clients group the conversation the house's way, no folder per thread. Plain-text body via the house's existing markdown extractor; the archive keeps the markdown, the mailbox is a view.
+- **Flags are the learning loop, read back.** `MailFlagState` — `\Seen` ⇄ `opened_at`, `\Answered` ⇄ `replied_at`/thread replied, `\Flagged` ⇄ pinned. The engine passes the caller-resolved signals through; B2 reads them back from the client through the sidecar.
+- **Privacy as schema, unchanged.** The engine has no visibility limb — it transforms only the letters the caller has already resolved as visible (the same derived-participation query every face uses). It cannot leak a letter it is never handed.
+- 17 unit tests: determinism, frame precedence, sent/received roles, the wiped-and-re-derived UID-stability property, RFC5322 surface, threading, flags. Suite: 162/162 server unit, 79/79 integration, 43/43 client, typecheck + build green.
+
 ### Added — the house ships as a container (2026-09-04)
 
 The deployment package (SPEC §5 #14): `containers/poste-restante/` — the house as a Docker container on the homelab host. One service, zero duplication: the stack attaches to the host's resident `shared-postgres` (backend_net), `app-qdrant` (web_net), `app-ollama` (ollama_net) rather than re-provisioning them; the host's free ports 21016 (HTTP/MCP) and 21027 (SMTP door) published.
