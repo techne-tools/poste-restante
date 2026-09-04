@@ -42,7 +42,7 @@ Privacy as schema, anti-hierarchy as capability, queer/indigenous/global-majorit
 | Ingestion queue | redis | ⬜ target |
 | Audio letters | faster-whisper | ⬜ target |
 | Local brain | ollama (embeddings, 768-dim) | ✅ live (native process) |
-| Bridges | IMAP/SMTP (primary), Matrix + ActivityPub (optional) | ⬜ target — next plumbing |
+| Bridges | IMAP/SMTP (primary), Matrix + ActivityPub (optional) | ✅ inbound SMTP built (`server/src/bridge/smtp.ts`, `SMTP_ENABLED=1`); IMAP/Matrix/AP deferred |
 | Deployment | native processes on the host (docker-compose remains aspirational) | ✅ live: postgres 5433, qdrant 6333, ollama 11434 |
 
 ## What this is not

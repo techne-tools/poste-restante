@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added — the SMTP door (2026-09-04)
+
+The bridge layer, movement A: the house meets real mail. Inbound only — SMTP on a local submission port, the sender authenticated as a resident, the mail ingested as a letter through the same pipeline, same idempotency, same privacy (SPEC §5 #10).
+
+- **The door.** `server/src/bridge/smtp.ts` — an SMTP submission server (`smtp-server`, maintained by the nodemailer project) bound to `SMTP_BIND` (default `127.0.0.1:2525`), enabled by `SMTP_ENABLED=1` (closed by default). Refuses to start with `AUTH_MODE=none` — a door that cannot know its residents fails closed. (`server/src/main.ts` wires it through the shared `deliverLetter` seam, so whisper surfacing and reply tracking behave exactly as for HTTP letters.)
+- **Anti-forging, unchanged.** The envelope `from` is the SMTP-authenticated address; a different MAIL FROM is 550'd before DATA. Only residents post — 530 without auth, 535 with bad auth, nothing stored on any negative. The house's no-forging invariant rides the new transport.
+- **The translation is the bridge.** RFC5322 → the letter contract (`translateMail`, pure): `Date:` → gregorian; text/plain (charset + transfer encoding decoded) → markdown body; `X-House-Thread:` header continues that thread; else an `re:` subject matches the recipient's recent correspondence (`server/src/bridge/threads.ts` — 90-day window, scoped to the recipient, absence is silence); else a deterministic `th_smtp_` thread.
+- **One credential store.** SMTP AUTH is re-encoded into the HTTP Basic shape and verified by the house's own scrypt — no second store, no drift.
+- **Tests** — 12 unit (normaliseSubject prefix-stacking, deterministicThread, parseBind, translateMail mapping/thread resolution) + 6 integration against live infra with a real mail client: anonymous refused (530, nothing stored), resident delivers into the archive, forge refused (550, nothing stored), X-House-Thread continues, re:-reply joins the correspondence, reply into a whispered thread marks the whisper replied. 207/207 server, 43/43 client; typecheck and build clean.
+- **Deferred** — the IMAP read-side (thin ecosystem — deserves a research pass), external sync (needs real credentials + deployment reality), outbound SMTP (after inbound is real).
+
 ### Added — the living pass (2026-09-04)
 
 The first plumbing slice after the Open Design window closed: the engine breathes, and the learning loop is finally read.

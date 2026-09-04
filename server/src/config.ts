@@ -56,6 +56,11 @@ export interface HouseConfig {
    *  detectGaps per resident. 0 disables the scheduler (the house only
    *  detects on demand). Default 6 hours. */
   gapPassIntervalMs: number;
+  /** The SMTP door (SPEC §5 #10) — inbound mail becomes letters. Closed by
+   *  default; local submission only; refuses to start with AUTH_MODE=none. */
+  smtpEnabled: boolean;
+  /** The SMTP bind address ("127.0.0.1:2525"). */
+  smtpBind: string;
 }
 
 const AuthConfigSchema = z.object({
@@ -106,5 +111,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): HouseConfig {
     auth,
     bookSettlingDays: intFromEnv(env.BOOK_SETTLING_DAYS, 7),
     gapPassIntervalMs: intFromEnv(env.GAP_PASS_INTERVAL_MS, 6 * 60 * 60 * 1000),
+    smtpEnabled: boolFromEnv(env.SMTP_ENABLED, false),
+    smtpBind: env.SMTP_BIND ?? "127.0.0.1:2525",
   };
 }

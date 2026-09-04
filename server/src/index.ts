@@ -24,6 +24,16 @@ export {
   type GapSchedulerDeps,
 } from "./whisper/scheduler.js";
 export {
+  startSmtpBridge,
+  translateMail,
+  normalizeSubject,
+  deterministicThread,
+  parseBind,
+  type SmtpBridge,
+  type SmtpMailLetter,
+} from "./bridge/smtp.js";
+export { findThreadBySubject } from "./bridge/threads.js";
+export {
   ParticipationService,
   type ParticipationState,
   type ParticipationRow,

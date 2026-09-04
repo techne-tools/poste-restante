@@ -14,10 +14,13 @@
 import { serve } from "@hono/node-server";
 import { buildHouse } from "./index.js";
 import { createLetterServer } from "./server.js";
+import { deliverLetter } from "./deliver.js";
 import { AuthService } from "./auth/service.js";
 import { InviteService } from "./invites/service.js";
 import { BookService } from "./book/service.js";
 import { startGapScheduler } from "./whisper/scheduler.js";
+import { startSmtpBridge } from "./bridge/smtp.js";
+import { findThreadBySubject } from "./bridge/threads.js";
 
 const PORT = Number.parseInt(process.env.PORT ?? "8787", 10);
 
@@ -45,6 +48,23 @@ const app = createLetterServer(house, {
 // still pulls. Presence not pressure — the house holds, it never pushes.
 const gapScheduler = startGapScheduler(house, auth, house.config.gapPassIntervalMs);
 
+// The SMTP door (SPEC §5 #10): inbound mail becomes letters through the
+// same pipeline, same idempotency, same privacy. Closed by default —
+// SMTP_ENABLED=1 opens it on SMTP_BIND (default 127.0.0.1:2525). The
+// ingest seam is the shared deliver seam, so whisper surfacing and reply
+// tracking behave exactly as for HTTP letters.
+const smtpBridge = startSmtpBridge(
+  {
+    config: house.config,
+    log: house.log,
+    auth,
+    ingest: (letter) => deliverLetter(house, letter),
+    findThreadBySubject: (to, normalizedSubject) =>
+      findThreadBySubject(house.db.pool, to, normalizedSubject),
+  },
+  house.config.smtpBind,
+);
+
 serve({ fetch: app.fetch, port: PORT }, (info) => {
   house.log.info("server:listening", {
     port: info.port,
@@ -58,6 +78,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, async () => {
     house.log.info("server:shutdown", { signal });
     gapScheduler?.stop();
+    smtpBridge?.close();
     await house.close();
     process.exit(0);
   });

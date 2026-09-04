@@ -27,6 +27,8 @@ server/   — the house. TypeScript, Hono, postgres 15 + qdrant + FTS.
                       and the scheduled gap pass (scheduler.ts — the house breathes)
     auth/           — AuthService (scrypt, bearer tokens, OIDC RP), visibility rule, auth CLI
     mcp/            — the MCP face (17 tools) — agents become residents
+    bridge/         — the bridge layer: smtp.ts (the SMTP door — the house meets real mail),
+                      threads.ts (re:-subject thread resolution for inbound mail)
 client/   — the reference client. Vite + React, calm design tokens bound to .impeccable/design.json (seal wax, no red).
   src/
     api.ts          — the house protocol as a client (POST deliver, GET mailbox); auth-gated, attaches the
@@ -40,10 +42,13 @@ client/   — the reference client. Vite + React, calm design tokens bound to .i
 
 ### The protocol faces
 
-The house speaks one contract (CONTRACT.md) through two faces that cannot drift — both share `schemas.ts` and `deliver.ts`:
+The house speaks one contract (CONTRACT.md) through three faces — two of
+them can't drift because they share `schemas.ts` and `deliver.ts`; the
+bridge translates at the door (SPEC §5 #10):
 
 - **HTTP** — the letter server (`/v1/letters`, `/v1/addresses/:addr/inbox`, `/v1/threads/:id`, `/v1/frames`, `/v1/whisper`). Pull by default; there is no push channel.
 - **MCP** — 17 tools (deliver, search, mailbox, whisper, gaps). Registered with Hermes as `poste-restante`.
+- **SMTP (inbound)** — the door (`server/src/bridge/smtp.ts`). A resident with a house credential can write mail to `SMTP_BIND` (default `127.0.0.1:2525`, enabled by `SMTP_ENABLED=1`) and it becomes a letter through the same pipeline. Envelope from = authenticated address (the no-forging invariant, verbatim).
 
 ### Identity
 

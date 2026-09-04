@@ -28,12 +28,18 @@
     "@qdrant/js-client-rest": "^1.19.0",
     "hono": "^4.13.5",
     "jose": "^6.2.10",
+    "mailparser": "^3.9.20",
     "pg": "^8.23.0",
+    "smtp-server": "^3.19.7",
     "zod": "^4.5.2"
   },
   "devDependencies": {
+    "@types/mailparser": "^3.4.6",
     "@types/node": "^26.4.0",
+    "@types/nodemailer": "^8.0.1",
     "@types/pg": "^8.23.1",
+    "@types/smtp-server": "^3.5.13",
+    "nodemailer": "^9.1.1",
     "tsx": "^4.20.0",
     "typescript": "^5.9.3",
     "vitest": "^3.2.7"
