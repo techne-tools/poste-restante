@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added — the house ships as a container (2026-09-04)
+
+The deployment package (SPEC §5 #14): `containers/poste-restante/` — the house as a Docker container on the homelab host. One service, zero duplication: the stack attaches to the host's resident `shared-postgres` (backend_net), `app-qdrant` (web_net), `app-ollama` (ollama_net) rather than re-provisioning them; the host's free ports 21016 (HTTP/MCP) and 21027 (SMTP door) published.
+
+- **Dockerfile** — multi-stage: `node:22-alpine` build (workspace manifests → `npm ci` → `tsc` + migrations copy), then a slim production runtime (`npm ci --omit=dev`), non-root `USER node`, `EXPOSE 8787 2525`. Only the server ships — the house is headless; the reference client is composed by the user, not served.
+- **compose.yml** — the house service on the three external networks; every knob env-driven (`DATABASE_URL` → `shared-postgres:5432` with `POSTGRES_PASSWORD` interpolated from secrets, `QDRANT_URL` → `app-qdrant:6333`, `EMBEDDING_BASE_URL` → `app-ollama:11434`). The house fails closed: `POSTGRES_PASSWORD` is required and `AUTH_MODE=none` is never the production default. watchtower excluded (locally-built image).
+- **.env.public / .env.enc** — the AGENTS convention: non-secrets committed; secrets (shared-postgres password, the outbound relay URL) in sops+age-encrypted `.env.enc`, never committed.
+- **deploy.sh** — assemble env (public + decrypted), pre-flight (missing `POSTGRES_PASSWORD` → fail closed), idempotent **`db:provision`** (creates the `poste_restante` DB on shared-postgres if absent), then `compose up -d --build`. The house self-migrates on boot.
+- **Verified against the live host (2026-09-04):** docker 29.7.2 + compose v5.5.0, all three networks exist, `shared-postgres` role `audiomuse` (createdb=t, no `poste_restante` DB yet → `db:provision` does it), `nomic-embed-text` served, free ports confirmed. Dockerfile build validated on the host (image `poste-restante-house:local`); no containers started — deploy is the next step, gated on the operator.
+
 ### Added — the outbound seam (2026-09-04)
 
 The house writes — SPEC §5 #13. The reverse of the SMTP door: a letter addressed to an external address (any domain ≠ `HOUSE_DOMAIN`) is carried out as real mail. Ships dormant (no `SMTP_OUTBOUND_URL` → closed), provable in tests, exactly like the door shipped closed.
@@ -16,7 +26,7 @@ The house writes — SPEC §5 #13. The reverse of the SMTP door: a letter addres
 - **The reverse translation is the same seam as the door.** `server/src/bridge/outbound.ts`: `translateToMail` (markdown → plain text via the same extraction the archive indexes, gregorian → Date, thread → `References` so clients group the conversation the house's way), `externalRecipients` (to + cc minus the house's own, deduped), `parseSmtpUrl` (mailto-style URL — credentials never appear in config, they live in the environment).
 - **Config.** `SMTP_OUTBOUND_URL` (unset = dormant; refuses `AUTH_MODE=none`), `HOUSE_DOMAIN` (default `house`). nodemailer promoted to a runtime dependency (same project family as smtp-server/mailparser).
 - **Tests** — 14 unit (internal/external boundary, dedupe, URL parsing, own-door guard, dormant/refused states) + 3 integration against a capture-sink SMTP server: archive-and-relay, reverse translation on the wire (text, from, References), all-internal → no relay. 224/224 server, 43/43 client; typecheck and build clean.
-- **Deferred** — the relay itself is not chosen (Fastmail/Gmail/UAS is a deployment decision, not a code one); the launchd house needs `SMTP_OUTBOUND_URL` in its plist only when a relay is chosen.
+- **Deferred** — the relay itself is not chosen (Fastmail/Gmail/UAS is a deployment decision, not a code one); the seam rides the stack env (`SMTP_OUTBOUND_URL` in `containers/poste-restante/.env.enc`, SPEC §5 #14 — not a launchd plist).
 
 ### Added — the read-side research pass (2026-09-04)
 

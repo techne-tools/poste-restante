@@ -1,0 +1,35 @@
+# Build context hygiene for the house container(s).
+#
+# The context root is the repo root (Dockerfile lives in containers/
+# poste-restante/). Exclude what the image never needs — and crucially,
+# the SECRETS (.env.enc / .env.*) and the local-only process docs, so a
+# build context can never carry them to a daemon.
+
+.git
+node_modules
+dist
+dist-ssr
+*.tsbuildinfo
+*.log
+*.local
+
+.env
+.env.*
+!.env.example
+
+# Local-only process docs (they carry personal details + machine names)
+DEVISING.md
+PIPELINE.md
+PLAN-*.md
+BRIEF-*.md
+RECON.md
+TASK.md
+REVIEW-*.md
+.ao-capture/
+
+# Impeccable tooling — not needed by the image
+.agents/
+.codex/
+.opencode/
+
+.DS_Store

@@ -1,0 +1,73 @@
+# Poste Restante — the house on the Docker homelab host.
+#
+# The house reuses the house (AGENTS.md): this stack contains ONLY the house
+# container. It attaches to the host's existing networks and resident
+# services — shared-postgres (backend_net), app-qdrant (web_net),
+# app-ollama (ollama_net) — rather than duplicating them.
+#
+# Networks are declared external: they were created by the host's other
+# compose projects (their labels carry com.docker.compose.project). If any
+# is missing on a fresh host, create it with:
+#   docker network create backend_net
+#   docker network create web_net
+#   docker network create ollama_net
+#
+# Secrets (.env.enc, sops+age) are NOT here. `.env.public` carries the
+# non-secret defaults; deploy.sh decrypts .env.enc into a temporary .env
+# that the shell exports, and the two secret URLs are built from env vars.
+
+name: poste-restante
+
+services:
+  house:
+    build:
+      context: ../..
+      dockerfile: containers/poste-restante/Dockerfile
+    image: poste-restante-house:local
+    container_name: poste-restante-house
+    restart: unless-stopped
+    # watchtower is resident on this host and churns locally-built images —
+    # the house image label keeps it out.
+    labels:
+      - com.centurylinklabs.watchtower.enable=false
+    # The protocol face. 8787 = HTTP/MCP. 21027 = the SMTP door. The door
+    # is closed by default (SMTP_ENABLED unset) — it is published on its own
+    # port so opening it later is a single env change, no re-deploy.
+    ports:
+      - "21016:8787"
+      - "21027:2525"
+    networks:
+      - backend_net
+      - web_net
+      - ollama_net
+    environment:
+      # ── the spine (postgres, qdrant, ollama) — by service name, on their
+      #    networks. No host ports, no localhost:5433/6333/11434.
+      DATABASE_URL: postgres://${POSTGRES_USER:-audiomuse}:${POSTGRES_PASSWORD}@shared-postgres:5432/${POSTGRES_DB}
+      QDRANT_URL: http://app-qdrant:6333
+      QDRANT_COLLECTION: ${QDRANT_COLLECTION:-letters}
+      EMBEDDING_BASE_URL: http://app-ollama:11434
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
+      EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-768}
+      # ── the resident (auth) — fail closed, never none.
+      AUTH_MODE: ${AUTH_MODE:-none}
+      HOUSE_DOMAIN: ${HOUSE_DOMAIN:-house}
+      BOOK_SETTLING_DAYS: ${BOOK_SETTLING_DAYS:-7}
+      GAP_PASS_INTERVAL_MS: ${GAP_PASS_INTERVAL_MS:-21600000}   # 6h; 0 disables
+      # ── the door (inbound SMTP). Closed by default; 1 opens it.
+      SMTP_ENABLED: ${SMTP_ENABLED:-0}
+      # ── the outbound seam (SPEC §5 #13). Ships dormant; set a relay URL
+      #    in .env.enc to wake it (smtp://user:pass@relay:587/) — the
+      #    host's mail relay, out of the house's hands.
+      SMTP_OUTBOUND_URL: ${SMTP_OUTBOUND_URL:-}
+      # ── health / ops
+      PORT: 8787
+      POSTE_RESTANTE_INTEGRATION: "0"
+
+networks:
+  backend_net:
+    external: true
+  web_net:
+    external: true
+  ollama_net:
+    external: true

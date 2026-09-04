@@ -41,9 +41,9 @@ Privacy as schema, anti-hierarchy as capability, queer/indigenous/global-majorit
 | Raw payloads | minio (S3-compatible) | ⬜ target — `NoopPayloadStore` today |
 | Ingestion queue | redis | ⬜ target |
 | Audio letters | faster-whisper | ⬜ target |
-| Local brain | ollama (embeddings, 768-dim) | ✅ live (native process) |
+| Local brain | ollama (embeddings, 768-dim) | ✅ live on the host (`app-ollama`, 21023) |
 | Bridges | IMAP/SMTP (primary), Matrix + ActivityPub (optional) | ✅ inbound SMTP built (`server/src/bridge/smtp.ts`, `SMTP_ENABLED=1`); IMAP/Matrix/AP deferred |
-| Deployment | native processes on the host (docker-compose remains aspirational) | ✅ live: postgres 5433, qdrant 6333, ollama 11434 |
+| Deployment | the Docker homelab host — `containers/poste-restante/` (Dockerfile + compose + deploy.sh) | ✅ package built 2026-09-04; local dev remains native processes on a Mac |
 
 ## What this is not
 
