@@ -131,30 +131,31 @@ Callsheet's ghost cards scaled from daily to conversational. The sidebar is the 
 
 ### The stack
 
-The house reuses the house: on the host today the services are **native processes, not containers** — postgres 15 (5433), qdrant (6333), ollama (11434). There is no docker, no minio, no redis, no whisper binary (verified 2026-09-04). The `containers/` convention in AGENTS.md describes the target shape for new services in the 21000 range, not current reality. The rows below mix what exists with what the design still names as targets.
+The house lives on **the Docker homelab host** (corrected 2026-09-04 — the macOS/native story was a dev convenience, never the target). The house reuses the house: the stack attaches to the host's resident services rather than duplicating them — `shared-postgres` (postgres:15-alpine — the "reuse shared postgres 15" decision made literal), `app-qdrant` (host 21022), `app-ollama` (host 21023), plus shared-redis/whisper. Local dev runs on a Mac as native processes (postgres 15 5433, qdrant 6333, ollama 11434). The `containers/<service>/` convention (compose + deploy.sh, ports 21000 range) is the deployment shape. The rows below mix what exists with what the design still names as targets.
 
 | Layer | Choice | Status today |
 |---|---|---|
-| Letter server | TypeScript + Hono | ✅ native process (`npm run serve`) |
-| Letters/addresses/threads/frames | postgres 15 (shared instance) | ✅ native (5433) |
-| Semantic layer | qdrant | ✅ native (6333) |
+| Letter server | TypeScript + Hono | ✅ container next (dev: `npm run serve`) |
+| Letters/addresses/threads/frames | postgres 15 (shared instance) | ✅ `shared-postgres` (dev 5433) |
+| Semantic layer | qdrant | ✅ `app-qdrant` 21022 (dev 6333) |
 | Raw payloads | minio | ⬜ target — stub today (`NoopPayloadStore`) |
-| Ingestion queue | redis | ⬜ target — not built |
-| Local brain | ollama | ✅ native (11434) |
-| Audio letters | faster-whisper | ⬜ target — not built |
-| Bridges | IMAP/SMTP (primary), Matrix + ActivityPub (optional) | ⬜ target — next plumbing |
+| Ingestion queue | redis | ⬜ target — `shared-redis` resident, unused |
+| Local brain | ollama | ✅ `app-ollama` 21023 (dev 11434) |
+| Audio letters | faster-whisper | ⬜ target — `whisper` resident, unused |
+| Bridges | IMAP/SMTP (primary), Matrix + ActivityPub (optional) | ⬜ in-flight — the SMTP door (in) + outbound seam (dormant) live; IMAP read-side next |
 | Reference client | Vite + React (Tauri was the original lineage) | ✅ `client/` |
 | Agent integration | MCP server | ✅ `server/src/mcp/` |
-| Deployment | docker-compose, tailscale for access | ⬜ aspirational — today: native processes on the host |
+| Deployment | docker stack + oauth-proxy/routing | ⬜ first slice — `containers/poste-restante/` |
 
 ### The buildable first slice
 
 ```
-postgres 15 + qdrant + ollama        ← what runs today, as native processes
-minio + redis + faster-whisper        ← still targets (the archive's deeper tiers)
+host:    postgres (shared-postgres) + qdrant (21022) + ollama (21023)   ← resident services, reused
+         poste-restante (server container) + stalwart (IMAP, 21xxx)     ← the house's own services
+dev mac: the same software as native processes                          ← dev box, not the target
 ```
 
-Three native processes are the live spine. The letter server + whisper engine + scheduler are the house software on top. When the bridge slice lands, minio (payloads) and the SMTP relay become the first new services — and the `containers/` convention is where they should land (ports 21000 range), matching AGENTS.md rather than contradicting it.
+The letter server + whisper engine + scheduler are the house software on top. The first deployment slice is the `containers/poste-restante/` package (Dockerfile + compose service + .env.public + deploy.sh, host ports in the free 21xxx range — 21016/21027/21032/21033 are free as of 2026-09-04) wiring the house to the host's resident postgres/qdrant/ollama, exactly as AGENTS.md specifies.
 
 ## Key Architectural Decisions
 
