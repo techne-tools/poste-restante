@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added — the read-side research pass (2026-09-04)
+
+Movement B's verdict before any code — SPEC §5 #11. Surveyed the IMAP server ecosystem and the client that would consume it; no code written.
+
+- **Verdict:** build movement B as an adapter over an external IMAP server; cut the in-process JS IMAP server idea. The pure-JS foundation is dead (imap-server 0.0.1/2022, jmap-server 0.0.2/2022, jmapjs delisted); the mature servers are C/C++/Rust. **Stalwart** (Rust, 14.5k★, actively maintained) is the candidate sidecar — one native binary, no Docker, port in the 21000 range per AGENTS convention.
+- **The client that forces the read-side: Spark Desktop** — the user's actual mail client only adds custom accounts by manual IMAP setup; an SMTP-only custom account does not exist in Spark. Spark cannot be a resident client until movement B exists. (This corrects the earlier Thunderbird path: the `user.js` seed never assembled the account — `mail.accountmanager.accounts` was missing, so Thunderbird showed nothing. Backed out; Thunderbird is not the user's client.)
+- **Privacy is schema-derived, unchanged:** an IMAP user sees only letters their participant edges qualify for; the read query is the derived-participation query.
+- **The real work is mailbox materialisation, not protocol** — mapping threads/plural time/participant edges onto folders/UIDs/flags/SEARCH. Design first, then the adapter (a second translation seam, same shape as the SMTP door).
+
 ### Added — the SMTP door (2026-09-04)
 
 The bridge layer, movement A: the house meets real mail. Inbound only — SMTP on a local submission port, the sender authenticated as a resident, the mail ingested as a letter through the same pipeline, same idempotency, same privacy (SPEC §5 #10).
