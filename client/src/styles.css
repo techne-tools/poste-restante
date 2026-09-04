@@ -185,7 +185,10 @@ a:hover {
   border: none;
   padding: 0;
   font: inherit;
-  color: var(--accent);
+  /* Ink, not accent — the seal tick is this surface's flourish and the
+     write-back button is the primary; a citation pointer is a quiet
+     door-link, not a third seal. Matches the archive/pub door-links. */
+  color: var(--fg);
   text-decoration: underline;
   cursor: pointer;
 }
@@ -346,6 +349,10 @@ a:hover {
   color: var(--accent);
 }
 
+/* The frames echo the kind seal — so they stay muted, never accent. The
+   kind is this surface's single flourish; the frames are the quiet mono
+   line that orients, not ornament. */
+
 .letter .subject {
   font-family: var(--font-display);
   font-size: var(--step-3);
@@ -367,7 +374,7 @@ a:hover {
 }
 
 .letter .frames .frame {
-  color: var(--accent);
+  color: var(--muted);
 }
 
 /* The body — the reading, the reader's voice. Sans, at a letter measure. */
@@ -699,7 +706,10 @@ a:hover {
 }
 
 .horizon-note.has-contradiction {
-  border-left-color: var(--accent);
+  /* Ink, not accent — the transit line is the plural-time flourish, the
+     only accent this surface carries. The contradiction is a quiet note,
+     not a seal. */
+  border-left-color: var(--fg);
 }
 
 .horizon-note .door-link {
@@ -934,7 +944,7 @@ button.door-link:hover {
 
 .book-doors {
   border: var(--rule);
-  border-left: 2px solid var(--accent);
+  border-left: 2px solid var(--fg);
   border-radius: var(--radius);
   background: var(--surface-raised);
   padding: var(--space-2) var(--space-3);
@@ -968,7 +978,9 @@ button.door-link:hover {
   display: block;
   width: 2rem;
   height: 2px;
-  background: var(--accent);
+  /* Ink, not accent — a standing clause (state-as-seal) is the book's
+     single accent. The section rule is a quiet fold, not a seal. */
+  background: var(--fg);
   margin-top: var(--space-1);
 }
 
