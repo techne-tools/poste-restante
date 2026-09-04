@@ -48,6 +48,18 @@ export {
   type MailboxLetter,
 } from "./bridge/mailbox.js";
 export {
+  MailboxSync,
+  buildMailboxView,
+  toRfc5322Message,
+  deriveMailFlags,
+  flagsToImap,
+  toMailFlagState,
+  type MailboxSyncSource,
+  type MailboxWriter,
+  type Rfc5322Message,
+  type MailboxViewInput,
+} from "./bridge/sync.js";
+export {
   startOutbound,
   translateToMail,
   externalRecipients,

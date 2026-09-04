@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added — the mailbox sync engine, movement B's live-side seam (2026-09-04)
+
+The second slice of the read-side bridge (SPEC §5 #12, build B2a): the house-side state machine that mirrors the archive into a mailbox, WITHOUT a sidecar — the mirror target is an interface (`MailboxWriter`), so B2b's Stalwart+imapflow adapter plugs into the same seam and every test drives a fake writer. `server/src/bridge/sync.ts` + exports, 13 hermetic unit tests.
+
+- **The view is derived.** `buildMailboxView` — every already-visible letter lands in its folder (frame/Sent/Inbox) AND Archive; the Archive copy carries the same uid/messageId (one truth, duplicated across folders is the house's plural-time truth wearing IMAP's clothes). Scope is the CALLER's — the visibility query is the same derived-participation rule every face uses; the engine cannot leak a letter it is never handed.
+- **One renderer, not two.** `toRfc5322Message` consumes the pure engine's `MailboxLetter` verbatim (B1 translate → the writer's message; no second translation path).
+- **Flags are write-only in B2a — the SPEC's "bidirectional" is flagged POSTPONED, not silently cut.** The house records opened/replied on **whispers**, not letters; pins are global. So B2a carries pinned → `\Flagged`, thread-replied → `\Answered`, and keeps `\Seen` client-side. A per-resident `letter_reads` migration is the read-back slice (recorded in SPEC §5 #12).
+- **The sync pass is idempotent on uid.** `MailboxSync.syncResident` ensures folders (Archive exists even when empty — the shape is stable across resyncs) and upserts by uid; a second pass over the same archive rewrites nothing.
+- **Logs are event + count only** — `mailbox:sync-resident` carries folder/message counts, never addresses, ids, or bodies.
+- 13 unit tests: flag derivation (never `\Seen`), folder×Archive duplication, letter-own frame precedence, one-renderer message build, pass counts, idempotence, log-data-minimisation. Suite: 175/175 server unit, 79/79 integration, 43/43 client, typecheck + build. 267 → 280 (+13).
+
 ### Added — the mailbox materialisation engine, movement B's pure core (2026-09-04)
 
 The read-side bridge's first slice (SPEC §5 #12): the letter contract → IMAP's fixed-shaped world (folders, UIDs, headers, flags) as a **pure, deterministic derivation** — `server/src/bridge/mailbox.ts` + exports, with 17 hermetic unit tests. No sidecar, no new dependency: this bite locks the mapping the B2 sync layer (Stalwart + imapflow) will drive against the live archive.
