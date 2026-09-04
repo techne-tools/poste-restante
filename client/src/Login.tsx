@@ -70,7 +70,7 @@ function SignIn({ onAuthed, onRedeem, onGuest }: Props & { onRedeem: () => void 
   };
 
   return (
-    <div className="house">
+    <div className="house door">
       <main className="space login">
         <header>
           <h1>Poste Restante</h1>

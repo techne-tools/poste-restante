@@ -97,6 +97,23 @@ a:hover {
   height: 100%;
 }
 
+/* The door — the unauthenticated surfaces (login, guest pub). No whisper
+   sidebar is mounted, so the two-column house grid would strand the single
+   child in the 300px column. The door is a single full-width room; the
+   letter measure (max-width) keeps the card centred and legible. */
+.house.door {
+  grid-template-columns: 1fr;
+  align-items: center;
+}
+
+.house.door .space {
+  height: 100%;
+}
+
+.house.door .space > .letter {
+  margin: 0 auto;
+}
+
 .whisper {
   border-right: var(--rule);
   background: var(--surface-sunken);

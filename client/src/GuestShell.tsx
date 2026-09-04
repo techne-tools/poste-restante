@@ -19,7 +19,7 @@ export default function GuestShell({ onEnterHouse }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   return (
-    <div className="house">
+    <div className="house door">
       <main className="space">
         {error && (
           <div className="error-banner">
