@@ -61,6 +61,14 @@ export interface HouseConfig {
   smtpEnabled: boolean;
   /** The SMTP bind address ("127.0.0.1:2525"). */
   smtpBind: string;
+  /** The outbound seam (SPEC §5 #13) — letters addressed outside the house
+   *  are relayed outward. A mailto-style SMTP URL ("smtp://user:pass@relay:587/").
+   *  Unset = the door stays closed; the seam ships dormant until a relay is
+   *  chosen. Credentials never appear in config — they live in the URL. */
+  smtpOutboundUrl: string | undefined;
+  /** The address-space boundary: addresses whose domain equals this are the
+   *  house's own; everyone else is external and relayable (SPEC §5 #13). */
+  houseDomain: string;
 }
 
 const AuthConfigSchema = z.object({
@@ -113,5 +121,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): HouseConfig {
     gapPassIntervalMs: intFromEnv(env.GAP_PASS_INTERVAL_MS, 6 * 60 * 60 * 1000),
     smtpEnabled: boolFromEnv(env.SMTP_ENABLED, false),
     smtpBind: env.SMTP_BIND ?? "127.0.0.1:2525",
+    smtpOutboundUrl: env.SMTP_OUTBOUND_URL || undefined,
+    houseDomain: env.HOUSE_DOMAIN ?? "house",
   };
 }

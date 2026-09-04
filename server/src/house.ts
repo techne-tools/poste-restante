@@ -14,6 +14,7 @@ import type { Retrieval } from "./retrieval/retrieval.js";
 import type { WhisperService } from "./whisper/service.js";
 import type { ParticipationService } from "./participation/service.js";
 import type { BookService } from "./book/service.js";
+import type { OutboundRelay } from "./bridge/outbound.js";
 
 export interface House {
   config: HouseConfig;
@@ -27,6 +28,8 @@ export interface House {
   whisper: WhisperService;
   participation: ParticipationService;
   book: BookService;
+  /** The outbound relay (SPEC §5 #13) — null when dormant/refused. */
+  outbound: OutboundRelay | null;
   log: Logger;
   close(): Promise<void>;
 }

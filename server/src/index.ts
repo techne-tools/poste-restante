@@ -34,6 +34,16 @@ export {
 } from "./bridge/smtp.js";
 export { findThreadBySubject } from "./bridge/threads.js";
 export {
+  startOutbound,
+  translateToMail,
+  externalRecipients,
+  isInternalAddress,
+  parseSmtpUrl,
+  isOwnDoor,
+  type OutboundRelay,
+  type OutboundDeps,
+} from "./bridge/outbound.js";
+export {
   ParticipationService,
   type ParticipationState,
   type ParticipationRow,
@@ -73,6 +83,7 @@ import { createEmbedder } from "./embed/embedder.js";
 import { QdrantSemanticStore } from "./qdrant/store.js";
 import { NoopPayloadStore } from "./minio/store.js";
 import { IngestionPipeline } from "./pipeline/pipeline.js";
+import { startOutbound, type OutboundRelay } from "./bridge/outbound.js";
 import { Retrieval } from "./retrieval/retrieval.js";
 import { WhisperService } from "./whisper/service.js";
 import { ParticipationService } from "./participation/service.js";
@@ -104,6 +115,10 @@ export async function buildHouse(
   // the pipeline to write its own letters. By the time any letter is
   // ingested, `participation` is assigned.
   let participation: ParticipationService;
+  // The outbound relay (SPEC §5 #13) is late-bound the same way: the
+  // pipeline is the single write path, the relay rides the onStored hook;
+  // by the time any letter is ingested, `outbound` is assigned.
+  let outbound: OutboundRelay | null;
   const pipeline = new IngestionPipeline(
     repo,
     semantic,
@@ -111,10 +126,12 @@ export async function buildHouse(
     payloads,
     log,
     (letter) => participation.record(letter),
+    (letter) => (outbound?.enabled ? outbound.relay(letter) : Promise.resolve(undefined)),
   );
   const retrieval = new Retrieval(db.pool, semantic, embedder);
   const whisper = new WhisperService(db.pool, log, semantic, embedder);
   participation = new ParticipationService(db.pool, pipeline, log);
+  outbound = startOutbound({ config, log });
   const book = new BookService(
     db.pool,
     pipeline,
@@ -134,9 +151,11 @@ export async function buildHouse(
     retrieval,
     whisper,
     participation,
+    outbound,
     book,
     log,
     async close() {
+      outbound?.close();
       await db.close();
     },
   };

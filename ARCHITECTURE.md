@@ -28,7 +28,8 @@ server/   — the house. TypeScript, Hono, postgres 15 + qdrant + FTS.
     auth/           — AuthService (scrypt, bearer tokens, OIDC RP), visibility rule, auth CLI
     mcp/            — the MCP face (17 tools) — agents become residents
     bridge/         — the bridge layer: smtp.ts (the SMTP door — the house meets real mail),
-                      threads.ts (re:-subject thread resolution for inbound mail)
+                      threads.ts (re:-subject thread resolution for inbound mail),
+                      outbound.ts (the outbound seam — the house writes, SPEC §5 #13)
 client/   — the reference client. Vite + React, calm design tokens bound to .impeccable/design.json (seal wax, no red).
   src/
     api.ts          — the house protocol as a client (POST deliver, GET mailbox); auth-gated, attaches the
@@ -49,6 +50,7 @@ bridge translates at the door (SPEC §5 #10):
 - **HTTP** — the letter server (`/v1/letters`, `/v1/addresses/:addr/inbox`, `/v1/threads/:id`, `/v1/frames`, `/v1/whisper`). Pull by default; there is no push channel.
 - **MCP** — 17 tools (deliver, search, mailbox, whisper, gaps). Registered with Hermes as `poste-restante`.
 - **SMTP (inbound)** — the door (`server/src/bridge/smtp.ts`). A resident with a house credential can write mail to `SMTP_BIND` (default `127.0.0.1:2525`, enabled by `SMTP_ENABLED=1`) and it becomes a letter through the same pipeline. Envelope from = authenticated address (the no-forging invariant, verbatim).
+- **SMTP (outbound)** — the seam (`server/src/bridge/outbound.ts`, SPEC §5 #13). A letter addressed to an external domain (≠ `HOUSE_DOMAIN`) is relayed via `SMTP_OUTBOUND_URL` after it is stored (store first, relay second — never lose a letter). Ships dormant (unset = closed); refuses `AUTH_MODE=none` and its own door. nodemailer transport.
 
 ### Identity
 

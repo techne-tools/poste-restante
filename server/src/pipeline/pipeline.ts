@@ -31,6 +31,14 @@ export interface IngestResult {
  *  ParticipationService uses the pipeline to write its own letters). */
 export type LeaveJoinHook = (letter: Letter) => Promise<unknown>;
 
+/** A hook fired after ANY letter is stored (SPEC §5 #13) — the outbound
+ *  relay and (later) the mailbox materialisation ride the single write
+ *  path, so every ingest face (HTTP, MCP, the SMTP door) behaves
+ *  identically. A hook failure never loses the letter — the archive row is
+ *  already stored; the failure is logged, and the derived view syncs on
+ *  the next pass. */
+export type OnStoredHook = (letter: StoredLetter) => Promise<unknown>;
+
 export class IngestionPipeline {
   constructor(
     private readonly repo: PostgresRepository,
@@ -39,6 +47,7 @@ export class IngestionPipeline {
     private readonly payloads: PayloadStore,
     private readonly log: Logger,
     private readonly onLeaveJoin?: LeaveJoinHook,
+    private readonly onStored?: OnStoredHook,
   ) {}
 
   /**
@@ -82,6 +91,20 @@ export class IngestionPipeline {
     //    structural stop is derived from the letters, not declared.
     if (this.onLeaveJoin && (letter.envelope.kind === "leave" || letter.envelope.kind === "join")) {
       await this.onLeaveJoin(stored);
+    }
+
+    // 7. Derived views ride the single write path (outbound relay, and
+    //    later the mailbox materialisation). A failure here is logged, never
+    //    fatal — the letter is already stored; the view re-syncs next pass.
+    if (this.onStored) {
+      try {
+        await this.onStored(stored);
+      } catch (err) {
+        this.log.error("ingest:on-stored-failed", {
+          letterId: id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
 
     return { letterId: id, created: true };

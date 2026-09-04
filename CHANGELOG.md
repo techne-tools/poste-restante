@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added — the outbound seam (2026-09-04)
+
+The house writes — SPEC §5 #13. The reverse of the SMTP door: a letter addressed to an external address (any domain ≠ `HOUSE_DOMAIN`) is carried out as real mail. Ships dormant (no `SMTP_OUTBOUND_URL` → closed), provable in tests, exactly like the door shipped closed.
+
+- **The seam is on the pipeline, not a new endpoint.** An `onStored` hook (the same single-write-path shape as leave/join) — every ingest face (HTTP, MCP, the SMTP door) relays identically. `server/src/pipeline/pipeline.ts`, wired in `buildHouse` like the participation closure.
+- **Store first, relay second — never lose a letter.** The archive row lands first; the relay runs after; a relay failure logs `ingest:on-stored-failed` and the letter stays archived. The house's letters are always the archive's letters.
+- **Anti-forging, unchanged.** The outbound `from` is the resident's own address; the house never claims a sender it cannot prove. Anti-loop guard: the seam refuses `SMTP_OUTBOUND_URL` matching the door's own bind — the house never posts to itself.
+- **The reverse translation is the same seam as the door.** `server/src/bridge/outbound.ts`: `translateToMail` (markdown → plain text via the same extraction the archive indexes, gregorian → Date, thread → `References` so clients group the conversation the house's way), `externalRecipients` (to + cc minus the house's own, deduped), `parseSmtpUrl` (mailto-style URL — credentials never appear in config, they live in the environment).
+- **Config.** `SMTP_OUTBOUND_URL` (unset = dormant; refuses `AUTH_MODE=none`), `HOUSE_DOMAIN` (default `house`). nodemailer promoted to a runtime dependency (same project family as smtp-server/mailparser).
+- **Tests** — 14 unit (internal/external boundary, dedupe, URL parsing, own-door guard, dormant/refused states) + 3 integration against a capture-sink SMTP server: archive-and-relay, reverse translation on the wire (text, from, References), all-internal → no relay. 224/224 server, 43/43 client; typecheck and build clean.
+- **Deferred** — the relay itself is not chosen (Fastmail/Gmail/UAS is a deployment decision, not a code one); the launchd house needs `SMTP_OUTBOUND_URL` in its plist only when a relay is chosen.
+
 ### Added — the read-side research pass (2026-09-04)
 
 Movement B's verdict before any code — SPEC §5 #11. Surveyed the IMAP server ecosystem and the client that would consume it; no code written.
