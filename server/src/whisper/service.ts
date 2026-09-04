@@ -270,12 +270,19 @@ export class WhisperService {
     private readonly embedder?: Embedder,
   ) {}
 
-  /** The whisper — the house's own letters, newest first, scoped to an address. */
+  /** The whisper — the house's own letters, scoped to an address. Newest
+   *  first by the learning loop: replied → opened → recency (SPEC §5 #2 —
+   *  the ordering is the 70% relevance; the detector stays the 30% gap). */
   async list(address: string, limit = 50): Promise<Whisper[]> {
     const { rows } = await this.pool.query<WhisperRow>(
       `SELECT w.* FROM whispers w
        WHERE ${VISIBLE_TO}
-       ORDER BY w.created_at DESC LIMIT $2`,
+       ORDER BY
+         CASE WHEN w.replied_at IS NOT NULL THEN 0
+              WHEN w.opened_at IS NOT NULL THEN 1
+              ELSE 2 END,
+         w.created_at DESC
+       LIMIT $2`,
       [address, limit],
     );
     return rows.map(toWhisper);
@@ -286,7 +293,12 @@ export class WhisperService {
     const { rows } = await this.pool.query<WhisperRow>(
       `SELECT w.* FROM whispers w
        WHERE ${VISIBLE_TO} AND w.dismissed_at IS NULL
-       ORDER BY w.created_at DESC LIMIT $2`,
+       ORDER BY
+         CASE WHEN w.replied_at IS NOT NULL THEN 0
+              WHEN w.opened_at IS NOT NULL THEN 1
+              ELSE 2 END,
+         w.created_at DESC
+       LIMIT $2`,
       [address, limit],
     );
     return rows.map(toWhisper);

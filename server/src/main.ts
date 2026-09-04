@@ -17,6 +17,7 @@ import { createLetterServer } from "./server.js";
 import { AuthService } from "./auth/service.js";
 import { InviteService } from "./invites/service.js";
 import { BookService } from "./book/service.js";
+import { startGapScheduler } from "./whisper/scheduler.js";
 
 const PORT = Number.parseInt(process.env.PORT ?? "8787", 10);
 
@@ -39,6 +40,11 @@ const app = createLetterServer(house, {
   book,
 });
 
+// The house breathes: the scheduled gap pass runs detectGaps per resident
+// on its own rhythm (GAP_PASS_INTERVAL_MS), storing whispers the resident
+// still pulls. Presence not pressure — the house holds, it never pushes.
+const gapScheduler = startGapScheduler(house, auth, house.config.gapPassIntervalMs);
+
 serve({ fetch: app.fetch, port: PORT }, (info) => {
   house.log.info("server:listening", {
     port: info.port,
@@ -51,6 +57,7 @@ serve({ fetch: app.fetch, port: PORT }, (info) => {
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, async () => {
     house.log.info("server:shutdown", { signal });
+    gapScheduler?.stop();
     await house.close();
     process.exit(0);
   });

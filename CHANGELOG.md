@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added — the living pass (2026-09-04)
+
+The first plumbing slice after the Open Design window closed: the engine breathes, and the learning loop is finally read.
+
+- **The house breathes — the scheduled gap pass.** `detectGaps(address)` was on-demand only (HTTP `POST /v1/whisper/gaps`, MCP `detect_gaps`); nothing ran unless a caller asked. The house now runs the detector per resident on its own rhythm — `GAP_PASS_INTERVAL_MS` (default 6 hours, `0` disables). It only *stores* whispers; the resident still pulls the GET, so presence-not-pressure holds. Idempotent (`ON CONFLICT DO NOTHING`), restart-safe (missed passes self-heal), overlap-guarded (a slow pass skips the next tick, never stacks), and address-fault-isolated (one resident's failure does not stop the house). The pass enumerates residents from `credentials` — the house holds for addresses that can act. (`server/src/whisper/scheduler.ts`, wired into `server/src/main.ts` and `server/src/mcp/main.ts`)
+- **Convergence ordering — the learning loop finally read.** `list`/`listUnread` now sort by signal, then recency: replied → opened → newest. The whisper surfaces what the resident actually engages with; the ordering is the 70% relevance, the detector stays the 30% gap (SPEC §5 #2). No migration — the columns already existed. (`server/src/whisper/service.ts`)
+- **The `auth:add` readline fix (REVIEW-8 deferred).** The interactive password prompt silently ate piped stdin — a non-interactive run exited 0 with no credential written. It now fails loudly: the password prompt requires a terminal; scripts should use `--token`. (`server/src/auth/cli.ts`)
+- **Tests** — 6 unit tests for the scheduler (per-resident pass, overlap skip, error isolation, timer start/stop/idempotence, disabled interval) + 2 integration tests against live infra (convergence ordering arc: recency → open → reply; scheduled pass privacy negative: non-residents are never detected-for). 189/189 server, 43/43 client; typecheck and build clean.
+
 ### Added — the whisper's citation of the book (2026-09-02)
 
 - **The house cites what it has held.** When a gap whisper is created, the house embeds the whisper's own summary (its framing, not the raw letters), searches the semantic layer, and — if a STANDING clause shares ground above the citation threshold (0.5, deliberately below the connection threshold — a pointer, not a claim of identity) — the whisper carries `citedClause`/`citedExcerpt`. Only standing clauses are citable: "the household has held this" means settled knowing. (`server/src/db/migrations/014_whisper_citation.sql`, `server/src/whisper/service.ts`)

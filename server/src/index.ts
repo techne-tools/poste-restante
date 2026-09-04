@@ -19,6 +19,11 @@ export { createLogger, silentLogger, type Logger } from "./pipeline/logger.js";
 export { Retrieval, rrf, type RetrievalQuery, type RetrievalHit } from "./retrieval/retrieval.js";
 export { WhisperService, type Whisper, type WhisperKind } from "./whisper/service.js";
 export {
+  GapScheduler,
+  startGapScheduler,
+  type GapSchedulerDeps,
+} from "./whisper/scheduler.js";
+export {
   ParticipationService,
   type ParticipationState,
   type ParticipationRow,

@@ -20,7 +20,7 @@ Pre-IRC, two 14-year-olds exchanged floppy disks with text files on them as lett
 
 - **The address space is the spine.** Everything has an address (`you@house`, `hermes@house`, `feed:lurker@house`, `archive@house`). The address book is the social graph.
 - **The mailbox protocol is the whole protocol.** Envelope + markdown body. Async by default. Threads are correspondences. Bridges to IMAP/SMTP, Matrix, ActivityPub.
-- **The archive is the memory.** postgres (letters) + qdrant (semantics) + minio (payloads). **Plural time**: Gregorian is the index, frames are the addresses. Retrieval: exact + FTS + semantic, merged by RRF.
+- **The archive is the memory.** postgres (letters + FTS) + qdrant (semantics). **Plural time**: Gregorian is the index, frames are the addresses. Retrieval: exact + FTS + semantic, merged by RRF. Minio (payloads), redis (queue), faster-whisper (audio) remain targets — the live house is postgres + qdrant + ollama as native processes (no docker on the host; verified 2026-09-04).
 - **The resident is the collaborator.** The whisper surfaces the gap — six gap types, convergent by construction, derived from the active frame. Offer not audition, gap not surprise, reassessment not apology. The address is the meaning (Nancy).
 - **The house is headless; the UI is composed.** The house has no UI of its own — it exposes primitives as a protocol. The user composes the space (cmux, shell, obsidian, neomutt); the house generates the letters. Composable, not generative.
 
@@ -34,15 +34,16 @@ Privacy as schema, anti-hierarchy as capability, queer/indigenous/global-majorit
 |---|---|---|
 | Letter server | TypeScript + Hono | ✅ built (`server/`) |
 | Archive spine | postgres 15 (shared instance) + qdrant + FTS, merged by RRF | ✅ built |
-| The whisper | house letters + gap detection (dormant threads, unanswered questions), visible reasoning | ✅ built |
+| The whisper | house letters + all six gap types + the citation of the book, visible reasoning, convergence ordering | ✅ built |
+| Scheduled gap pass | `GAP_PASS_INTERVAL_MS` — the house breathes | ✅ built (`server/src/whisper/scheduler.ts`) |
 | Reference client | Vite + React (Tauri v2 later) | ✅ built (`client/`) |
 | Agent integration | MCP server — agents become residents | ✅ built, registered with Hermes |
-| Raw payloads | minio (S3-compatible) | ⬜ target — out of two-month scope |
-| Ingestion queue | redis | ⬜ target — out of two-month scope |
-| Audio letters | faster-whisper | ⬜ target — out of two-month scope |
-| Local brain | ollama (embeddings, 768-dim) | ✅ live |
-| Bridges | IMAP/SMTP (primary), Matrix + ActivityPub (optional) | ⬜ target — out of two-month scope |
-| Deployment | docker-compose, tailscale for access | ⬜ target — out of two-month scope |
+| Raw payloads | minio (S3-compatible) | ⬜ target — `NoopPayloadStore` today |
+| Ingestion queue | redis | ⬜ target |
+| Audio letters | faster-whisper | ⬜ target |
+| Local brain | ollama (embeddings, 768-dim) | ✅ live (native process) |
+| Bridges | IMAP/SMTP (primary), Matrix + ActivityPub (optional) | ⬜ target — next plumbing |
+| Deployment | native processes on the host (docker-compose remains aspirational) | ✅ live: postgres 5433, qdrant 6333, ollama 11434 |
 
 ## What this is not
 

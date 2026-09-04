@@ -52,6 +52,10 @@ export interface HouseConfig {
    *  unopposed before it becomes the household's norm. Slow by
    *  construction; configurable per house. */
   bookSettlingDays: number;
+  /** The heartbeat of the gap engine — how often the scheduled pass runs
+   *  detectGaps per resident. 0 disables the scheduler (the house only
+   *  detects on demand). Default 6 hours. */
+  gapPassIntervalMs: number;
 }
 
 const AuthConfigSchema = z.object({
@@ -101,5 +105,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): HouseConfig {
     integration: boolFromEnv(env.POSTE_RESTANTE_INTEGRATION, false),
     auth,
     bookSettlingDays: intFromEnv(env.BOOK_SETTLING_DAYS, 7),
+    gapPassIntervalMs: intFromEnv(env.GAP_PASS_INTERVAL_MS, 6 * 60 * 60 * 1000),
   };
 }

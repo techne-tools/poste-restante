@@ -4,7 +4,7 @@
 
 ## Current Code Reality
 
-**The house is built.** Phase 4 complete (2026-08-29): the archive spine, the letter server, the whisper, the reference client, and the MCP face are all implemented and verified. Phase 7 fix pass (2026-08-29) applied the design-review findings: bound design tokens, a11y pass, whisper reasoning, pub view, and the Horizon View re-sketch. The auth layer (2026-08-30) made authentication mandatory: basic (scrypt) and OIDC (PKCE) modes, participant-scoped authorization, and token auth for agents. The framework is still the product; the software is the reference implementation.
+**The house is built and breathing.** Phase 4 complete (2026-08-29): the archive spine, the letter server, the whisper, the reference client, and the MCP face are all implemented and verified. Phase 7 fix pass (2026-08-29) applied the design-review findings: bound design tokens, a11y pass, whisper reasoning, pub view, and the Horizon View re-sketch. The auth layer (2026-08-30) made authentication mandatory: basic (scrypt) and OIDC (PKCE) modes, participant-scoped authorization, and token auth for agents. The plumbing phase opened 2026-09-04 with the living pass: the gap engine now runs per resident on a schedule and the whisper sorts by the learning loop. The framework is still the product; the software is the reference implementation.
 
 ### What exists
 
@@ -18,12 +18,13 @@ server/   — the house. TypeScript, Hono, postgres 15 + qdrant + FTS.
     deliver.ts      — deliverLetter(): shared delivery logic (ingest → whisper → reply)
     types.ts        — envelope, frame, kinds (letter | feed | system | audio | note | task)
     id.ts           — letterId: sha256 of canonical envelope+body → deterministic UUID for qdrant
-    db/             — postgres repository + migrations (001–007)
+    db/             — postgres repository + migrations (001–014)
     qdrant/         — semantic store (768-dim ollama embeddings)
     embed/          — embedder (ollama local, OpenAI-compatible opt-in)
     pipeline/       — ingestion pipeline (row → embed → index → link), markdown→text, logger
     retrieval/      — three paths (exact, FTS, semantic) merged by RRF (k=60)
-    whisper/        — the house's own letters: list/open/dismiss/undismiss, gap detection with visible reasoning
+    whisper/        — the house's own letters: list/open/dismiss/undismiss, gap detection with visible reasoning,
+                      and the scheduled gap pass (scheduler.ts — the house breathes)
     auth/           — AuthService (scrypt, bearer tokens, OIDC RP), visibility rule, auth CLI
     mcp/            — the MCP face (17 tools) — agents become residents
 client/   — the reference client. Vite + React, calm design tokens bound to .impeccable/design.json (seal wax, no red).
@@ -65,7 +66,7 @@ Three paths, merged by RRF (k=60): exact (postgres envelope), full-text (postgre
 
 ### The whisper
 
-The mailbox for the house's own letters. House letters (kind `system` from `house@house`) surface on ingest; gap detection (dormant threads, unanswered questions) runs on demand via cheap postgres queries and carries **visible reasoning** — the house shows why it is offering a gap ("the last letter arrived more than 14 days ago…"). The learning loop: opening (signal) > ignoring (decay) > explicit dismissal (strongest negative); writing back is the strongest positive. Presence not pressure — the whisper is a GET resource.
+The mailbox for the house's own letters. House letters (kind `system` from `house@house`) surface on ingest; gap detection (all six types — dormant threads, unanswered questions, two voices, unvisited corners, uncited connections, echoes, plus the citation of the book) carries **visible reasoning** — the house shows why it is offering a gap ("the last letter arrived more than 14 days ago…"). The learning loop: opening (signal) > ignoring (decay) > explicit dismissal (strongest negative); writing back is the strongest positive. The whisper sorts by the loop — replied → opened → recency — so it surfaces what the resident actually engages with. **The scheduled pass** (since 2026-09-04) runs detection per resident on `GAP_PASS_INTERVAL_MS` (default 6h; 0 disables); it only stores whispers, never pushes. Presence not pressure — the whisper is a GET resource.
 
 ### The reference client
 
@@ -123,27 +124,30 @@ Callsheet's ghost cards scaled from daily to conversational. The sidebar is the 
 
 ### The stack
 
-| Layer | Choice |
-|---|---|
-| Letter server | TypeScript + Hono, dockerised |
-| Letters/addresses/threads/frames | postgres 15 (shared instance) |
-| Semantic layer | qdrant |
-| Raw payloads | minio |
-| Ingestion queue | redis |
-| Local brain | ollama |
-| Audio letters | faster-whisper |
-| Bridges | IMAP/SMTP (primary), Matrix + ActivityPub (optional) |
-| Reference client | Tauri v2 + React (callsheet lineage) |
-| Agent integration | MCP server |
-| Deployment | docker-compose, tailscale for access |
+The house reuses the house: on the host today the services are **native processes, not containers** — postgres 15 (5433), qdrant (6333), ollama (11434). There is no docker, no minio, no redis, no whisper binary (verified 2026-09-04). The `containers/` convention in AGENTS.md describes the target shape for new services in the 21000 range, not current reality. The rows below mix what exists with what the design still names as targets.
+
+| Layer | Choice | Status today |
+|---|---|---|
+| Letter server | TypeScript + Hono | ✅ native process (`npm run serve`) |
+| Letters/addresses/threads/frames | postgres 15 (shared instance) | ✅ native (5433) |
+| Semantic layer | qdrant | ✅ native (6333) |
+| Raw payloads | minio | ⬜ target — stub today (`NoopPayloadStore`) |
+| Ingestion queue | redis | ⬜ target — not built |
+| Local brain | ollama | ✅ native (11434) |
+| Audio letters | faster-whisper | ⬜ target — not built |
+| Bridges | IMAP/SMTP (primary), Matrix + ActivityPub (optional) | ⬜ target — next plumbing |
+| Reference client | Vite + React (Tauri was the original lineage) | ✅ `client/` |
+| Agent integration | MCP server | ✅ `server/src/mcp/` |
+| Deployment | docker-compose, tailscale for access | ⬜ aspirational — today: native processes on the host |
 
 ### The buildable first slice
 
 ```
-postgres + qdrant + minio + redis + faster-whisper + ollama
+postgres 15 + qdrant + ollama        ← what runs today, as native processes
+minio + redis + faster-whisper        ← still targets (the archive's deeper tiers)
 ```
 
-Six containers. That's the whole archive. The letter server + IMAP bridge + whisper engine are the house software on top.
+Three native processes are the live spine. The letter server + whisper engine + scheduler are the house software on top. When the bridge slice lands, minio (payloads) and the SMTP relay become the first new services — and the `containers/` convention is where they should land (ports 21000 range), matching AGENTS.md rather than contradicting it.
 
 ## Key Architectural Decisions
 

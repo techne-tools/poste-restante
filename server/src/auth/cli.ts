@@ -47,6 +47,18 @@ async function main(): Promise<void> {
         return;
       }
 
+      // Interactive password flow — only usable from a real terminal. The
+      // house prompts for a password, and `readline` prompts silently eat
+      // piped stdin (the answer never arrives, so setPassword never runs —
+      // a silent success with no credential written). Fail loudly instead.
+      // The non-interactive token path (`--token`) is the right tool for
+      // scripts and automation.
+      if (!stdin.isTTY || !stdout.isTTY) {
+        throw new Error(
+          "the password prompt needs a terminal — use `--token` when running non-interactively",
+        );
+      }
+
       const rl = createInterface({ input: stdin, output: stdout });
       const password = await rl.question(`password for ${address}: `);
       const confirm = await rl.question("confirm: ");

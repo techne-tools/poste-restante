@@ -20,6 +20,7 @@ import { buildHouse } from "../index.js";
 import { createStderrLogger } from "../pipeline/logger.js";
 import { createMcpHouse } from "./server.js";
 import { AuthService } from "../auth/service.js";
+import { startGapScheduler } from "../whisper/scheduler.js";
 
 // The MCP server speaks JSON-RPC on stdout — every log line must go to
 // stderr or it corrupts the protocol channel.
@@ -38,11 +39,17 @@ house.log.info("mcp:listening", {
   tokenPresent: Boolean(process.env.POSTE_RESTANTE_TOKEN),
 });
 
+// The house breathes: the scheduled gap pass runs detectGaps per resident
+// on its own rhythm (GAP_PASS_INTERVAL_MS), storing whispers the agent
+// still pulls. Presence not pressure — the house holds, it never pushes.
+const gapScheduler = startGapScheduler(house, auth, house.config.gapPassIntervalMs);
+
 // The house holds; it never interrupts. On shutdown it closes the archive
 // cleanly so nothing is left half-written.
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, async () => {
     house.log.info("mcp:shutdown", { signal });
+    gapScheduler?.stop();
     await server.close();
     await house.close();
     process.exit(0);
