@@ -15,6 +15,7 @@ import type { WhisperService } from "./whisper/service.js";
 import type { ParticipationService } from "./participation/service.js";
 import type { BookService } from "./book/service.js";
 import type { OutboundRelay } from "./bridge/outbound.js";
+import type { MailboxSyncDrive } from "./bridge/mailbox-drive.js";
 
 export interface House {
   config: HouseConfig;
@@ -30,6 +31,9 @@ export interface House {
   book: BookService;
   /** The outbound relay (SPEC §5 #13) — null when dormant/refused. */
   outbound: OutboundRelay | null;
+  /** The mailbox sync drive (SPEC §5 #12) — null when no accounts
+   *  provisioned; the house syncs when it has mailboxes to sync. */
+  mailbox: MailboxSyncDrive | null;
   log: Logger;
   close(): Promise<void>;
 }

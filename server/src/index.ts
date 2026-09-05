@@ -60,6 +60,19 @@ export {
   type MailboxViewInput,
 } from "./bridge/sync.js";
 export {
+  ImapMailboxWriter,
+  parseImapUrl,
+} from "./bridge/imap-writer.js";
+export {
+  MailboxAccountsService,
+  type MailboxAccount,
+} from "./bridge/mailbox-accounts.js";
+export {
+  MailboxSyncDrive,
+  type MailboxSyncDriveDeps,
+  type MailboxPassResult,
+} from "./bridge/mailbox-drive.js";
+export {
   startOutbound,
   translateToMail,
   externalRecipients,
@@ -110,6 +123,8 @@ import { QdrantSemanticStore } from "./qdrant/store.js";
 import { NoopPayloadStore } from "./minio/store.js";
 import { IngestionPipeline } from "./pipeline/pipeline.js";
 import { startOutbound, type OutboundRelay } from "./bridge/outbound.js";
+import { MailboxAccountsService } from "./bridge/mailbox-accounts.js";
+import { MailboxSyncDrive } from "./bridge/mailbox-drive.js";
 import { Retrieval } from "./retrieval/retrieval.js";
 import { WhisperService } from "./whisper/service.js";
 import { ParticipationService } from "./participation/service.js";
@@ -145,6 +160,11 @@ export async function buildHouse(
   // pipeline is the single write path, the relay rides the onStored hook;
   // by the time any letter is ingested, `outbound` is assigned.
   let outbound: OutboundRelay | null;
+  // The mailbox sync drive (SPEC §5 #12) rides the same hook — after any
+  // stored letter, the residents party to it (via their provisioned
+  // mailbox accounts) re-converge. Late-bound like the others: the drive
+  // uses the pipeline-adjacent services but never the other way round.
+  let mailbox: MailboxSyncDrive | null = null;
   const pipeline = new IngestionPipeline(
     repo,
     semantic,
@@ -152,12 +172,25 @@ export async function buildHouse(
     payloads,
     log,
     (letter) => participation.record(letter),
-    (letter) => (outbound?.enabled ? outbound.relay(letter) : Promise.resolve(undefined)),
+    (letter) => {
+      const relays = outbound?.enabled ? outbound.relay(letter) : Promise.resolve(undefined);
+      const syncs = mailbox ? mailbox.onStored() : Promise.resolve(undefined);
+      return Promise.all([relays, syncs]).then(() => undefined);
+    },
   );
   const retrieval = new Retrieval(db.pool, semantic, embedder);
   const whisper = new WhisperService(db.pool, log, semantic, embedder);
   participation = new ParticipationService(db.pool, pipeline, log);
   outbound = startOutbound({ config, log });
+  mailbox = new MailboxSyncDrive(
+    {
+      accounts: new MailboxAccountsService(db.pool),
+      repo,
+      log,
+      tlsInsecure: config.mailboxTlsInsecure,
+    },
+    config.mailboxSyncIntervalMs,
+  );
   const book = new BookService(
     db.pool,
     pipeline,
@@ -178,10 +211,12 @@ export async function buildHouse(
     whisper,
     participation,
     outbound,
+    mailbox,
     book,
     log,
     async close() {
       outbound?.close();
+      mailbox?.stop();
       await db.close();
     },
   };

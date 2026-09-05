@@ -65,6 +65,14 @@ const smtpBridge = startSmtpBridge(
   house.config.smtpBind,
 );
 
+// The mailbox sync drive (SPEC §5 #12): provisioned residents' mailboxes
+// converge with the archive — resync on start, delta after every stored
+// letter (the pipeline's onStored hook, wired in buildHouse), optional
+// heartbeat (MAILBOX_SYNC_INTERVAL_MS). Dormant with no accounts;
+// presence-not-pressure — the house syncs, it never interrupts.
+void house.mailbox?.runPass();
+house.mailbox?.start();
+
 serve({ fetch: app.fetch, port: PORT }, (info) => {
   house.log.info("server:listening", {
     port: info.port,

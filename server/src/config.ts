@@ -69,6 +69,15 @@ export interface HouseConfig {
   /** The address-space boundary: addresses whose domain equals this are the
    *  house's own; everyone else is external and relayable (SPEC §5 #13). */
   houseDomain: string;
+  /** The mailbox sync heartbeat (SPEC §5 #12, the sync drive): how often
+   *  the scheduled re-pass re-mirrors provisioned mailbox accounts. 0
+   *  disables the scheduler — the house only syncs on start and on each
+   *  stored letter. Default 0 (dormant). */
+  mailboxSyncIntervalMs: number;
+  /** DEV-ONLY: accept the dev/homelab sidecar's self-signed cert for
+   *  plaintext imap:// URLs (MAILBOX_TLS_INSECURE=1). Production configures
+   *  the CA via imaps:// and never sets this. Fail closed by default. */
+  mailboxTlsInsecure: boolean;
 }
 
 const AuthConfigSchema = z.object({
@@ -123,5 +132,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): HouseConfig {
     smtpBind: env.SMTP_BIND ?? "127.0.0.1:2525",
     smtpOutboundUrl: env.SMTP_OUTBOUND_URL || undefined,
     houseDomain: env.HOUSE_DOMAIN ?? "house",
+    mailboxSyncIntervalMs: intFromEnv(env.MAILBOX_SYNC_INTERVAL_MS, 0),
+    mailboxTlsInsecure: boolFromEnv(env.MAILBOX_TLS_INSECURE, false),
   };
 }

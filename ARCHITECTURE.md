@@ -18,7 +18,7 @@ server/   — the house. TypeScript, Hono, postgres 15 + qdrant + FTS.
     deliver.ts      — deliverLetter(): shared delivery logic (ingest → whisper → reply)
     types.ts        — envelope, frame, kinds (letter | feed | system | audio | note | task)
     id.ts           — letterId: sha256 of canonical envelope+body → deterministic UUID for qdrant
-    db/             — postgres repository + migrations (001–014)
+    db/             — postgres repository + migrations (001–015; 015 = mailbox_accounts)
     qdrant/         — semantic store (768-dim ollama embeddings)
     embed/          — embedder (ollama local, OpenAI-compatible opt-in)
     pipeline/       — ingestion pipeline (row → embed → index → link), markdown→text, logger
@@ -29,7 +29,11 @@ server/   — the house. TypeScript, Hono, postgres 15 + qdrant + FTS.
     mcp/            — the MCP face (17 tools) — agents become residents
     bridge/         — the bridge layer: smtp.ts (the SMTP door — the house meets real mail),
                       threads.ts (re:-subject thread resolution for inbound mail),
-                      outbound.ts (the outbound seam — the house writes, SPEC §5 #13)
+                      outbound.ts (the outbound seam — the house writes, SPEC §5 #13),
+                      mailbox.ts + sync.ts + imap-writer.ts + mailbox-drive.ts +
+                      mailbox-accounts.ts + mailbox-cli.ts (movement B — the read-side:
+                      the pure engine, the sync state machine, the live IMAP adapter,
+                      the sync drive, the per-resident accounts, and the CLI)
 client/   — the reference client. Vite + React, calm design tokens bound to .impeccable/design.json (seal wax, no red).
   src/
     api.ts          — the house protocol as a client (POST deliver, GET mailbox); auth-gated, attaches the
@@ -51,6 +55,7 @@ bridge translates at the door (SPEC §5 #10):
 - **MCP** — 17 tools (deliver, search, mailbox, whisper, gaps). Registered with Hermes as `poste-restante`.
 - **SMTP (inbound)** — the door (`server/src/bridge/smtp.ts`). A resident with a house credential can write mail to `SMTP_BIND` (default `127.0.0.1:2525`, enabled by `SMTP_ENABLED=1`) and it becomes a letter through the same pipeline. Envelope from = authenticated address (the no-forging invariant, verbatim).
 - **SMTP (outbound)** — the seam (`server/src/bridge/outbound.ts`, SPEC §5 #13). A letter addressed to an external domain (≠ `HOUSE_DOMAIN`) is relayed via `SMTP_OUTBOUND_URL` after it is stored (store first, relay second — never lose a letter). Ships dormant (unset = closed); refuses `AUTH_MODE=none` and its own door. nodemailer transport.
+- **IMAP (outbound mirror)** — the mailbox seam (`server/src/bridge/mailbox-drive.ts`, SPEC §5 #12). Provisioned residents' mailboxes converge with the archive: resync on start, delta after every stored letter (the pipeline's `onStored` hook), optional heartbeat (`MAILBOX_SYNC_INTERVAL_MS`). Accounts carry sidecar-specific credentials (`npm run mailbox:add`); no account row, no sync. TLS fail-closed: `MAILBOX_TLS_INSECURE=1` is the explicit dev-only key.
 
 ### Identity
 
@@ -142,7 +147,7 @@ The house lives on **the Docker homelab host** (corrected 2026-09-04 — the mac
 | Ingestion queue | redis | ⬜ target — `shared-redis` resident, unused |
 | Local brain | ollama | ✅ `app-ollama` 21023 (dev 11434) |
 | Audio letters | faster-whisper | ⬜ target — `whisper` resident, unused |
-| Bridges | IMAP/SMTP (primary), Matrix + ActivityPub (optional) | ⬜ in-flight — the SMTP door (in) + outbound seam (dormant) live; IMAP read-side next |
+| Bridges | IMAP/SMTP (primary), Matrix + ActivityPub (optional) | 🟡 in-flight — SMTP door (in) + outbound seam (dormant) live; movement B LIVE (pure engine + sync seam + imapflow adapter + sync drive + per-resident accounts), flag read-back next |
 | Reference client | Vite + React (Tauri was the original lineage) | ✅ `client/` |
 | Agent integration | MCP server | ✅ `server/src/mcp/` |
 | Deployment | docker stack + oauth-proxy/routing | ⬜ first slice — `containers/poste-restante/` |

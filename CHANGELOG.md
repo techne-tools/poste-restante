@@ -6,6 +6,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added — the mailbox sidecar package, the mirror ships as a container (2026-09-04)
+
+The read-side mirror for the deployment round (SPEC §5 #12 + §5 #14): `containers/stalwart-sidecar/` brings Stalwart to the Docker homelab host as its own container, pinned to the version the house's read-side is proven against.
+
+- **Pinned to v0.16.20** (`ARG STALWART_VERSION`) — the upstream Docker image is v0.11.8 (too old; its CLI has no declarative `apply`). The release tarball ships a single `stalwart` binary, so the image carries the server; provisioning is operator-gated via the dev-Mac `stalwart-cli` (recovery-mode apply, the house's established deploy-gate shape).
+- **Entrypoint** writes the same minimal RocksDb config the dev sidecar uses; fail-closed with no plan (no domain, no listener, no accounts — the house's mailbox_accounts have nothing to sync against until the operator applies).
+- **Network shape**: the house reaches the sidecar by compose DNS (`mailbox-sidecar:11430` on `backend_net`) — the host-published port 21032 is for operator / Spark checks only; per-resident credentials never cross a host interface.
+- **Disposable store**: `sidecar-data` + `sidecar-etc` volumes; the mailbox is a derived view — wipe and re-sync re-materialises it.
+- **watchtower-excluded** (locally-built image, the house's convention).
+- Validated on the host (compose v5 config, image build, smoke: PID 1 runs, `--version` = 0.16.20, fail-closed no-listener; no containers left running, images cleaned).
+
+### Added — the mailbox sync drive, the seam becomes live (2026-09-04)
+
+The fourth slice of the read-side bridge (SPEC §5 #12, after B1/B2a/B2b): `MailboxSyncDrive` plus migration 015 `mailbox_accounts` — the part that actually drives the mailbox seam in a live house.
+
+- **Resync on start, delta after every stored letter, optional heartbeat.** Each entry point (`main.ts`, `mcp/main.ts`) runs a pass on boot and arms the scheduler (`MAILBOX_SYNC_INTERVAL_MS`, default 0 = dormant). The pipeline's `onStored` hook (the same single write path the outbound seam rides) re-converges every provisioned resident after every ingest.
+- **The subject is the provisioned account, not the address.** A `mailbox_accounts` row (`mailbox:add` CLI, sidecar-specific credentials minted once invite-style) is the only thing that makes a resident sync — privacy as schema, integration-tested negative: a resident with mail but no account is never connected to.
+- **TLS fail-closed.** `MAILBOX_TLS_INSECURE=1` is the explicit dev-only operator key for the dev sidecar's self-signed cert; the adapter never relaxes verification, and plaintext imap:// alone never does.
+- **Log discipline.** The drive logs event names and counts only; `redactUrl` scrubs the userinfo credential (percent-decoded and encoded forms) out of log-bound error messages.
+- **CLI:** `mailbox:add`, `mailbox:list` (address + host only, never the credential), `mailbox:remove`.
+- 7 unit tests (subject enumeration/no-accounts no-op, overlap guard, failure isolation, credential redaction, timer ownership) + 3 integration tests against the live sidecar (frame folder + Archive, onStored delta with no explicit pass, privacy negative). Suite: 191/191 server unit, 276/276 integration, 43/43 client, typecheck + build.
+
+### Added — the mailbox writer adapter, movement B's live side (2026-09-04)
+
+The third slice of the read-side bridge (SPEC §5 #12, build B2b): B2a's `MailboxWriter` interface over a real IMAP server via imapflow (`server/src/bridge/imap-writer.ts`). The hermetic engine (B2a) now has a live target — driven in tests against the Stalwart dev sidecar.
+
+- **Idempotency is proven on the engine's own Message-ID, not a derived one.** The identity B1 builds (`<letterId@house>`) rides in the RFC5322 `Message-ID` header that `toRfc5322Message` renders; the writer READS that id (`messageIdOf`) and never derives ids from numeric IMAP uids — a re-sync that finds the id already present is a no-op write (no duplicates, ever; IMAP server uids are the sidecar's, meaningless to the house).
+- **Folders ensured, not assumed.** `ensureFolder`: INBOX exists by definition; other folders (frame folders, Archive, Sent) are created only when missing. One connection per pass; no IDLE (presence-not-pressure — the writer connects, writes, closes).
+- **Flags stay write-only** — pinned → `\Flagged`, thread-replied → `\Answered`; `\Seen` remains client-side (read-back via `letter_reads` is the recorded POSTPONED slice).
+- **Dev verification against the live sidecar.** Stalwart dev bootstrap (recovery-mode `stalwart-cli apply` of `plan.ndjson`, SASL PLAIN at `127.0.0.1:11430`, self-signed cert — TLS relaxed in the TEST harness only). Integration: 3 tests prove append + read-back of the engine-built Message-ID, idempotent re-sync (never duplicated), and write-only flags; the harness expunges its own letters before each run so re-runs stay hermetic.
+- 9 unit tests (URL parsing, `messageIdOf` — reads the header, throws without one — logger discipline) + 3 integration tests. Suite: 184/184 server unit, 82/82 integration (incl. the 3 sidecar tests), 43/43 client, typecheck + build.
+
 ### Added — the mailbox sync engine, movement B's live-side seam (2026-09-04)
 
 The second slice of the read-side bridge (SPEC §5 #12, build B2a): the house-side state machine that mirrors the archive into a mailbox, WITHOUT a sidecar — the mirror target is an interface (`MailboxWriter`), so B2b's Stalwart+imapflow adapter plugs into the same seam and every test drives a fake writer. `server/src/bridge/sync.ts` + exports, 13 hermetic unit tests.

@@ -1,0 +1,51 @@
+# Poste Restante — the mailbox sidecar (Stalwart) on the Docker homelab host.
+#
+# The house's read-side mirror: provisioned residents' mailboxes land here
+# as real IMAP mail (SPEC §5 #12, the sync drive). The house reuses the
+# house — this package is the sidecar ONLY; it attaches to the host's
+# existing networks exactly like the house package (external: true), and
+# the house reaches it by compose service DNS (imap://…@mailbox-sidecar:11430/).
+#
+# Networks are declared external (created by the host's other compose
+# projects). If one is missing on a fresh host:
+#   docker network create backend_net / web_net / ollama_net
+#
+# No secrets here. The IMAP listener is published on host 21032 (a free
+# port verified on the host) for operator/Spark checks; the house itself
+# uses the internal network alias (mailbox-sidecar on backend_net), so the
+# credential never crosses a host interface.
+name: stalwart-sidecar
+
+services:
+  mailbox-sidecar:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: stalwart-sidecar:local
+    container_name: stalwart-mailbox-sidecar
+    restart: unless-stopped
+    # watchtower is resident on this host and would churn a locally-built
+    # image — the house's convention, applied here too.
+    labels:
+      - com.centurylinklabs.watchtower.enable=false
+    # IMAP. 21032 = host published (operator / Spark check). The house
+    # talks to mailbox-sidecar:11430 over backend_net, never this port.
+    ports:
+      - "21032:11430"
+    networks:
+      - backend_net
+    volumes:
+      # The RocksDb store — the ONE thing the sidecar owns. Wiped with the
+      # view: the house re-materialises it from the archive (derived view).
+      - sidecar-data:/opt/stalwart/data
+      # The minimal config + any plan-derived state lives here too; mount
+      # the whole /opt/stalwart so an operator can apply plans against it.
+      - sidecar-etc:/opt/stalwart/etc
+
+volumes:
+  sidecar-data:
+  sidecar-etc:
+
+networks:
+  backend_net:
+    external: true

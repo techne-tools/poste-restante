@@ -54,6 +54,15 @@ services:
       HOUSE_DOMAIN: ${HOUSE_DOMAIN:-house}
       BOOK_SETTLING_DAYS: ${BOOK_SETTLING_DAYS:-7}
       GAP_PASS_INTERVAL_MS: ${GAP_PASS_INTERVAL_MS:-21600000}   # 6h; 0 disables
+      # ── the mailbox seam (SPEC §5 #12). Provisioned residents' mailboxes
+      #    sync to the Stalwart sidecar (containers/stalwart-sidecar) by
+      #    compose DNS over backend_net. Per-resident IMAP URLs + sidecar
+      #    credentials live in mailbox_accounts (mailbox:add) — never here.
+      #    Interval: 0 = resync on start + onStored only (default). TLS:
+      #    dev-only key for the sidecar's self-signed cert — never set in
+      #    production (imaps:// + CA instead).
+      MAILBOX_SYNC_INTERVAL_MS: ${MAILBOX_SYNC_INTERVAL_MS:-0}
+      MAILBOX_TLS_INSECURE: ${MAILBOX_TLS_INSECURE:-0}
       # ── the door (inbound SMTP). Closed by default; 1 opens it.
       SMTP_ENABLED: ${SMTP_ENABLED:-0}
       # ── the outbound seam (SPEC §5 #13). Ships dormant; set a relay URL

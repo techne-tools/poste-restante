@@ -44,6 +44,14 @@ house.log.info("mcp:listening", {
 // still pulls. Presence not pressure — the house holds, it never pushes.
 const gapScheduler = startGapScheduler(house, auth, house.config.gapPassIntervalMs);
 
+// The mailbox sync drive (SPEC §5 #12): provisioned residents' mailboxes
+// converge with the archive — resync on start, delta after every stored
+// letter (the pipeline's onStored hook), optional heartbeat. Dormant with
+// no accounts; presence-not-pressure — the house syncs, it never
+// interrupts.
+void house.mailbox?.runPass();
+house.mailbox?.start();
+
 // The house holds; it never interrupts. On shutdown it closes the archive
 // cleanly so nothing is left half-written.
 for (const signal of ["SIGINT", "SIGTERM"] as const) {

@@ -1,0 +1,6 @@
+# Build context hygiene — the package dir is the context, keep it lean.
+.deploy.sh.bak
+.env.enc
+.env
+**/*.log
+data/

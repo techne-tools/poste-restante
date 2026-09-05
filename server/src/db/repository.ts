@@ -4,7 +4,8 @@
  */
 import type pg from "pg";
 import type { Letter, StoredLetter } from "../types.js";
-import { PUB_ADDRESS } from "../auth/visibility.js";
+import { PUB_ADDRESS, visibleToSql } from "../auth/visibility.js";
+import type { MailboxSyncSource } from "../bridge/sync.js";
 
 export interface LetterRow {
   id: string;
@@ -265,6 +266,67 @@ export class PostgresRepository {
       [address, threadIds],
     );
     return new Map(rows.map((r) => [r.thread_id, r.state]));
+  }
+
+  /** The letters the mailbox sync may materialise for a resident: every
+   *  letter visible to them (the house's one visibility rule — participant
+   *  AND currently-in-the-thread, or public), oldest first, carrying the
+   *  strongest honest thread-reply signal: the resident wrote another
+   *  letter in the same thread. The caller hands only these rows to the
+   *  engine; the engine cannot leak a letter it is never given. */
+  async lettersForMailboxSync(address: string): Promise<MailboxSyncSource[]> {
+    const { rows } = await this.pool.query<StoredLetterRow & { threadReplied: boolean }>(
+      `SELECT l.*, COALESCE(
+         (SELECT json_agg(json_build_object('frame', f.name, 'value', f.value))
+          FROM letter_frames lf JOIN frames f ON f.id = lf.frame_id
+          WHERE lf.letter_id = l.id), '[]'::json) AS frames,
+       EXISTS (
+         SELECT 1 FROM letters r
+         WHERE r.thread_id = l.thread_id
+           AND r.from_addr = $1
+           AND r.id <> l.id
+       ) AS "threadReplied"
+       FROM letters l
+       WHERE ${visibleToSql(1)}
+       ORDER BY l.received_at ASC`,
+      [address],
+    );
+    return rows.map((r) => ({
+      letter: {
+        id: r.id,
+        from_addr: r.from_addr,
+        to_addrs: r.to_addrs,
+        cc_addrs: r.cc_addrs,
+        thread_id: r.thread_id,
+        kind: r.kind,
+        lang: r.lang,
+        subject: r.subject,
+        body: r.body,
+        body_text: r.body_text,
+        received_at: r.received_at,
+        pinned_at: r.pinned_at,
+        frames: r.frames,
+      },
+      threadReplied: r.threadReplied,
+    }));
+  }
+
+  /** The frame ids a resident has worked in, most recent window first
+   *  (same derivation as the whisper's active frames — the house never
+   *  scans frames the caller is not part of). Frame folder placement is a
+   *  membership test, never an ordering; the letter's own frames win. */
+  async activeFrameIds(address: string): Promise<string[]> {
+    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const { rows } = await this.pool.query<{ frame_id: string }>(
+      `SELECT DISTINCT lf.frame_id
+       FROM letters l
+       JOIN letter_addresses la ON la.letter_id = l.id
+       JOIN letter_frames lf ON lf.letter_id = l.id
+       WHERE la.address_id = $1
+         AND l.received_at > $2`,
+      [address, cutoff],
+    );
+    return rows.map((r) => r.frame_id);
   }
 
   /** Pin a letter (explicit house ranking signal). */
