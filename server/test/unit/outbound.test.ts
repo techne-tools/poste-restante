@@ -89,6 +89,11 @@ describe("parseSmtpUrl", () => {
     expect(() => parseSmtpUrl("http://relay.example/")).toThrow(/smtp/i);
     expect(() => parseSmtpUrl("not a url")).toThrow(/invalid/i);
   });
+
+  it("rejects link-local and cloud metadata endpoints to prevent SSRF", () => {
+    expect(() => parseSmtpUrl("smtp://169.254.169.254:587/")).toThrow(/cloud metadata/i);
+    expect(() => parseSmtpUrl("smtp://instance-data:587/")).toThrow(/cloud metadata/i);
+  });
 });
 
 describe("isOwnDoor", () => {

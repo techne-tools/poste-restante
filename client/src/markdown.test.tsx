@@ -58,9 +58,25 @@ describe("renderMarkdown — inline", () => {
     expect(html("`a **b** c`")).toBe("<p><code>a **b** c</code></p>");
   });
 
-  it("renders a link", () => {
+  it("renders a relative link", () => {
     expect(html("[the archive](/v1/archive)")).toBe(
       '<p><a href="/v1/archive">the archive</a></p>',
+    );
+  });
+
+  it("renders external https and mailto links with safe attributes", () => {
+    expect(html("[read more](https://example.org)")).toBe(
+      '<p><a href="https://example.org" target="_blank" rel="noopener noreferrer">read more</a></p>',
+    );
+    expect(html("[write us](mailto:you@house.test)")).toBe(
+      '<p><a href="mailto:you@house.test" target="_blank" rel="noopener noreferrer">write us</a></p>',
+    );
+  });
+
+  it("neutralises dangerous script execution schemes like javascript: and data:", () => {
+    expect(html("[exploit](javascript:alert(1))")).toBe("<p>exploit</p>");
+    expect(html("[payload](data:text/html,<script>alert(1)</script>)")).toBe(
+      "<p>payload</p>",
     );
   });
 

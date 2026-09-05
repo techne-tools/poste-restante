@@ -10,7 +10,12 @@ export interface Db {
 }
 
 export async function connectDb(databaseUrl: string): Promise<Db> {
-  const pool = new pg.Pool({ connectionString: databaseUrl });
+  const pool = new pg.Pool({
+    connectionString: databaseUrl,
+    max: 20,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 5_000,
+  });
   // Fail fast if the database is unreachable.
   await pool.query("SELECT 1");
   return {

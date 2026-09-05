@@ -201,6 +201,10 @@ export function startSmtpBridge(
     authMethods: ["PLAIN", "LOGIN"],
     disableReverseLookup: true,
     hideSTARTTLS: true,
+    // Standard MTA resource limits: 25 MB max mail size, bounded concurrency, idle reap.
+    size: 25 * 1024 * 1024,
+    maxClients: 25,
+    closeTimeout: 30_000,
 
     // The resident's credential is the key. We re-encode the SMTP
     // username/password into the HTTP Basic shape and reuse the house's

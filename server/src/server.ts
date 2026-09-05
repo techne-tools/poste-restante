@@ -19,6 +19,9 @@
  *     schema-level public exception. Absence is silence — 404, never 403.
  */
 import { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
+import { secureHeaders } from "hono/secure-headers";
+import { createRateLimiter } from "./auth/rate-limiter.js";
 import { LETTER_KINDS } from "./types.js";
 import { AddressSchema, LetterSchema, RedeemSchema, ClauseActionSchema, toLetter } from "./schemas.js";
 import { deliverLetter } from "./deliver.js";
@@ -57,6 +60,47 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
   const oidcPending = new Map<string, OidcPending>();
   const OIDC_TTL_MS = 10 * 60 * 1000;
 
+  // Security headers & body limit (sized to the standard 25 MB email payload + envelope overhead).
+  app.use(
+    "*",
+    secureHeaders({
+      xContentTypeOptions: "nosniff",
+      xFrameOptions: "DENY",
+      referrerPolicy: "strict-origin-when-cross-origin",
+    }),
+  );
+  app.use(
+    "*",
+    bodyLimit({
+      maxSize: 30 * 1024 * 1024,
+      onError: (c) =>
+        c.json(
+          {
+            error: {
+              code: "payload_too_large",
+              message: "the letter exceeds the house's 25 MB mail limit",
+            },
+          },
+          413,
+        ),
+    }),
+  );
+
+  const oidcLimiter = createRateLimiter({
+    windowMs: 60_000,
+    max: 20,
+    message: "too many sign-in attempts — please wait a moment",
+  });
+  const redeemLimiter = createRateLimiter({
+    windowMs: 60_000,
+    max: 10,
+    message: "the house asks you to wait before trying another invitation code",
+  });
+  const whisperLimiter = createRateLimiter({
+    windowMs: 60_000,
+    max: 120,
+  });
+
   app.onError((err, c) => {
     house.log.error("server:error", { message: err.message });
     return c.json(
@@ -85,7 +129,7 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
   // ── OIDC routes ────────────────────────────────────────────────────────────
 
   // Start the OIDC dance. Returns the provider URL; the client redirects.
-  app.get("/v1/auth/oidc/start", async (c) => {
+  app.get("/v1/auth/oidc/start", oidcLimiter, async (c) => {
     if (!auth || !auth.oidcEnabled) {
       return c.json({ error: { code: "oidc_disabled", message: "OIDC is not configured" } }, 400);
     }
@@ -124,7 +168,7 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
   // the one-time code; the house issues the credential the guest sets
   // themselves. Fail closed: every negative path answers 404, never 403,
   // and never confirms that an invite exists. Absence is silence.
-  app.post("/v1/invites/redeem", async (c) => {
+  app.post("/v1/invites/redeem", redeemLimiter, async (c) => {
     if (!invites) {
       return c.json({ error: { code: "not_found", message: "no such thing in the house" } }, 404);
     }
@@ -521,7 +565,7 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
   // Nothing pushes; the client comes for it. `?unread=1` shows only what the
   // house is offering right now. Scoped to the caller: the house only
   // whispers about correspondence the caller is party to.
-  app.get("/v1/whisper", async (c) => {
+  app.get("/v1/whisper", whisperLimiter, async (c) => {
     const who = await caller(c);
     if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
     const unread = c.req.query("unread") === "1" || c.req.query("unread") === "true";

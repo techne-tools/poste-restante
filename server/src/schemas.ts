@@ -10,18 +10,30 @@ import { LETTER_KINDS } from "./types.js";
 import type { StoredLetterRow } from "./db/repository.js";
 
 export const FrameSchema = z.object({
-  frame: z.string().min(1),
-  value: z.string().min(1),
+  frame: z.string().min(1).max(100),
+  value: z.string().min(1).max(200),
 });
 
+/**
+ * An email/resident address string. Follows standard email addressing:
+ * strictly disallows CRLF or null bytes to prevent RFC 5322 header injection.
+ */
+export const AddressStringSchema = z
+  .string()
+  .min(1)
+  .max(320)
+  .refine((s) => !/[\r\n\0]/.test(s), {
+    message: "address must not contain control characters or newlines",
+  });
+
 export const EnvelopeSchema = z.object({
-  from: z.string().min(1),
-  to: z.array(z.string().min(1)).min(1),
-  cc: z.array(z.string().min(1)).default([]),
-  thread: z.string().min(1),
+  from: AddressStringSchema,
+  to: z.array(AddressStringSchema).min(1).max(500),
+  cc: z.array(AddressStringSchema).max(500).default([]),
+  thread: z.string().min(1).max(200),
   kind: z.enum(LETTER_KINDS),
-  lang: z.string().min(1).default("en-AU"),
-  subject: z.string().default(""),
+  lang: z.string().min(1).max(35).default("en-AU"),
+  subject: z.string().max(998).default(""),
 });
 
 export const TimeSchema = z.object({
@@ -33,7 +45,7 @@ export const TimeSchema = z.object({
 
 export const BodySchema = z.object({
   format: z.literal("markdown"),
-  content: z.string(),
+  content: z.string().max(25 * 1024 * 1024),
 });
 
 export const LetterSchema = z.object({

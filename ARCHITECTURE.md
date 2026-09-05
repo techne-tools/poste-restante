@@ -170,3 +170,8 @@ The letter server + whisper engine + scheduler are the house software on top. Th
 4. **RRF for retrieval.** Three paths (exact, FTS, semantic) merged by reciprocal rank fusion — ~50 lines, robust, lets you add a fourth path without re-tuning.
 5. **The letter is the unit in all three tiers.** postgres row, qdrant vector, minio file — one archive, one unit.
 6. **Local by default, cloud as explicit opt-in bridge.** Ollama for embeddings/models; OpenAI-compatible endpoint as one env var.
+7. **Values-aligned cryptographic horizon (Phase 4).** Safety, fairness, non-hierarchical relation, and restorative justice guide future encryption:
+   - **Address-keyed Age encryption ("The House as an Explicit Recipient"):** Every address holds an `age` keypair rather than relying on a centralised database master key (which would recreate an all-seeing "admin" class).
+   - **Explicit consent for resident collaboration:** Letters are encrypted to recipient public keys plus `house@house` when the resident's collaboration (whispers, gap detection, semantic search) is welcomed; omitting `house@house` stores the letter strictly sealed (*"poste restante"*), bypassing vector embedding and FTS to preserve inviolable privacy without security theatre.
+   - **Multi-store uniformity & tamper-evidence:** Sidecar stores (Stalwart RocksDB, MinIO) must not leak what Postgres seals; senders sign `sha256(envelope + body)` with identity keys for cryptographic integrity.
+   - **SOPS vs Age:** `sops` remains strictly for operator deployment secrets (`.env.enc`); `age` is the transactional payload encryption primitive.

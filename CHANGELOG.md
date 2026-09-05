@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Security — client XSS neutralisation, schema bounding, rate limiting, and container hardening (2026-09-06)
+
+Hardening slice addressing ingress, client sanitisation, transport controls, and infrastructure isolation:
+
+- **Client markdown sanitisation:** `client/src/markdown.tsx` neutralises dangerous link URI schemes (`javascript:`, `vbscript:`, `data:`) by rendering them as safe text, supports balanced parentheses in URLs, and adds `rel="noopener noreferrer"` and `target="_blank"`.
+- **Schema & payload bounding:** `server/src/schemas.ts` introduces `AddressStringSchema` rejecting CRLF injection and null bytes, aligns letter content with email norms (25 MB body limit, 998-character RFC 5322 subjects, 500 recipients, valid BCP 47 lang tags with `en-AU` default). Hono `bodyLimit` middleware caps incoming HTTP payloads at 30 MB (HTTP 413).
+- **Transport security & rate limiting:** Configured Hono `secureHeaders` (`nosniff`, `DENY`, `strict-origin-when-cross-origin`). Added sliding-window rate limiting on `/v1/whisper` (120/min), `/v1/invites/redeem` (10/min), and `/v1/auth/oidc/start` (20/min). Enforced 25 MB max message size, 25 concurrent connections, and 30s timeout on the SMTP bridge. Protected outbound SMTP relay parsing against cloud metadata SSRF.
+- **Pipeline resilience & container isolation:** Bounded Postgres connection pool (`max: 20`, idle/connection timeouts). Isolated embedding/vector failures (Ollama/Qdrant) with an error boundary in `pipeline.ts` so transient indexing issues do not abort letter storage. Bounded container capabilities (`cap_drop: [ALL]`, `no-new-privileges:true`) across services, enforced SHA-256 verification and an unprivileged `stalwart` user in `containers/stalwart-sidecar/Dockerfile`.
+- **Architectural Decision #7:** Documented Phase 4 aspirational cryptographic architecture in `ARCHITECTURE.md` (Age payload encryption, SOPS separation, address-keyed recipients, search vs secrecy trade-offs, resident collaboration consent model).
+
 ### Added — the mailbox sidecar package, the mirror ships as a container (2026-09-04)
 
 The read-side mirror for the deployment round (SPEC §5 #12 + §5 #14): `containers/stalwart-sidecar/` brings Stalwart to the Docker homelab host as its own container, pinned to the version the house's read-side is proven against.

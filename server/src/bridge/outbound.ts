@@ -51,6 +51,16 @@ export function externalRecipients(letter: Pick<Letter["envelope"], "to" | "cc">
   return out;
 }
 
+/** Refuse cloud metadata services (e.g. 169.254.169.254 or instance metadata endpoints) to prevent SSRF. */
+export function isBlockedRelayHost(host: string): boolean {
+  const clean = host.toLowerCase().trim();
+  return (
+    clean.startsWith("169.254.") ||
+    clean === "instance-data" ||
+    clean === "metadata.google.internal"
+  );
+}
+
 /** A mailto-style SMTP URL ("smtp://user:pass@relay:587/") parsed into a
  *  nodemailer transport config. Credentials never live in config files —
  *  they ride in the URL, read from the environment. */
@@ -69,6 +79,9 @@ export function parseSmtpUrl(url: string): {
   }
   if (!["smtp:", "smtps:"].includes(parsed.protocol)) {
     throw new Error("SMTP_OUTBOUND_URL must be smtp:// or smtps://");
+  }
+  if (isBlockedRelayHost(parsed.hostname)) {
+    throw new Error("refusing relay to link-local or cloud metadata host");
   }
   const port = parsed.port ? Number.parseInt(parsed.port, 10) : (parsed.protocol === "smtps:" ? 465 : 587);
   const auth =

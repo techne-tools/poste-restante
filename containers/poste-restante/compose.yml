@@ -26,6 +26,10 @@ services:
     image: poste-restante-house:local
     container_name: poste-restante-house
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     # watchtower is resident on this host and churns locally-built images —
     # the house image label keeps it out.
     labels:
@@ -50,7 +54,7 @@ services:
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
       EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-768}
       # ── the resident (auth) — fail closed, never none.
-      AUTH_MODE: ${AUTH_MODE:-none}
+      AUTH_MODE: ${AUTH_MODE:?AUTH_MODE must be set (basic/oidc/both)}
       HOUSE_DOMAIN: ${HOUSE_DOMAIN:-house}
       BOOK_SETTLING_DAYS: ${BOOK_SETTLING_DAYS:-7}
       GAP_PASS_INTERVAL_MS: ${GAP_PASS_INTERVAL_MS:-21600000}   # 6h; 0 disables

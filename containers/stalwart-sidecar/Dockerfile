@@ -14,22 +14,25 @@
 FROM alpine:3.20
 
 ARG STALWART_VERSION=v0.16.20
+ARG STALWART_SHA256=d95912cb0efde1e248a40fd3ffcf4a67d512479190ab2e5ccaf68f7e3ea36d77
 
 ADD https://github.com/stalwartlabs/stalwart/releases/download/${STALWART_VERSION}/stalwart-x86_64-unknown-linux-musl.tar.gz /tmp/stalwart.tar.gz
-RUN tar -xzf /tmp/stalwart.tar.gz -C /usr/local/bin \
+RUN echo "${STALWART_SHA256}  /tmp/stalwart.tar.gz" | sha256sum -c - \
+    && tar -xzf /tmp/stalwart.tar.gz -C /usr/local/bin \
     && chmod +x /usr/local/bin/stalwart \
     && rm /tmp/stalwart.tar.gz
 
-# The store and config live under one mount point; the entrypoint writes
-# the minimal RocksDb config on first boot (the same shape the dev sidecar
-# uses) and then execs the server. v1 runs as root inside the container —
-# the IMAP listener is non-privileged (11430) and the data bind-mount
-# ownership makes a non-root user friction on first boot. Revisit when the
-# mount story is settled (rootless data dir).
+# Create unprivileged user and directories for RocksDb data and configuration
+RUN addgroup -g 10001 -S stalwart && adduser -u 10001 -S -G stalwart stalwart \
+    && mkdir -p /opt/stalwart/data /opt/stalwart/etc \
+    && chown -R stalwart:stalwart /opt/stalwart
+
 WORKDIR /opt/stalwart
 
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
+
+USER stalwart
 
 # data/ = the RocksDb store (bind-mount or named volume)
 VOLUME ["/opt/stalwart/data"]

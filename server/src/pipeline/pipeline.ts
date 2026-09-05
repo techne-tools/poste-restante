@@ -73,13 +73,22 @@ export class IngestionPipeline {
     await this.repo.storeLetter(stored);
     this.log.info("ingest:stored", { letterId: id, thread: letter.envelope.thread });
 
-    // 2. Embed the plain-text body.
-    const vector = await this.embedder.embed(bodyText);
-    this.log.info("ingest:embedded", { letterId: id, dimension: vector.length });
+    // 2. Embed the plain-text body and index in Qdrant.
+    // Store first, index second: if embedding is transiently unavailable (e.g.
+    // Ollama waking up), log the error and preserve the stored archive row.
+    try {
+      const vector = await this.embedder.embed(bodyText);
+      this.log.info("ingest:embedded", { letterId: id, dimension: vector.length });
 
-    // 3. Qdrant vector.
-    await this.semantic.upsert(id, vector);
-    this.log.info("ingest:indexed-semantic", { letterId: id });
+      // 3. Qdrant vector.
+      await this.semantic.upsert(id, vector);
+      this.log.info("ingest:indexed-semantic", { letterId: id });
+    } catch (err) {
+      this.log.error("ingest:semantic-index-failed", {
+        letterId: id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
 
     // 4. Full-text: the postgres FTS index is maintained by the row insert
     //    (the GIN index on body_text). Nothing further to do here.

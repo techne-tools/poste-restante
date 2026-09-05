@@ -11,7 +11,7 @@ import type { ReactNode } from "react";
 
 /** Inline tokens, tried in order: code first, so `**` inside code is not emphasis. */
 const INLINE =
-  /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(\[[^\]]+\]\([^)]+\))/g;
+  /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(\[[^\]]+\]\((?:[^()\s]+|\([^()\s]*\))+\))/g;
 
 function renderInline(text: string, keyBase: string): ReactNode[] {
   const out: ReactNode[] = [];
@@ -30,13 +30,26 @@ function renderInline(text: string, keyBase: string): ReactNode[] {
     } else if (italic) {
       out.push(<em key={`${keyBase}-${i}`}>{italic.slice(1, -1)}</em>);
     } else if (link) {
-      const m2 = link.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+      const m2 = link.match(/^\[([^\]]+)\]\((.*)\)$/);
       if (m2) {
-        out.push(
-          <a key={`${keyBase}-${i}`} href={m2[2]}>
-            {renderInline(m2[1]!, `${keyBase}-${i}-l`)}
-          </a>,
-        );
+        const rawHref = m2[2].trim();
+        const isExternal = /^(https?:|mailto:)/i.test(rawHref);
+        const isInternal = rawHref.startsWith("/");
+        if (isExternal || isInternal) {
+          out.push(
+            <a
+              key={`${keyBase}-${i}`}
+              href={rawHref}
+              {...(isExternal ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+            >
+              {renderInline(m2[1]!, `${keyBase}-${i}-l`)}
+            </a>,
+          );
+        } else {
+          // Dangerous or unsupported scheme (e.g. javascript:, data:, vbscript:)
+          // Neutralise by rendering link text without the anchor tag
+          out.push(renderInline(m2[1]!, `${keyBase}-${i}-l`));
+        }
       } else {
         out.push(full);
       }
@@ -106,7 +119,7 @@ export function renderMarkdown(content: string): ReactNode {
  *  ticks are stripped; runs of whitespace collapse. */
 export function snippet(content: string, max = 120): string {
   return content
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/\[([^\]]+)\]\((?:[^()\s]+|\([^()\s]*\))+\)/g, "$1")
     .replace(/[#*`>]/g, "")
     .replace(/\s+/g, " ")
     .trim()

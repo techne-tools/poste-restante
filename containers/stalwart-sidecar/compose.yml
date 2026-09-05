@@ -24,6 +24,10 @@ services:
     image: stalwart-sidecar:local
     container_name: stalwart-mailbox-sidecar
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     # watchtower is resident on this host and would churn a locally-built
     # image — the house's convention, applied here too.
     labels:
