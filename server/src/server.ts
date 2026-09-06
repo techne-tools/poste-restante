@@ -385,6 +385,126 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
     return c.json({ pinned: false, id });
   });
 
+  // ── Letter Payloads (MinIO / S3 tier) ────────────────────────────────────
+
+  // List payloads attached to a letter. Only visible participants may list.
+  app.get("/v1/letters/:id/payloads", async (c) => {
+    const who = await caller(c);
+    if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
+    const id = c.req.param("id");
+    const row = await house.repo.getLetter(id);
+    if (!row) return c.json({ error: { code: "not_found", message: "no such letter" } }, 404);
+    const state = await house.repo.participationStates([row.thread_id], who.address);
+    if (!isVisibleTo(row, who.address, state.get(row.thread_id) ?? "in")) {
+      return c.json({ error: { code: "not_found", message: "no such letter" } }, 404);
+    }
+    const keys = await house.payloads.listForLetter(id);
+    const payloads = keys.map((k) => ({
+      key: k,
+      name: k.split("/").slice(2).join("/"),
+    }));
+    return c.json({ letterId: id, payloads });
+  });
+
+  // Upload a raw payload for a letter (audio memo, rehearsal recording, attachment).
+  // Only participants may attach payloads. If the letter is kind: "audio",
+  // triggers transcription if whisper is available.
+  app.post("/v1/letters/:id/payloads", async (c) => {
+    const who = await caller(c);
+    if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
+    const id = c.req.param("id");
+    const row = await house.repo.getLetter(id);
+    if (!row) return c.json({ error: { code: "not_found", message: "no such letter" } }, 404);
+    const state = await house.repo.participationStates([row.thread_id], who.address);
+    if (!isVisibleTo(row, who.address, state.get(row.thread_id) ?? "in")) {
+      return c.json({ error: { code: "not_found", message: "no such letter" } }, 404);
+    }
+
+    let name = c.req.header("X-Payload-Name") || c.req.query("name");
+    let data: Uint8Array;
+    let contentType = c.req.header("Content-Type") || "application/octet-stream";
+
+    const contentTypeHeader = c.req.header("Content-Type") ?? "";
+    if (contentTypeHeader.includes("multipart/form-data")) {
+      const body = await c.req.parseBody();
+      const file = body["file"];
+      if (!file || typeof file === "string") {
+        return c.json({ error: { code: "invalid_payload", message: "expected multipart file field 'file'" } }, 400);
+      }
+      name = name || (file as File).name || "payload.bin";
+      contentType = (file as File).type || contentType;
+      data = new Uint8Array(await (file as File).arrayBuffer());
+    } else {
+      name = name || "payload.bin";
+      data = new Uint8Array(await c.req.arrayBuffer());
+    }
+
+    if (data.length === 0) {
+      return c.json({ error: { code: "empty_payload", message: "payload data is empty" } }, 400);
+    }
+
+    const key = await house.payloads.put(id, name, data, contentType);
+
+    // If kind === "audio" and whisper is enabled, trigger transcription
+    if (row.kind === "audio" && house.config.whisperUrl) {
+      void house.audio.transcribeAudioLetter(toLetter(row), key).catch((err) => {
+        house.log.error("audio:payload-transcribe-failed", {
+          letterId: id,
+          key,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    }
+
+    return c.json({ letterId: id, key, name, size: data.length }, 201);
+  });
+
+  // Fetch a raw payload by name.
+  app.get("/v1/letters/:id/payloads/:name", async (c) => {
+    const who = await caller(c);
+    if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
+    const id = c.req.param("id");
+    const name = c.req.param("name");
+    const row = await house.repo.getLetter(id);
+    if (!row) return c.json({ error: { code: "not_found", message: "no such letter" } }, 404);
+    const state = await house.repo.participationStates([row.thread_id], who.address);
+    if (!isVisibleTo(row, who.address, state.get(row.thread_id) ?? "in")) {
+      return c.json({ error: { code: "not_found", message: "no such letter" } }, 404);
+    }
+
+    const key = `letters/${id}/${name}`;
+    const data = await house.payloads.get(key);
+    if (!data) {
+      return c.json({ error: { code: "not_found", message: "payload not found" } }, 404);
+    }
+
+    return new Response(Buffer.from(data), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "Content-Disposition": `inline; filename="${name}"`,
+      },
+    });
+  });
+
+  // Delete a raw payload by name.
+  app.delete("/v1/letters/:id/payloads/:name", async (c) => {
+    const who = await caller(c);
+    if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
+    const id = c.req.param("id");
+    const name = c.req.param("name");
+    const row = await house.repo.getLetter(id);
+    if (!row) return c.json({ error: { code: "not_found", message: "no such letter" } }, 404);
+    const state = await house.repo.participationStates([row.thread_id], who.address);
+    if (!isVisibleTo(row, who.address, state.get(row.thread_id) ?? "in")) {
+      return c.json({ error: { code: "not_found", message: "no such letter" } }, 404);
+    }
+
+    const key = `letters/${id}/${name}`;
+    await house.payloads.delete(key);
+    return c.json({ deleted: true, key });
+  });
+
   // ── Addresses ─────────────────────────────────────────────────────────────
 
   // The address book — the social graph. Flat, no ranking, no follower counts.

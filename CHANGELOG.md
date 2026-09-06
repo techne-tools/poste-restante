@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added — the remaining stack targets: MinIO raw payloads, Redis ingestion queue & pub/sub, faster-whisper audio letters (2026-09-06)
+
+The three targets marked `⬜ target` in the stack table are now built and integrated:
+
+- **Raw payloads (MinIO / S3-compatible):** `S3PayloadStore` (`server/src/minio/s3-store.ts`) implements the third tier of the archive spine (`PayloadStore` interface). Supports `put`, `get`, `delete`, `listForLetter`, and `deleteForLetter`. Configured via `MINIO_ENDPOINT`, `MINIO_BUCKET`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY` with automatic bucket ensuring; defaults to `NoopPayloadStore` when MinIO is unconfigured. `IngestionPipeline.delete()` cascades across all three tiers (Postgres, Qdrant, MinIO). Added HTTP endpoints (`GET/POST /v1/letters/:id/payloads`, `GET/DELETE /v1/letters/:id/payloads/:name`) scoped to letter visibility. Packaged `containers/minio/` with `compose.yml`, `.env.public`, and `deploy.sh` for the Docker homelab host.
+- **Ingestion queue & pub/sub (Redis):** `IngestionQueue` (`server/src/queue/queue.ts`) provides asynchronous intake via Redis (`RPUSH` / `BLPOP` consumer loop) with a synchronous `DirectIngestionQueue` fallback for dev and testing. `HouseEventBus` (`server/src/queue/pubsub.ts`) implements multi-process/container pub/sub over Redis with a Node.js `EventEmitter` fallback (`MemoryHouseEventBus`).
+- **Audio letters (faster-whisper):** `WhisperTranscriber` (`server/src/audio/transcriber.ts`) integrates with the host's faster-whisper service (`onerahmet/openai-whisper-asr-webservice` on port 9000, with OpenAI endpoint fallback). `AudioLetterService` (`server/src/audio/audio-service.ts`) fetches audio payloads, calls ASR, and ingests a transcribed follow-up letter (`kind: "letter"`) into the same thread, preserving plural-time frames, correspondents, and audio references.
+- **Hermetic test suite:** 18 new unit tests across S3 payload store, queue, pub/sub, audio transcription, and payload HTTP API. Suite green: 211/211 server unit (+18 new), 45/45 client unit, typecheck and production builds clean.
+
 ### Security — client XSS neutralisation, schema bounding, rate limiting, and container hardening (2026-09-06)
 
 Hardening slice addressing ingress, client sanitisation, transport controls, and infrastructure isolation:

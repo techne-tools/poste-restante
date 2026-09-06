@@ -29,6 +29,14 @@ export interface House {
   whisper: WhisperService;
   participation: ParticipationService;
   book: BookService;
+  /** Ingestion queue for letters (Direct or Redis). */
+  queue: import("./queue/queue.js").IngestionQueue;
+  /** Event bus for house events (Memory or Redis pub/sub). */
+  eventBus: import("./queue/pubsub.js").HouseEventBus;
+  /** Audio letter transcription service (SPEC §3.1 / §3.2). */
+  audio: import("./audio/audio-service.js").AudioLetterService;
+  /** Audio transcriber client for faster-whisper. */
+  transcriber: import("./audio/transcriber.js").AudioTranscriber;
   /** The outbound relay (SPEC §5 #13) — null when dormant/refused. */
   outbound: OutboundRelay | null;
   /** The mailbox sync drive (SPEC §5 #12) — null when no accounts

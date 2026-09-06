@@ -42,8 +42,22 @@ export interface HouseConfig {
   qdrantCollection: string;
   /** Embedding configuration. */
   embedding: EmbeddingConfig;
-  /** Minio/S3 endpoint for raw payloads (stubbed this phase). */
+  /** Minio/S3 endpoint for raw payloads. */
   minioEndpoint: string;
+  /** Minio/S3 bucket for raw payloads. Default 'letters'. */
+  minioBucket: string;
+  /** Minio/S3 access key id (unset = no credentials / anonymous). */
+  minioAccessKey: string | undefined;
+  /** Minio/S3 secret access key. */
+  minioSecretKey: string | undefined;
+  /** Minio/S3 region. Default 'us-east-1'. */
+  minioRegion: string;
+  /** Whether S3 payload store is enabled (true if access keys or MINIO_ENABLED=1). */
+  minioEnabled: boolean;
+  /** Redis URL for ingestion queue and pub/sub (e.g. redis://localhost:6379/0). */
+  redisUrl: string | undefined;
+  /** Faster-whisper ASR web service URL (e.g. http://localhost:9000). */
+  whisperUrl: string | undefined;
   /** Whether to run integration tests against live infra. */
   integration: boolean;
   /** Authentication configuration. */
@@ -124,6 +138,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): HouseConfig {
     qdrantCollection: env.QDRANT_COLLECTION ?? "letters",
     embedding,
     minioEndpoint: env.MINIO_ENDPOINT ?? "http://localhost:9000",
+    minioBucket: env.MINIO_BUCKET ?? "letters",
+    minioAccessKey: env.MINIO_ACCESS_KEY || undefined,
+    minioSecretKey: env.MINIO_SECRET_KEY || undefined,
+    minioRegion: env.MINIO_REGION ?? "us-east-1",
+    minioEnabled:
+      boolFromEnv(env.MINIO_ENABLED, false) ||
+      Boolean(env.MINIO_ACCESS_KEY && env.MINIO_SECRET_KEY),
+    redisUrl: env.REDIS_URL || undefined,
+    whisperUrl: env.WHISPER_URL || undefined,
     integration: boolFromEnv(env.POSTE_RESTANTE_INTEGRATION, false),
     auth,
     bookSettlingDays: intFromEnv(env.BOOK_SETTLING_DAYS, 7),

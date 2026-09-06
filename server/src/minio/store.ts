@@ -9,11 +9,15 @@
  */
 export interface PayloadStore {
   /** Store a raw payload and return its object key. */
-  put(letterId: string, name: string, data: Uint8Array): Promise<string>;
+  put(letterId: string, name: string, data: Uint8Array, contentType?: string): Promise<string>;
   /** Fetch a raw payload by object key. */
   get(key: string): Promise<Uint8Array | null>;
   /** Delete a raw payload by object key. */
   delete(key: string): Promise<void>;
+  /** List all payload keys associated with a letter. */
+  listForLetter(letterId: string): Promise<string[]>;
+  /** Delete all payloads associated with a letter (tier 3 cascade). */
+  deleteForLetter(letterId: string): Promise<void>;
 }
 
 /**
@@ -22,7 +26,7 @@ export interface PayloadStore {
  * archive spine has a stable seam to attach the real S3 store to in phase 4b.
  */
 export class NoopPayloadStore implements PayloadStore {
-  async put(_letterId: string, _name: string, _data: Uint8Array): Promise<string> {
+  async put(_letterId: string, _name: string, _data: Uint8Array, _contentType?: string): Promise<string> {
     throw new Error("payload store is stubbed in phase 4a — payloads are out of scope");
   }
   async get(_key: string): Promise<Uint8Array | null> {
@@ -31,4 +35,11 @@ export class NoopPayloadStore implements PayloadStore {
   async delete(_key: string): Promise<void> {
     // Nothing to delete — the stub holds nothing.
   }
+  async listForLetter(_letterId: string): Promise<string[]> {
+    return [];
+  }
+  async deleteForLetter(_letterId: string): Promise<void> {
+    // Nothing to delete — the stub holds nothing.
+  }
 }
+

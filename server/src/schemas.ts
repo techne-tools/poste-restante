@@ -111,7 +111,7 @@ export function toLetter(row: StoredLetterRow) {
       to: row.to_addrs,
       cc: row.cc_addrs,
       thread: row.thread_id,
-      kind: row.kind,
+      kind: row.kind as import("./types.js").LetterKind,
       lang: row.lang,
       subject: row.subject,
     },

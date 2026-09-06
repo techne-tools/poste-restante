@@ -112,6 +112,34 @@ export {
   type ClauseFrontmatter,
   type ClauseRole,
 } from "./book/frontmatter.js";
+export { S3PayloadStore, type S3PayloadStoreOptions } from "./minio/s3-store.js";
+export {
+  createIngestionQueue,
+  DirectIngestionQueue,
+  RedisIngestionQueue,
+  type IngestionQueue,
+  type IngestHandler,
+  type RedisQueueOptions,
+} from "./queue/queue.js";
+export {
+  createHouseEventBus,
+  MemoryHouseEventBus,
+  RedisHouseEventBus,
+  type HouseEventBus,
+  type HouseEvent,
+  type EventHandler,
+} from "./queue/pubsub.js";
+export {
+  createAudioTranscriber,
+  NoopAudioTranscriber,
+  WhisperTranscriber,
+  type AudioTranscriber,
+  type TranscribeResult,
+} from "./audio/transcriber.js";
+export {
+  AudioLetterService,
+  type AudioLetterServiceOptions,
+} from "./audio/audio-service.js";
 export { RedeemSchema } from "./schemas.js";
 export type { House } from "./house.js";
 
@@ -120,7 +148,8 @@ import { connectDbAndMigrate } from "./db/index.js";
 import { PostgresRepository } from "./db/repository.js";
 import { createEmbedder } from "./embed/embedder.js";
 import { QdrantSemanticStore } from "./qdrant/store.js";
-import { NoopPayloadStore } from "./minio/store.js";
+import { NoopPayloadStore, type PayloadStore } from "./minio/store.js";
+import { S3PayloadStore } from "./minio/s3-store.js";
 import { IngestionPipeline } from "./pipeline/pipeline.js";
 import { startOutbound, type OutboundRelay } from "./bridge/outbound.js";
 import { MailboxAccountsService } from "./bridge/mailbox-accounts.js";
@@ -129,6 +158,10 @@ import { Retrieval } from "./retrieval/retrieval.js";
 import { WhisperService } from "./whisper/service.js";
 import { ParticipationService } from "./participation/service.js";
 import { BookService } from "./book/service.js";
+import { createIngestionQueue } from "./queue/queue.js";
+import { createHouseEventBus } from "./queue/pubsub.js";
+import { createAudioTranscriber } from "./audio/transcriber.js";
+import { AudioLetterService } from "./audio/audio-service.js";
 import { createLogger, silentLogger, type Logger } from "./pipeline/logger.js";
 
 /**
@@ -150,7 +183,34 @@ export async function buildHouse(
   );
   await semantic.ensureCollection();
   const repo = new PostgresRepository(db.pool);
-  const payloads = new NoopPayloadStore();
+
+  // 1. Raw Payloads tier (SPEC §3.1 / §3.2)
+  const payloads: PayloadStore = config.minioEnabled
+    ? new S3PayloadStore({
+        endpoint: config.minioEndpoint,
+        bucket: config.minioBucket,
+        region: config.minioRegion,
+        accessKeyId: config.minioAccessKey,
+        secretAccessKey: config.minioSecretKey,
+      })
+    : new NoopPayloadStore();
+
+  if (config.minioEnabled && payloads instanceof S3PayloadStore) {
+    await payloads.ensureBucket().catch((err) => {
+      log.error("minio:ensure-bucket-failed", {
+        bucket: config.minioBucket,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+  }
+
+  // 2. Ingestion Queue & PubSub tier (SPEC §3.1 / §3.2)
+  const eventBus = createHouseEventBus(config.redisUrl, log);
+
+  // 3. Audio Letters / faster-whisper ASR tier (CONTRACT.md / SPEC §3.1)
+  const transcriber = createAudioTranscriber(config.whisperUrl, log);
+  let audio: AudioLetterService;
+
   // The participation hook is a closure over a late-bound service — the
   // pipeline is the single write path, and the ParticipationService uses
   // the pipeline to write its own letters. By the time any letter is
@@ -175,9 +235,39 @@ export async function buildHouse(
     (letter) => {
       const relays = outbound?.enabled ? outbound.relay(letter) : Promise.resolve(undefined);
       const syncs = mailbox ? mailbox.onStored() : Promise.resolve(undefined);
-      return Promise.all([relays, syncs]).then(() => undefined);
+      const events = eventBus.publish({
+        type: "letter:stored",
+        letterId: letter.id ?? "",
+        thread: letter.envelope.thread,
+        kind: letter.envelope.kind,
+      });
+      // If an audio letter arrives and whisper is configured, transcribe it
+      if (letter.envelope.kind === "audio" && config.whisperUrl) {
+        void audio?.transcribeAudioLetter(letter).catch((err) => {
+          log.error("audio:transcribe-on-stored-failed", {
+            letterId: letter.id,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+      }
+      return Promise.all([relays, syncs, events]).then(() => undefined);
     },
   );
+
+  const queue = createIngestionQueue(
+    config.redisUrl,
+    (letter) => pipeline.ingest(letter),
+    log,
+  );
+  await queue.start();
+
+  audio = new AudioLetterService({
+    payloadStore: payloads,
+    transcriber,
+    ingest: (letter) => pipeline.ingest(letter),
+    log,
+  });
+
   const retrieval = new Retrieval(db.pool, semantic, embedder);
   const whisper = new WhisperService(db.pool, log, semantic, embedder);
   participation = new ParticipationService(db.pool, pipeline, log);
@@ -207,6 +297,10 @@ export async function buildHouse(
     embedder,
     payloads,
     pipeline,
+    queue,
+    eventBus,
+    transcriber,
+    audio,
     retrieval,
     whisper,
     participation,
@@ -215,9 +309,12 @@ export async function buildHouse(
     book,
     log,
     async close() {
+      await queue.stop();
+      await eventBus.close();
       outbound?.close();
       mailbox?.stop();
       await db.close();
     },
   };
 }
+

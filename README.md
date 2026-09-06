@@ -20,7 +20,7 @@ Pre-IRC, two 14-year-olds exchanged floppy disks with text files on them as lett
 
 - **The address space is the spine.** Everything has an address (`you@house`, `hermes@house`, `feed:lurker@house`, `archive@house`). The address book is the social graph.
 - **The mailbox protocol is the whole protocol.** Envelope + markdown body. Async by default. Threads are correspondences. Bridges to IMAP/SMTP, Matrix, ActivityPub.
-- **The archive is the memory.** postgres (letters + FTS) + qdrant (semantics). **Plural time**: Gregorian is the index, frames are the addresses. Retrieval: exact + FTS + semantic, merged by RRF. Minio (payloads), redis (queue), faster-whisper (audio) are targets; the house's home is **the Docker homelab host** (docker; shared-postgres 15-alpine, qdrant 21022, ollama 21023 — the `containers/` stack is the deployment shape), with a native-processes dev house on a Mac (verified 2026-09-04).
+- **The archive is the memory.** postgres (letters + FTS) + qdrant (semantics) + minio (raw payloads). **Plural time**: Gregorian is the index, frames are the addresses. Retrieval: exact + FTS + semantic, merged by RRF. Redis (queue/pubsub) and faster-whisper (audio letters) complete the stack; the house's home is **the Docker homelab host** (docker; shared-postgres 15-alpine, qdrant 21022, ollama 21023 — the `containers/` stack is the deployment shape), with a native-processes dev house on a Mac (verified 2026-09-04).
 - **The resident is the collaborator.** The whisper surfaces the gap — six gap types, convergent by construction, derived from the active frame. Offer not audition, gap not surprise, reassessment not apology. The address is the meaning (Nancy).
 - **The house is headless; the UI is composed.** The house has no UI of its own — it exposes primitives as a protocol. The user composes the space (cmux, shell, obsidian, neomutt); the house generates the letters. Composable, not generative.
 
@@ -38,9 +38,9 @@ Privacy as schema, anti-hierarchy as capability, queer/indigenous/global-majorit
 | Scheduled gap pass | `GAP_PASS_INTERVAL_MS` — the house breathes | ✅ built (`server/src/whisper/scheduler.ts`) |
 | Reference client | Vite + React (Tauri v2 later) | ✅ built (`client/`) |
 | Agent integration | MCP server — agents become residents | ✅ built, registered with Hermes |
-| Raw payloads | minio (S3-compatible) | ⬜ target — `NoopPayloadStore` today |
-| Ingestion queue | redis | ⬜ target |
-| Audio letters | faster-whisper | ⬜ target |
+| Raw payloads | minio (S3-compatible) | ✅ built (`server/src/minio/`, container in `containers/minio/`) |
+| Ingestion queue | redis | ✅ built (`server/src/queue/`, Direct + Redis queue & pub/sub) |
+| Audio letters | faster-whisper | ✅ built (`server/src/audio/`, ASR transcript letters) |
 | Local brain | ollama (embeddings, 768-dim) | ✅ live on the host (`app-ollama`, 21023) |
 | Bridges | IMAP/SMTP (primary), Matrix + ActivityPub (optional) | ✅ inbound SMTP built (`server/src/bridge/smtp.ts`, `SMTP_ENABLED=1`); IMAP/Matrix/AP deferred |
 | Deployment | the Docker homelab host — `containers/poste-restante/` (Dockerfile + compose + deploy.sh) | ✅ package built 2026-09-04; local dev remains native processes on a Mac |

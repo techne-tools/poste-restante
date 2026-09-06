@@ -126,6 +126,14 @@ export class IngestionPipeline {
     const removed = await this.repo.deleteLetter(letterId);
     if (removed) {
       await this.semantic.delete(letterId);
+      try {
+        await this.payloads.deleteForLetter(letterId);
+      } catch (err) {
+        this.log.error("ingest:payload-delete-failed", {
+          letterId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
       this.log.info("ingest:deleted", { letterId });
     }
     return removed;
