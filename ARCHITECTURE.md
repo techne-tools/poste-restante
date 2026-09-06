@@ -143,10 +143,10 @@ The house lives on **the Docker homelab host** (corrected 2026-09-04 — the mac
 | Letter server | TypeScript + Hono | ✅ container next (dev: `npm run serve`) |
 | Letters/addresses/threads/frames | postgres 15 (shared instance) | ✅ `shared-postgres` (dev 5433) |
 | Semantic layer | qdrant | ✅ `app-qdrant` 21022 (dev 6333) |
-| Raw payloads | minio | ⬜ target — stub today (`NoopPayloadStore`) |
-| Ingestion queue | redis | ⬜ target — `shared-redis` resident, unused |
+| Raw payloads | minio | ✅ `S3PayloadStore` built (`server/src/minio/`, `containers/minio/`) |
+| Ingestion queue | redis | ✅ `RedisIngestionQueue` + pub/sub built (`server/src/queue/`) |
 | Local brain | ollama | ✅ `app-ollama` 21023 (dev 11434) |
-| Audio letters | faster-whisper | ⬜ target — `whisper` resident, unused |
+| Audio letters | faster-whisper | ✅ `AudioLetterService` built (`server/src/audio/`, `whisper` 9000) |
 | Bridges | IMAP/SMTP (primary), Matrix + ActivityPub (optional) | 🟡 in-flight — SMTP door (in) + outbound seam (dormant) live; movement B LIVE (pure engine + sync seam + imapflow adapter + sync drive + per-resident accounts), flag read-back next |
 | Reference client | Vite + React (Tauri was the original lineage) | ✅ `client/` |
 | Agent integration | MCP server | ✅ `server/src/mcp/` |
@@ -170,8 +170,4 @@ The letter server + whisper engine + scheduler are the house software on top. Th
 4. **RRF for retrieval.** Three paths (exact, FTS, semantic) merged by reciprocal rank fusion — ~50 lines, robust, lets you add a fourth path without re-tuning.
 5. **The letter is the unit in all three tiers.** postgres row, qdrant vector, minio file — one archive, one unit.
 6. **Local by default, cloud as explicit opt-in bridge.** Ollama for embeddings/models; OpenAI-compatible endpoint as one env var.
-7. **Values-aligned cryptographic horizon (Phase 4).** Safety, fairness, non-hierarchical relation, and restorative justice guide future encryption:
-   - **Address-keyed Age encryption ("The House as an Explicit Recipient"):** Every address holds an `age` keypair rather than relying on a centralised database master key (which would recreate an all-seeing "admin" class).
-   - **Explicit consent for resident collaboration:** Letters are encrypted to recipient public keys plus `house@house` when the resident's collaboration (whispers, gap detection, semantic search) is welcomed; omitting `house@house` stores the letter strictly sealed (*"poste restante"*), bypassing vector embedding and FTS to preserve inviolable privacy without security theatre.
-   - **Multi-store uniformity & tamper-evidence:** Sidecar stores (Stalwart RocksDB, MinIO) must not leak what Postgres seals; senders sign `sha256(envelope + body)` with identity keys for cryptographic integrity.
-   - **SOPS vs Age:** `sops` remains strictly for operator deployment secrets (`.env.enc`); `age` is the transactional payload encryption primitive.
+7. **Values-aligned cryptographic horizon (Phase 4).** Safety, fairness, non-hierarchical relation, and restorative justice guide future encryption. **Resolved 2026-09-06 — SPEC §5 #15 is the design truth; this section is the pointer.** The second model is the house: clients hold resident keys; the house holds exactly one keypair — its own, a participant key, never a master key. Sealed letters are cryptographically sealed even against a compromised house. All bodies are ciphertext at rest; backups encrypt to the operator's key off-box; sealed letters never reach the whisper, FTS, embedding, or IMAP materialisation; the subject moves into the body for sealed letters; consent is reversible at every level (per-letter seal, settable default, always-available override, relationship pause as a seal). Signing is ed25519 alongside age, signing the letter id (a sibling field, never inside the envelope); key lifecycle is key history not re-encryption, with recovery keys and an operator-held house-key backup. Fully resolved — see SPEC §5 #15 before any implementation.
