@@ -15,6 +15,8 @@
 # Required secret: POSTGRES_PASSWORD (the shared-postgres password, from
 # .env.enc or the environment). Without it the house DB cannot be provisioned
 # and DATABASE_URL is not interpolated — fail closed, like the house itself.
+# (Tailnet access is host-serve on the horza node — the sidecar collapse
+# 2026-08-23 — so this package needs no TS_AUTHKEY.)
 
 set -euo pipefail
 

@@ -103,6 +103,62 @@ describe("house client", () => {
     );
   });
 
+  it("lists the payload catalog for a letter — the shape rides in, not the bytes", async () => {
+    globalThis.fetch = mockFetch(200, {
+      letterId: "let_x",
+      payloads: [
+        { key: "letters/let_x/memo.wav", name: "memo.wav", contentType: "audio/wav", size: 5 },
+      ],
+    });
+    const res = await house.payloads("let_x");
+    expect(res.payloads[0]!.contentType).toBe("audio/wav");
+    const [url] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe("/v1/letters/let_x/payloads");
+  });
+
+  it("uploads a raw payload — bytes travel raw, name and type ride in headers", async () => {
+    globalThis.fetch = mockFetch(201, { letterId: "let_x", key: "letters/let_x/a.png", name: "a.png", size: 3 });
+    const file = new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" });
+    const res = await house.uploadPayload("let_x", file, "a.png");
+    expect(res.key).toBe("letters/let_x/a.png");
+    const [url, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe("/v1/letters/let_x/payloads");
+    expect(init.method).toBe("POST");
+    expect(init.headers["X-Payload-Name"]).toBe("a.png");
+    expect(init.headers["Content-Type"]).toBe("image/png");
+    // The body is the raw file, never JSON-wrapped.
+    expect(init.body).toBe(file);
+  });
+
+  it("fetches an enclosure as a blob with the house's auth — plain tags cannot", async () => {
+    const blob = new Blob([new Uint8Array([4, 5])], { type: "audio/wav" });
+    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: true, blob: async () => blob });
+    localStorage.setItem(
+      "poste-restante.auth",
+      JSON.stringify({ address: "you@house", header: "Basic eW91OnlvdQ==" }),
+    );
+    const res = await house.payloadBlob("let_x", "memo.wav");
+    expect(res).toBe(blob);
+    const [url, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe("/v1/letters/let_x/payloads/memo.wav");
+    expect(init.headers.Authorization).toBe("Basic eW91OnlvdQ==");
+
+    // A denied enclosure is a readable absence, never a silent blob.
+    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: false, status: 404 });
+    await expect(house.payloadBlob("let_x", "memo.wav")).rejects.toThrow(
+      "the house could not open memo.wav",
+    );
+  });
+
+  it("deletes an enclosure — the bytes and the catalog row", async () => {
+    globalThis.fetch = mockFetch(200, { deleted: true, key: "letters/let_x/memo.wav" });
+    const res = await house.deletePayload("let_x", "memo.wav");
+    expect(res.deleted).toBe(true);
+    const [url, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe("/v1/letters/let_x/payloads/memo.wav");
+    expect(init.method).toBe("DELETE");
+  });
+
   it("redeems an invitation as the guest — public, no Authorization header even with a stale session", async () => {
     // A stale resident session must not leak into the guest's redemption —
     // the guest redeems as themselves, not as whoever was last in the house.

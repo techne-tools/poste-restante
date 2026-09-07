@@ -12,6 +12,11 @@
 #   docker network create web_net
 #   docker network create ollama_net
 #
+# Access is HOST-SERVE (the sidecar collapse, 2026-08-23): horza's single
+# Tailscale node proxies https://poste-restante.mermaid-darter.ts.net:21016
+# → 127.0.0.1:21016 → this container. NO tailscale container here — one
+# less ~80 MB sidecar (the collapse took 30 of them to zero).
+#
 # Secrets (.env.enc, sops+age) are NOT here. `.env.public` carries the
 # non-secret defaults; deploy.sh decrypts .env.enc into a temporary .env
 # that the shell exports, and the two secret URLs are built from env vars.
@@ -34,12 +39,16 @@ services:
     # the house image label keeps it out.
     labels:
       - com.centurylinklabs.watchtower.enable=false
-    # The protocol face. 8787 = HTTP/MCP. 21027 = the SMTP door. The door
+    # The protocol face. 8787 = HTTP/MCP. 21036 = the SMTP door. The door
     # is closed by default (SMTP_ENABLED unset) — it is published on its own
     # port so opening it later is a single env change, no re-deploy.
+    # Host-serve: 21016 is the house's tailscale serve port (registered as
+    # svc:poste-restante); the door (21036) gets NO serve line — it wants a
+    # relay, not a public TLS face. (The draft's 21027 collided with
+    # home-assistant's serve slot on horza — moved 2026-09-07.)
     ports:
       - "21016:8787"
-      - "21027:2525"
+      - "21036:2525"
     networks:
       - backend_net
       - web_net
@@ -47,12 +56,31 @@ services:
     environment:
       # ── the spine (postgres, qdrant, ollama) — by service name, on their
       #    networks. No host ports, no localhost:5433/6333/11434.
-      DATABASE_URL: postgres://${POSTGRES_USER:-audiomuse}:${POSTGRES_PASSWORD}@shared-postgres:5432/${POSTGRES_DB}
+      #    DATABASE_URL fails closed: POSTGRES_PASSWORD is REQUIRED and comes
+      #    from .env.enc (deploy.sh refuses to start without it). The `:?`
+      #    form makes compose itself refuse to interpolate when the
+      #    password is missing — an early error beats a boot-time auth fail.
+      DATABASE_URL: postgres://${POSTGRES_USER:-audiomuse}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@shared-postgres:5432/${POSTGRES_DB:-poste_restante}
       QDRANT_URL: http://app-qdrant:6333
       QDRANT_COLLECTION: ${QDRANT_COLLECTION:-letters}
       EMBEDDING_BASE_URL: http://app-ollama:11434
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
       EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-768}
+      # ── the enclosures tier (SPEC §3.1 / §3.2, migration 016). MinIO is a
+      #    house-resident service on backend_net; the house reaches it by
+      #    compose DNS. Keys come from .env.enc — the S3 store activates
+      #    only when both keys are set (config.ts: minioEnabled).
+      MINIO_ENDPOINT: http://app-minio:9000
+      MINIO_BUCKET: ${MINIO_BUCKET:-letters}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-}
+      # ── the queue + audio letters. shared-redis is on backend_net; whisper
+      #    is a resident service (its own compose project) attached to
+      #    backend_net at deploy time (`docker network connect backend_net
+      #    whisper`) — see TASK.md alpha scope. Unset → in-process queue, no
+      #    transcription; the house still serves (presence-not-pressure).
+      REDIS_URL: redis://shared-redis:6379
+      WHISPER_URL: http://whisper:9000
       # ── the resident (auth) — fail closed, never none.
       AUTH_MODE: ${AUTH_MODE:?AUTH_MODE must be set (basic/oidc/both)}
       HOUSE_DOMAIN: ${HOUSE_DOMAIN:-house}

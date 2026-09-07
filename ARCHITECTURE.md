@@ -160,7 +160,7 @@ host:    postgres (shared-postgres) + qdrant (21022) + ollama (21023)   ← resi
 dev mac: the same software as native processes                          ← dev box, not the target
 ```
 
-The letter server + whisper engine + scheduler are the house software on top. The first deployment slice is the `containers/poste-restante/` package (Dockerfile + compose service + .env.public + deploy.sh, host ports in the free 21xxx range — 21016/21027/21032/21033 are free as of 2026-09-04) wiring the house to the host's resident postgres/qdrant/ollama, exactly as AGENTS.md specifies.
+The letter server + whisper engine + scheduler are the house software on top. The first deployment slice is the `containers/poste-restante/` package (Dockerfile + compose service + .env.public + deploy.sh, host ports in the free 21xxx range — 21016/21036 are free as of 2026-09-07, and tailnet access is host-serve on the horza node, the sidecar collapse of 2026-08-23) wiring the house to the host's resident postgres/qdrant/ollama, exactly as AGENTS.md specifies.
 
 ## Key Architectural Decisions
 

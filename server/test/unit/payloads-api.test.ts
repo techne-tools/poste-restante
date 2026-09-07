@@ -7,6 +7,8 @@ import type { PayloadStore } from "../../src/minio/store.js";
 function fakeHouseWithPayloads(): { house: House; payloadStore: PayloadStore } {
   const letters = new Map<string, Letter & { receivedAt: Date }>();
   const payloadMap = new Map<string, Uint8Array>();
+  // The payload catalog (migration 016) — the pointer layer.
+  const catalog = new Map<string, { name: string; content_type: string; size: number }[]>();
 
   const payloadStore: PayloadStore = {
     put: async (letterId, name, data) => {
@@ -27,6 +29,7 @@ function fakeHouseWithPayloads(): { house: House; payloadStore: PayloadStore } {
       for (const k of Array.from(payloadMap.keys())) {
         if (k.startsWith(prefix)) payloadMap.delete(k);
       }
+      catalog.delete(letterId);
     },
   };
 
@@ -80,6 +83,24 @@ function fakeHouseWithPayloads(): { house: House; payloadStore: PayloadStore } {
         };
       },
       participationStates: async () => new Map(),
+      getPayload: async (letterId: string, name: string) =>
+        catalog.get(letterId)?.find((p) => p.name === name) ?? null,
+      listPayloads: async (letterId: string) => catalog.get(letterId) ?? [],
+      insertPayload: async (letterId: string, name: string, content_type: string, size: number) => {
+        const list = catalog.get(letterId) ?? [];
+        const existing = list.findIndex((p) => p.name === name);
+        const row = { name, content_type, size };
+        if (existing >= 0) list[existing] = row;
+        else list.push(row);
+        catalog.set(letterId, list);
+      },
+      deletePayload: async (letterId: string, name: string) => {
+        const list = catalog.get(letterId) ?? [];
+        catalog.set(
+          letterId,
+          list.filter((p) => p.name !== name),
+        );
+      },
     } as never,
     pipeline: {
       delete: async (id: string) => {
@@ -124,36 +145,48 @@ describe("Payloads API", () => {
     expect(uploaded.key).toBe("letters/let_audio_123/memo.wav");
     expect(uploaded.size).toBe(5);
 
-    // 2. List payloads
+    // 2. List payloads — the catalog carries the shape (migration 016)
     const listRes = await server.request("/v1/letters/let_audio_123/payloads", {
       headers: { "X-Postal-Auth": "bob@house" },
     });
     expect(listRes.status).toBe(200);
     const list = await listRes.json();
     expect(list.payloads).toEqual([
-      { key: "letters/let_audio_123/memo.wav", name: "memo.wav" },
+      {
+        key: "letters/let_audio_123/memo.wav",
+        name: "memo.wav",
+        contentType: "audio/wav",
+        size: 5,
+      },
     ]);
 
-    // 3. Download payload
+    // 3. Download payload — the stored content-type travels with the bytes,
+    //    so an image can render inline and an audio clip can play in place.
     const getRes = await server.request("/v1/letters/let_audio_123/payloads/memo.wav", {
       headers: { "X-Postal-Auth": "alice@house" },
     });
     expect(getRes.status).toBe(200);
+    expect(getRes.headers.get("Content-Type")).toBe("audio/wav");
     const downloaded = new Uint8Array(await getRes.arrayBuffer());
     expect(downloaded).toEqual(new Uint8Array([1, 2, 3, 4, 5]));
 
-    // 4. Delete payload
+    // 4. Delete payload — the bytes and the catalog row go together
     const delRes = await server.request("/v1/letters/let_audio_123/payloads/memo.wav", {
       method: "DELETE",
       headers: { "X-Postal-Auth": "alice@house" },
     });
     expect(delRes.status).toBe(200);
 
-    // 5. Verify gone
+    // 5. Verify gone — both from the object store and the catalog
     const getAgain = await server.request("/v1/letters/let_audio_123/payloads/memo.wav", {
       headers: { "X-Postal-Auth": "alice@house" },
     });
     expect(getAgain.status).toBe(404);
+
+    const listAfter = await server.request("/v1/letters/let_audio_123/payloads", {
+      headers: { "X-Postal-Auth": "bob@house" },
+    });
+    expect((await listAfter.json()).payloads).toEqual([]);
   });
 
   it("fails closed (404) for non-participant", async () => {
@@ -163,5 +196,32 @@ describe("Payloads API", () => {
 
     const res = await server.request("/v1/letters/let_other_secret/payloads");
     expect(res.status).toBe(404);
+  });
+
+  it("rolls back the object when the catalog insert fails — no orphaned bytes", async () => {
+    const { house, payloadStore } = fakeHouseWithPayloads();
+    const failingRepo = {
+      ...(house.repo as object),
+      insertPayload: async () => {
+        throw new Error("catalog is closed");
+      },
+    } as never;
+    (house as { repo: unknown }).repo = failingRepo;
+    const server = createLetterServer(house);
+
+    const res = await server.request("/v1/letters/let_audio_123/payloads", {
+      method: "POST",
+      headers: {
+        "X-Postal-Auth": "alice@house",
+        "X-Payload-Name": "orphan.bin",
+        "Content-Type": "application/octet-stream",
+      },
+      body: new Uint8Array([9, 9]),
+    });
+    expect(res.status).toBe(500);
+
+    // The object store must not keep the bytes — a failed upload leaves no trace.
+    const keys = await payloadStore.listForLetter("let_audio_123");
+    expect(keys).toEqual([]);
   });
 });

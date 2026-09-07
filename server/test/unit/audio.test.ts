@@ -3,10 +3,27 @@ import {
   WhisperTranscriber,
   NoopAudioTranscriber,
   createAudioTranscriber,
+  normaliseWhisperLanguage,
 } from "../../src/audio/transcriber.js";
 import { AudioLetterService } from "../../src/audio/audio-service.js";
 import type { PayloadStore } from "../../src/minio/store.js";
 import type { Letter } from "../../src/types.js";
+
+describe("normaliseWhisperLanguage", () => {
+  it("reduces BCP-47 locales to the bare ISO 639-1 code faster-whisper accepts", () => {
+    expect(normaliseWhisperLanguage("en-AU")).toBe("en");
+    expect(normaliseWhisperLanguage("en")).toBe("en");
+    expect(normaliseWhisperLanguage("pt-BR")).toBe("pt");
+    expect(normaliseWhisperLanguage("zh-CN")).toBe("zh");
+    expect(normaliseWhisperLanguage("yue-HK")).toBe("yue");
+  });
+
+  it("returns undefined for falsy or empty input", () => {
+    expect(normaliseWhisperLanguage(undefined)).toBeUndefined();
+    expect(normaliseWhisperLanguage("")).toBeUndefined();
+    expect(normaliseWhisperLanguage("   ")).toBeUndefined();
+  });
+});
 
 describe("WhisperTranscriber", () => {
   it("transcribes audio data via /asr endpoint", async () => {
@@ -25,6 +42,30 @@ describe("WhisperTranscriber", () => {
     expect(globalThis.fetch).toHaveBeenCalledWith(
       expect.stringContaining("http://localhost:9000/asr?task=transcribe&output=json"),
       expect.objectContaining({ method: "POST" }),
+    );
+
+    globalThis.fetch = originalFetch;
+  });
+
+  it("normalises a full locale (en-AU) to the bare code before calling /asr", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ text: "Storm.", language: "en" }),
+    } as unknown as Response);
+
+    const client = new WhisperTranscriber("http://localhost:9000");
+    await client.transcribe(new Uint8Array([10, 20, 30]), "storm.wav", "en-AU");
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("language=en"),
+      expect.objectContaining({ method: "POST" }),
+    );
+    // the raw locale must never reach the ASR service (it 500s)
+    expect(globalThis.fetch).not.toHaveBeenCalledWith(
+      expect.stringContaining("language=en-AU"),
+      expect.anything(),
     );
 
     globalThis.fetch = originalFetch;

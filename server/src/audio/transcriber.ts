@@ -26,6 +26,19 @@ export class NoopAudioTranscriber implements AudioTranscriber {
 }
 
 /**
+ * Normalise a BCP-47 / locale language tag to the ISO 639-1 code
+ * faster-whisper accepts. The house's envelopes carry full locales
+ * (lang: "en-AU" is the default); the ASR service only accepts bare
+ * codes ("en", "pt", "zh", ...). Taking the primary subtag handles
+ * every real case: en-AU → en, pt-BR → pt, zh-CN → zh, yue-HK → yue.
+ */
+export function normaliseWhisperLanguage(language?: string): string | undefined {
+  if (!language) return undefined;
+  const tag = language.trim().toLowerCase().split("-")[0];
+  return tag || undefined;
+}
+
+/**
  * Client for faster-whisper ASR web service.
  * Supports both onerahmet/openai-whisper-asr-webservice (/asr endpoint)
  * and standard OpenAI-compatible /v1/audio/transcriptions.
@@ -50,11 +63,16 @@ export class WhisperTranscriber implements AudioTranscriber {
     formData.append("audio_file", blob, filename);
 
     // Primary: onerahmet/openai-whisper-asr-webservice endpoint
+    // faster-whisper accepts only bare ISO 639-1 codes — the house's
+    // envelopes carry full locales (lang: "en-AU" is the default), so
+    // normalise before we put the language on the wire (a 500 from the
+    // ASR service otherwise).
+    const lang = normaliseWhisperLanguage(language);
     const url = new URL(`${this.baseUrl}/asr`);
     url.searchParams.set("task", "transcribe");
     url.searchParams.set("output", "json");
-    if (language) {
-      url.searchParams.set("language", language);
+    if (lang) {
+      url.searchParams.set("language", lang);
     }
 
     this.log?.info("whisper:transcribe-start", {
@@ -102,7 +120,8 @@ export class WhisperTranscriber implements AudioTranscriber {
     const blob = new Blob([Buffer.from(audioData)], { type: "audio/wav" });
     formData.append("file", blob, filename);
     formData.append("model", "whisper-1");
-    if (language) formData.append("language", language);
+    const lang = normaliseWhisperLanguage(language);
+    if (lang) formData.append("language", lang);
 
     const res = await fetch(`${this.baseUrl}/v1/audio/transcriptions`, {
       method: "POST",

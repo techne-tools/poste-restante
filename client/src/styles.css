@@ -445,6 +445,140 @@ a:hover {
   color: var(--fg);
 }
 
+/* Enclosures — what a letter carries beyond its body. Quiet, like the
+   frames: mono labels, faint ink. An image renders in place at a letter
+   measure; audio is a bare player; files are a download link. */
+.letter .enclosures {
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: var(--rule);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.enclosures-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.enclosure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.enclosure-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.enclosure-name {
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.enclosure-size {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+
+.enclosure-image {
+  max-width: 100%;
+  border-radius: var(--radius);
+  border: var(--rule);
+}
+
+.enclosure-audio {
+  width: 100%;
+}
+
+.enclosure-download,
+.enclosure-pending {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+
+.enclosure-remove {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--ink-faint);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  padding: var(--space-1) var(--space-2);
+}
+
+.enclosure-remove:hover {
+  color: var(--fg);
+}
+
+/* The composer's pending enclosures — chips before the letter is posted. */
+.attach-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.attach-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--surface-raised);
+  border: var(--rule);
+  border-radius: var(--radius);
+  padding: var(--space-1) var(--space-2);
+}
+
+.attach-remove {
+  background: none;
+  border: none;
+  color: var(--ink-faint);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+
+.attach-remove:hover {
+  color: var(--fg);
+}
+
+.compose-hint {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-faint);
+  margin: var(--space-1) 0 0;
+}
+
+.compose-field select {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--fg);
+  background: var(--surface-sunken);
+  border: var(--rule);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-2);
+  width: 100%;
+}
+
+.compose-field input[type="file"] {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: var(--space-1);
+}
+
 /* The machine metadata — one quiet disclosure away, never in the way. */
 .letter .machine {
   margin-top: var(--space-4);

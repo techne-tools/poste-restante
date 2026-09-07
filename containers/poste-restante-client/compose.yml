@@ -1,0 +1,42 @@
+# Poste Restante — the reference client on the Docker homelab host.
+#
+# A static-face container for alpha testers: serves the built React client
+# and proxies /v1 to the house (poste-restante project) on backend_net.
+# The house is NOT served from this container — it stays headless; this is
+# A client (invariant 2), composed by the operator.
+#
+# Access is HOST-SERVE (the sidecar collapse, 2026-08-23): horza's single
+# Tailscale node proxies https://poste-restante-client.mermaid-darter.ts.net
+# :21034 → 127.0.0.1:21034 → this container. NO tailscale container here —
+# the collapse took 30 sidecars to zero; the client does not resurrect one.
+#
+# No secrets (.env.enc may not even exist for this package): the client
+# container itself carries no credentials — auth lives in the browser and
+# travels to the house through the proxy.
+
+name: poste-restante-client
+
+services:
+  client:
+    build:
+      context: ../..
+      dockerfile: containers/poste-restante-client/Dockerfile
+    image: poste-restante-client:local
+    container_name: poste-restante-client
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      - com.centurylinklabs.watchtower.enable=false
+      - service.owner=chris
+    # The host port is the serve target (21034 — the client's slot in the
+    # host allocation table). Testers reach the client at the tailnet name;
+    # the host port doubles for operator/local checking.
+    ports:
+      - "${CLIENT_PORT:-21034}:80"
+    networks:
+      - backend_net
+
+networks:
+  backend_net:
+    external: true

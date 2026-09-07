@@ -388,6 +388,9 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
   // ── Letter Payloads (MinIO / S3 tier) ────────────────────────────────────
 
   // List payloads attached to a letter. Only visible participants may list.
+  // The catalog (migration 016) makes each payload's shape a schema
+  // property — name, content type, size — so the client can render an
+  // enclosure without fetching bytes first.
   app.get("/v1/letters/:id/payloads", async (c) => {
     const who = await caller(c);
     if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
@@ -398,10 +401,12 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
     if (!isVisibleTo(row, who.address, state.get(row.thread_id) ?? "in")) {
       return c.json({ error: { code: "not_found", message: "no such letter" } }, 404);
     }
-    const keys = await house.payloads.listForLetter(id);
-    const payloads = keys.map((k) => ({
-      key: k,
-      name: k.split("/").slice(2).join("/"),
+    const catalog = await house.repo.listPayloads(id);
+    const payloads = catalog.map((p) => ({
+      key: `letters/${id}/${p.name}`,
+      name: p.name,
+      contentType: p.content_type,
+      size: p.size,
     }));
     return c.json({ letterId: id, payloads });
   });
@@ -445,6 +450,14 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
 
     const key = await house.payloads.put(id, name, data, contentType);
 
+    // Record the pointer in the catalog (migration 016). If the recording
+    // fails, the freshly-stored object is orphaned bytes in MinIO — roll
+    // it back so a failed upload leaves no trace.
+    await house.repo.insertPayload(id, name, contentType, data.length).catch(async (err: unknown) => {
+      await house.payloads.delete(key).catch(() => {});
+      throw err;
+    });
+
     // If kind === "audio" and whisper is enabled, trigger transcription
     if (row.kind === "audio" && house.config.whisperUrl) {
       void house.audio.transcribeAudioLetter(toLetter(row), key).catch((err) => {
@@ -478,10 +491,16 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
       return c.json({ error: { code: "not_found", message: "payload not found" } }, 404);
     }
 
+    // The catalog's content type — what the payload *is*, held as a schema
+    // property (migration 016). It lets an image render inline, an audio
+    // clip play in place, and a plain file download with its own MIME.
+    const meta = await house.repo.getPayload(id, name);
+    const contentType = meta?.content_type ?? "application/octet-stream";
+
     return new Response(Buffer.from(data), {
       status: 200,
       headers: {
-        "Content-Type": "application/octet-stream",
+        "Content-Type": contentType,
         "Content-Disposition": `inline; filename="${name}"`,
       },
     });
@@ -502,6 +521,8 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
 
     const key = `letters/${id}/${name}`;
     await house.payloads.delete(key);
+    // The catalog dies with the bytes — no orphaned pointer.
+    await house.repo.deletePayload(id, name);
     return c.json({ deleted: true, key });
   });
 

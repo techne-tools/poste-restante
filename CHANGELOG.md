@@ -6,6 +6,50 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added — LIVE ALPHA on horza (2026-09-07)
+
+The house is running on the Docker homelab host, tailnet-only:
+
+- **Stack**: `app-minio` (21035), `poste-restante-house` (21016 HTTP / 21036 SMTP door closed), `poste-restante-client` (21034). DB `poste_restante` provisioned on `shared-postgres` (role audiomuse); whisper attached to `backend_net`; queue + S3 store + audio transcription all live.
+- **Tailnet**: `https://poste-restante.mermaid-darter.ts.net:21016` and `https://poste-restante-client.mermaid-darter.ts.net:21034` — host-serve on the horza node (`svc:poste-restante` / `svc:poste-restante-client`), added to `~/containers/restore-tailscale-serve.sh`.
+- **Smoke proof**: image letter + PNG enclosure round-trip (catalogue + correct content-type), stranger → 404 (negative visibility), real 1s 440Hz WAV → transcript letter in-thread in 5s.
+- **Fixes found by deploying**: MinIO compose was missing `command: server /data` (crash-looped; official image's bare entrypoint prints help); the whisper transcriber now normalises BCP-47 locales to bare ISO 639-1 codes (`en-AU` → `en`) — faster-whisper 500s on full locales. Unit tests added for both.
+- `.env.enc` secrets seeded on horza in the fleet's binary-envelope sops format (plain `sops -d` works); values never crossed the wire.
+- Test residents `alpha@house` / `stranger@house` seeded with one-shot tokens — rotate before real testers (tokens were printed once by the CLI).
+
+### Added — the tailnet face: host-serve for the protocol and the reference client (2026-09-07, corrected)
+
+The alpha stack exposes the house and its client on the tailnet via **host-serve on the horza node** — the model since the sidecar collapse (complete 2026-08-23: 30 per-stack sidecars → zero, ~2.4 GiB RAM saved). The first draft of this entry shipped per-stack Tailscale containers; that pattern is dead and was pulled before anything ran:
+
+- **`containers/poste-restante/compose.yml`** — one service (`house`). No `tailscale` container, no `configs.ts-serve`, no `TS_AUTHKEY`, no `ts/state` mount. Access: the host node's serve line `https://poste-restante.mermaid-darter.ts.net:21016 → 127.0.0.1:21016` (register `--service svc:poste-restante` in `~/containers/restore-tailscale-serve.sh`).
+- **`containers/poste-restante-client/compose.yml`** — one service (`client`). Same host-serve treatment: `https://poste-restante-client.mermaid-darter.ts.net:21034 → 127.0.0.1:21034` (`svc:poste-restante-client`). The client carries no credentials, so its `.env.example` was deleted and its `deploy.sh` is a thin compose passthrough.
+- **SMTP door moved 21027 → 21036** — 21027 is home-assistant's live host-serve slot on horza; the draft's bind would have shadowed the tailnet IP and broken home-assistant's face. Re-verified live on the host: 21016/21034/21036 all free.
+- **Secrets simplified** — the house `.env.enc` needs only `POSTGRES_PASSWORD`, MinIO keys, and the optional `SMTP_OUTBOUND_URL`. `TS_AUTHKEY` and its fail-closed pre-flight are gone from both packages (the host node is already authenticated).
+- **Docs corrected everywhere the draft leaked** — house/client READMEs (host-serve section with the serve line, port table, verify commands), ARCHITECTURE's free-port line, CHANGELOG, and the local runbook's recon step (TASK.md is gitignored).
+- Verified: both compose files parse (single service, host ports only), all deploy scripts pass `bash -n`, live host check confirms the port allocation, and no `.env.enc`/`ts/state`/`TS_AUTHKEY` remains anywhere in the tree. Application code untouched — the 212/212 server + 49/49 client unit suites and the last green build stand.
+
+### Added — the alpha deploy packages: enclosures env, MinIO port corrections, and the reference client container (2026-09-07)
+
+Repo-side readiness for the first live alpha on horza, from recon 2026-09-07 (the host had drifted from the 2026-09-04 runbook — minio ports 21018/21019 and the mailbox sidecar port 21032 are all taken by other stacks):
+
+- **`containers/poste-restante/compose.yml` — the enclosures tier.** The house previously shipped with no `MINIO_*` env, so the S3 payload store (built 2026-09-06, migration 016) would stay Noop in the composed shape. Now: `MINIO_ENDPOINT=http://app-minio:9000`, `MINIO_BUCKET`, `MINIO_ACCESS_KEY`/`MINIO_SECRET_KEY` (secrets → `.env.enc`), plus `REDIS_URL=redis://shared-redis:6379` (queue/pubsub) and `WHISPER_URL=http://whisper:9000` (audio transcription; whisper needs `docker network connect backend_net whisper` once at deploy).
+- **`DATABASE_URL` fail-closed.** The spine URL now uses `:?` interpolation on `POSTGRES_PASSWORD` — compose refuses before boot instead of the house auth-failing silently.
+- **`containers/minio/`** — API port 21018 → 21035 (probed free; 21018 is immich on horza), console off for alpha (`MINIO_BROWSER=off`), port knob moved to `.env.public` (`MINIO_PORT_API`). README corrected to the live ports.
+- **`containers/poste-restante-client/` (new)** — the reference client as its own container: builds `client/dist` (node stage), serves from `nginx:1.27-alpine` with `/v1 → house:8787` proxy. `client_max_body_size 30m` mirrors the house upload limit (nginx's 1 MB default would 413 enclosure uploads). Host port `$CLIENT_PORT` (21034, probed free). The house stays headless (invariant 1) — this is *a* client the operator composed (invariant 2); no credentials live in the container (auth stays in the browser, proxied through untouched).
+- **Env seeds** — `MINIO_ACCESS_KEY`/`MINIO_SECRET_KEY` documented in `.env.example` (secrets) and the house README's knob table.
+- Verified locally: YAML + interpolation sanity across all three compose files, 212/212 server unit, 49/49 client unit, typecheck and production builds clean (the container build stages run the same scripts).
+
+### Added — enclosures: images, audio, and other media attached to letters (2026-09-07)
+
+The MinIO payload tier was built (2026-09-06) but the house had no way to attach or render media through the protocol. This slice completes it end to end, with the payload's shape held as a schema property (privacy-as-schema, migration 016):
+
+- **The payload catalog (`letter_payloads`, migration 016):** the pointer layer for the MinIO tier. Name, content type, and size live in Postgres so the house can say what a payload *is* without asking the object store; the bytes stay in MinIO. Rows die with the letter (`ON DELETE CASCADE`) — no orphaned pointers. Adds no new visibility axis: every payload route still enforces the same derived `isVisibleTo` checks as the letter routes (privacy checklist #2, #4).
+- **Content-type preservation on download.** `GET /v1/letters/:id/payloads/:name` now serves the catalogued content type instead of a hard-coded `application/octet-stream`, so an image renders inline, an audio clip plays in place, and a file downloads as itself.
+- **Upload records the catalog with orphan rollback.** `POST /v1/letters/:id/payloads` writes the catalog row after the S3 put; if the catalog insert fails the freshly-stored object is rolled back — a failed upload leaves no trace.
+- **Reference client — compose:** file picker with a pending enclosure list, a kind selector (letter / audio / note / task), and the audio-letter path — an audio letter may carry no text at all, the recording IS the letter (whisper transcribes it into a follow-up letter in the same thread, already built).
+- **Reference client — view:** enclosures render beneath the body — images inline, audio as a player, other files as a download link; each row carries a remove action (bytes + catalog row). Enclosure bytes are fetched with the house's auth as blobs and handed to the renderer via object URLs, revoked on unmount (plain `<img>`/`<audio>` tags cannot carry the Authorization header). The list response carries metadata only — bytes are never fetched until the reader has the letter open (data minimisation).
+- **Tests:** content-type round-trip, catalog list shape, delete cleans both tiers, orphan rollback on failed insert, non-participant 404 (the negative test), and client payload paths (list / raw upload / auth-gated blob / delete). Suite green: 212/212 server unit, 49/49 client unit, typecheck and production builds clean.
+
 ### Added — the remaining stack targets: MinIO raw payloads, Redis ingestion queue & pub/sub, faster-whisper audio letters (2026-09-06)
 
 The three targets marked `⬜ target` in the stack table are now built and integrated:

@@ -153,6 +153,63 @@ export class PostgresRepository {
     return (res.rowCount ?? 0) > 0;
   }
 
+  /** The payload catalog — what a letter carries beyond its body.
+   *  Migration 016: the pointer layer for the MinIO tier. The name,
+   *  content type, and size are schema properties so the house can say
+   *  what a payload *is* without asking the object store; the bytes
+   *  themselves stay in MinIO. The rows die with the letter
+   *  (ON DELETE CASCADE) — no orphaned pointers, ever. */
+  async listPayloads(letterId: string): Promise<
+    { name: string; content_type: string; size: number }[]
+  > {
+    const { rows } = await this.pool.query(
+      `SELECT name, content_type, size
+       FROM letter_payloads
+       WHERE letter_id = $1
+       ORDER BY created_at ASC, name ASC`,
+      [letterId],
+    );
+    return rows;
+  }
+
+  /** One catalog row — null when the letter carries no such payload. */
+  async getPayload(
+    letterId: string,
+    name: string,
+  ): Promise<{ name: string; content_type: string; size: number } | null> {
+    const { rows } = await this.pool.query(
+      `SELECT name, content_type, size
+       FROM letter_payloads
+       WHERE letter_id = $1 AND name = $2`,
+      [letterId, name],
+    );
+    return rows[0] ?? null;
+  }
+
+  /** Record a stored payload in the catalog. */
+  async insertPayload(
+    letterId: string,
+    name: string,
+    content_type: string,
+    size: number,
+  ): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO letter_payloads (letter_id, name, content_type, size)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (letter_id, name) DO UPDATE
+         SET content_type = EXCLUDED.content_type, size = EXCLUDED.size`,
+      [letterId, name, content_type, size],
+    );
+  }
+
+  /** Remove one catalog row. The bytes are the caller's concern. */
+  async deletePayload(letterId: string, name: string): Promise<void> {
+    await this.pool.query(
+      `DELETE FROM letter_payloads WHERE letter_id = $1 AND name = $2`,
+      [letterId, name],
+    );
+  }
+
   /** List the address book — the social graph. Flat, no ranking. */
   async listAddresses(): Promise<{ id: string; names: string[]; pronouns: string | null }[]> {
     const { rows } = await this.pool.query(

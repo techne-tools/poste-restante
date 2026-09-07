@@ -106,6 +106,17 @@ export interface SearchResponse {
   letters: Letter[];
 }
 
+/** The payload catalog — what a letter carries beyond its body (migration
+ *  016). The name, content type, and size ride in the list response so the
+ *  client can render an enclosure without fetching bytes first; the bytes
+ *  themselves stay behind the house's auth. */
+export interface PayloadMeta {
+  key: string;
+  name: string;
+  contentType: string;
+  size: number;
+}
+
 const BASE = "/v1";
 
 // The authenticated address, set by the login view. Persisted in
@@ -200,6 +211,56 @@ export const house = {
     return request<{ pinned: boolean; id: string }>(`/letters/${id}/pin`, {
       method: "DELETE",
     });
+  },
+
+  /** The payload catalog — what a letter carries beyond its body. */
+  payloads(letterId: string) {
+    return request<{ letterId: string; payloads: PayloadMeta[] }>(
+      `/letters/${encodeURIComponent(letterId)}/payloads`,
+    );
+  },
+
+  /** Upload a raw payload — an enclosure for a letter already delivered.
+   *  The bytes travel raw (no JSON wrapping); the name and content type
+   *  ride in headers so the house can catalogue them (migration 016). */
+  uploadPayload(letterId: string, file: Blob, name: string) {
+    return request<{ letterId: string; key: string; name: string; size: number }>(
+      `/letters/${encodeURIComponent(letterId)}/payloads`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": file.type || "application/octet-stream",
+          "X-Payload-Name": name,
+        },
+        body: file,
+      },
+    );
+  },
+
+  /** Fetch an enclosure's bytes as a blob, with the house's auth on the
+   *  request. Plain <img>/<audio> tags cannot carry the Authorization
+   *  header from storage, so the client fetches once and hands the renderer
+   *  an object URL (revoked by the caller after the element unmounts). */
+  async payloadBlob(letterId: string, name: string): Promise<Blob> {
+    const auth = loadAuth();
+    const headers: Record<string, string> = {};
+    if (auth) headers.Authorization = auth.header;
+    const res = await fetch(
+      `${BASE}/letters/${encodeURIComponent(letterId)}/payloads/${encodeURIComponent(name)}`,
+      { headers },
+    );
+    if (!res.ok) {
+      throw new Error(`the house could not open ${name}`);
+    }
+    return res.blob();
+  },
+
+  /** Delete an enclosure — the bytes and the catalog row. */
+  deletePayload(letterId: string, name: string) {
+    return request<{ deleted: boolean; key: string }>(
+      `/letters/${encodeURIComponent(letterId)}/payloads/${encodeURIComponent(name)}`,
+      { method: "DELETE" },
+    );
   },
 
   /** The address book — flat, no ranking. */
