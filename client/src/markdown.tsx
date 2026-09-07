@@ -116,12 +116,30 @@ export function renderMarkdown(content: string): ReactNode {
 
 /** A letter's first line — markdown reduced to plain text, for the rows.
  *  Links become their text; emphasis markers, headings, quotes and code
- *  ticks are stripped; runs of whitespace collapse. */
+ *  ticks are stripped; runs of whitespace collapse.
+ *
+ *  Truncation backs off to the last sentence end (`.`, `?`, `!`) inside the
+ *  cap, so a row never cuts mid-sentence — the reader is left at a full
+ *  stop, not a half word. Only when the window holds no sentence end at all
+ *  does it fall back to a hard cut. */
 export function snippet(content: string, max = 120): string {
-  return content
+  const plain = content
     .replace(/\[([^\]]+)\]\((?:[^()\s]+|\([^()\s]*\))+\)/g, "$1")
     .replace(/[#*`>]/g, "")
     .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, max);
+    .trim();
+  if (plain.length <= max) return plain;
+  const cut = plain.slice(0, max);
+  // The last sentence end within the window, plus any trailing quote/space
+  // so we don't leave a dangling `"` or a stray space after the stop.
+  const end = Math.max(
+    cut.lastIndexOf("."),
+    cut.lastIndexOf("?"),
+    cut.lastIndexOf("!"),
+  );
+  if (end > 0) {
+    const after = cut.slice(end + 1).match(/^["')\]\u201d\u2019]*\s*/)?.[0] ?? "";
+    return cut.slice(0, end + 1 + after.length).trimEnd();
+  }
+  return cut;
 }

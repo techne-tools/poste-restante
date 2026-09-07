@@ -107,4 +107,29 @@ describe("snippet — the row's plain-text first line", () => {
   it("caps at the default 120 characters", () => {
     expect(snippet("x".repeat(200))).toHaveLength(120);
   });
+
+  it("backs off to the last full stop instead of cutting mid-sentence", () => {
+    const long =
+      "I'm trying to recapture a vibe. Only, when i was doing it, it wasn't called a vibe because we didn't know shit. I used to";
+    const out = snippet(long);
+    expect(out.endsWith("shit.")).toBe(true);
+    expect(out.length).toBeLessThanOrEqual(120);
+  });
+
+  it("backs off to ? and ! as sentence ends too", () => {
+    const q = "Is the house holding? " + "y".repeat(200);
+    expect(snippet(q).endsWith("holding?")).toBe(true);
+    const e = "The house holds! " + "y".repeat(200);
+    expect(snippet(e).endsWith("holds!")).toBe(true);
+  });
+
+  it("keeps a closing quote with the sentence end", () => {
+    const q = "She said \u201cwait.\u201d " + "y".repeat(200);
+    expect(snippet(q).endsWith("\u201d")).toBe(true);
+  });
+
+  it("falls back to a hard cut when the window has no sentence end", () => {
+    expect(snippet("x".repeat(200))).toHaveLength(120);
+    expect(snippet("no stops here " + "y".repeat(200))).toHaveLength(120);
+  });
 });
