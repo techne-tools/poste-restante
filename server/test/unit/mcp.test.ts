@@ -256,6 +256,7 @@ describe("mcp house", () => {
     expect(names).toEqual(
       [
         "act_on_book",
+        "call_integration",
         "delete_letter",
         "deliver_letter",
         "detect_gaps",

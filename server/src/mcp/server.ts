@@ -622,5 +622,36 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
     },
   );
 
+  // ── External tool integrations (SPEC §17, direction B) ──────────────────
+
+  // The house → external MCP seam. An agent calls external tools *through*
+  // the house: registered, not discovered; whitelisted per scope; every
+  // call is an audit letter. The one boundary: external tools extend what
+  // an agent can know and compute — never what it can write. The only way
+  // anything enters the archive is the house's own deliver tool, which
+  // enforces the three doors (§16).
+  server.registerTool(
+    "call_integration",
+    {
+      title: "Call an external tool through the house",
+      description:
+        "Call a tool on a registered external integration (SPEC §17, direction B). The house proxies only registered integrations; the tool must be whitelisted for this agent's scope. The response returns synchronously; the house relays, it never interrupts. Every call is an audit letter to the creator and the agent. External tools extend what you can know and compute — never what you can write: the only way anything enters the archive is deliver_letter, which enforces your reach.",
+      inputSchema: {
+        integration: z.string().min(1).describe("the registered integration id, e.g. web-search"),
+        tool: z.string().min(1).describe("the tool name, e.g. search"),
+        args: z.record(z.string(), z.unknown()).default({}).describe("the tool arguments (ephemeral — never stored)"),
+      },
+    },
+    async ({ integration, tool, args }) => {
+      const who = await caller();
+      if (!who) return fail("the house does not know you — set POSTE_RESTANTE_TOKEN");
+      const isAgent = await house.agents.isAgent(who.address);
+      if (!isAgent) return fail("only instruments may call external tools");
+      const res = await house.integrations.call(who.address, integration, tool, args);
+      if (!res.ok) return fail(res.error ?? "the integration could not answer");
+      return text({ eventId: res.eventId, result: res.result });
+    },
+  );
+
   return server;
 }

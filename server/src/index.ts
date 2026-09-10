@@ -159,6 +159,7 @@ import { WhisperService } from "./whisper/service.js";
 import { ParticipationService } from "./participation/service.js";
 import { BookService } from "./book/service.js";
 import { AgentService } from "./agents/service.js";
+import { IntegrationService } from "./integrations/service.js";
 import { createIngestionQueue } from "./queue/queue.js";
 import { createHouseEventBus } from "./queue/pubsub.js";
 import { createAudioTranscriber } from "./audio/transcriber.js";
@@ -290,6 +291,7 @@ export async function buildHouse(
     config.bookSettlingDays,
   );
   const agents = new AgentService(db.pool, repo, pipeline, log);
+  const integrations = new IntegrationService(db.pool, pipeline, log);
 
   return {
     config,
@@ -310,6 +312,7 @@ export async function buildHouse(
     mailbox,
     book,
     agents,
+    integrations,
     log,
     async close() {
       await queue.stop();
