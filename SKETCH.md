@@ -168,7 +168,30 @@ The only genuine SaaS dependency is the embedding model, and it's optional: **lo
 
 ## 4. The constitution
 
-Values as architecture, not decoration. Every value has a schema consequence; if the schema doesn't have it, the value isn't real.
+### The share-house (the social contract, 2026-09-10)
+
+The rehearsal room is the work; the share-house is the living. Both metaphors are true, and they compose: the house is the share-house — the social contract of cohabitation — and the work that happens inside it is the rehearsal room — the space of becoming.
+
+**The rehearsal room:** everyone in the room is there because of who they *can be*. Space is held for them to become that. The room is a space of potential.
+
+**The share-house:** everyone in the house is who they *are* at the given moment. You don't have to like that person — but you do have to find ways to compromise and get along. You have to trust that they'll pay the rent and bills on time. When they don't, and when they breach the social contract of sharing a home, they can be asked to leave — or evicted.
+
+**The core, said plainly:** there are dear friends you genuinely could not stand to share a house with, and there are dear friends you would have stay at any time — so long as you could send them away when you needed to. The door is the boundary, and the boundary is what makes hospitality safe. A house that cannot evict cannot truly host; a house that evicts without cause is not a house.
+
+**Schema consequences (the share-house read as architecture):**
+
+| The share-house | Schema/architecture consequence |
+|---|---|
+| **You don't have to like them** | The house does not adjudicate liking. Divergence is two voices held at full weight (§1.2). The book's norms are about conduct, never affection. |
+| **You have to compromise and get along** | The book is the compromise made structural: norms as letters, amendable by anyone, reversible by correspondence (§5.8). |
+| **You trust they'll pay the rent** | Credentials are capabilities, not identities (§5.7, §19). Trust is in the key, not the label. The invitation system is vouching made structural. |
+| **They can be asked to leave** | Leaving is first-class (the structural stop, §5.8). Scrub is the safety move — the resident who must not be seen as who they were can remove themselves unilaterally (§19). |
+| **The door is the boundary** | The pub door is data, not code (migration 011). Doors may always refuse, with no explanation required. The boundary is what makes the hospitality real. |
+| **Who they are can change** | Identity is cryptographic; the handle is a label (§19). A person's history holds through a change of name — transness, deadnames, family violence — because the key is the same. |
+
+The founding text and the share-house are the same document read twice: *"this place is safe, it is kind, and it is just"* — safe enough to hold the boundary, kind enough to hold the person, just enough to hold the compromise.
+
+### Values as architecture, not decoration
 
 ### Privacy as the default posture
 
