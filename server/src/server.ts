@@ -246,7 +246,13 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
     // The id is derived from the envelope+body; a caller-supplied id is
     // ignored (the hash is the identity). Deliver — ingest, surface house
     // letters in the whisper, mark whispered threads replied.
-    const { letterId, created } = await deliverLetter(house, parsed.data);
+    const { letterId, created, rejected } = await deliverLetter(house, parsed.data);
+    if (rejected) {
+      return c.json(
+        { error: { code: "invalid_signature", message: "the letter's signature does not verify" } },
+        400,
+      );
+    }
     return c.json({ id: letterId, created }, created ? 201 : 200);
   });
 

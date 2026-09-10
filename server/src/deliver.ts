@@ -14,13 +14,16 @@ import type { LetterInput } from "./schemas.js";
 export interface DeliverResult {
   letterId: string;
   created: boolean;
+  /** True when a sealed letter's signature failed verification. */
+  rejected?: boolean;
 }
 
 export async function deliverLetter(house: House, letter: LetterInput): Promise<DeliverResult> {
   // The id is derived from the envelope+body; a caller-supplied id is
   // ignored (the hash is the identity). Strip it before ingest.
   const { id: _ignored, ...clean } = letter;
-  const { letterId, created } = await house.pipeline.ingest(clean);
+  const { letterId, created, rejected } = await house.pipeline.ingest(clean);
+  if (rejected) return { letterId, created: false, rejected: true };
 
   if (created && letter.envelope.kind === "system" && letter.envelope.from === "house@house") {
     const summary = letter.body.content.slice(0, 200);

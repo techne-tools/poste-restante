@@ -84,12 +84,13 @@ export class PostgresRepository {
       );
 
       // The letter row.
+      const sealed = body.format === "sealed";
       await client.query(
         `INSERT INTO letters
-           (id, from_addr, to_addrs, cc_addrs, thread_id, kind, lang, subject,
-            body, body_text, received_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-         ON CONFLICT (id) DO NOTHING`,
+          (id, from_addr, to_addrs, cc_addrs, thread_id, kind, lang, subject,
+           body, body_text, received_at, sealed, signature)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+        ON CONFLICT (id) DO NOTHING`,
         [
           id,
           envelope.from,
@@ -102,6 +103,8 @@ export class PostgresRepository {
           body.content,
           bodyText,
           receivedAt,
+          sealed,
+          sealed && body.format === "sealed" ? body.signature : null,
         ],
       );
 
@@ -225,6 +228,38 @@ export class PostgresRepository {
       [id],
     );
     return rows[0] ?? null;
+  }
+
+  /** Get an address's current public key record (SPEC §15). Public keys
+   *  are public — verification needs them; they are not secrets. Returns
+   *  the current (non-retired) key, or null when the address has none. */
+  async getAddressKey(
+    address: string,
+  ): Promise<{ age_recipient: string; ed25519_public: string; recovery_age_recipient: string | null } | null> {
+    const { rows } = await this.pool.query(
+      `SELECT age_recipient, ed25519_public, recovery_age_recipient
+       FROM address_keys
+       WHERE address = $1 AND retired_at IS NULL
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [address],
+    );
+    return rows[0] ?? null;
+  }
+
+  /** Register an address's public key record (SPEC §15). Idempotent
+   *  upsert on the address — a resident has one current key record. */
+  async setAddressKey(
+    address: string,
+    keys: { ageRecipient: string; ed25519Public: string; recoveryAgeRecipient: string | null },
+  ): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO address_keys (address, age_recipient, ed25519_public, recovery_age_recipient)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (address) DO UPDATE
+         SET age_recipient = $2, ed25519_public = $3, recovery_age_recipient = $4, retired_at = NULL`,
+      [address, keys.ageRecipient, keys.ed25519Public, keys.recoveryAgeRecipient],
+    );
   }
 
   /** Open or close an address's door. The house's visibility law reads this. */

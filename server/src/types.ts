@@ -64,6 +64,25 @@ export interface LetterBody {
 }
 
 /**
+ * The sealed body (SPEC §15) — ciphertext the house stores but never
+ * reads. The envelope keeps the pointers; the subject moves into the body
+ * (the one envelope field that is pure content). The house verifies the
+ * signature on ingest and at rest; it never embeds, FTSes, or whispers
+ * sealed bodies.
+ */
+export interface SealedLetterBody {
+  format: "sealed";
+  /** The armored age ciphertext. */
+  content: string;
+  /** The age recipients the body was sealed to. */
+  recipients: string[];
+  /** ed25519 signature over the letter id, base64url. */
+  signature: string;
+}
+
+export type LetterBodyUnion = LetterBody | SealedLetterBody;
+
+/**
  * A letter as it arrives at the house. The id is derived from the envelope +
  * body (sha256 of the canonical serialisation) — it is never supplied by the
  * sender. Optional here so a letter can be constructed without one; the
@@ -74,7 +93,7 @@ export interface Letter {
   id?: string;
   envelope: Envelope;
   time: LetterTime;
-  body: LetterBody;
+  body: LetterBodyUnion;
 }
 
 /** A letter as stored in the archive (postgres row + qdrant vector + minio file). */

@@ -14,6 +14,7 @@ import type { Logger } from "./logger.js";
 import type { Letter, StoredLetter } from "../types.js";
 import { letterId } from "../id.js";
 import { markdownToText } from "./markdown.js";
+import { verifyLetterId } from "../crypto/keys.js";
 import type { PostgresRepository } from "../db/repository.js";
 import type { SemanticStore } from "../qdrant/store.js";
 import type { Embedder } from "../embed/embedder.js";
@@ -23,6 +24,10 @@ export interface IngestResult {
   letterId: string;
   /** True if the letter was newly stored; false if it already existed. */
   created: boolean;
+  /** True when a sealed letter's signature failed verification — the
+   *  house does not store what it cannot verify, and this is NOT a
+   *  duplicate: it is a rejection. The route answers 400, never 200. */
+  rejected?: boolean;
 }
 
 /** A hook fired after a leave/join letter is stored — the participation
@@ -66,28 +71,52 @@ export class IngestionPipeline {
     }
 
     const receivedAt = new Date(letter.time.gregorian);
-    const bodyText = markdownToText(letter.body.content);
+    // Sealed letters (SPEC §15): the body is ciphertext the house stores
+    // but never reads. No plain-text extraction, no embedding, no FTS —
+    // the house cannot index what it cannot read, and it does not pretend
+    // otherwise. The signature is verified on ingest (below); the body
+    // stays opaque.
+    const sealed = letter.body.format === "sealed";
+    const bodyText = sealed ? "" : markdownToText(letter.body.content);
     const stored: StoredLetter = { ...letter, id, receivedAt, bodyText };
+
+    // 0. Verify the signature on ingest (SPEC §15). The signature is
+    //    ed25519 over the letter id — the stored form. A bad signature is
+    //    rejected before anything is written: the house does not store
+    //    what it cannot verify. (The sender's public key is looked up by
+    //    the caller — the route — because the pipeline has no auth.)
+    if (sealed && letter.body.format === "sealed") {
+      const ok = await this.verifySealed(letter, id);
+      if (!ok) {
+        this.log.warn("ingest:sealed-signature-invalid", { letterId: id });
+        return { letterId: id, created: false, rejected: true };
+      }
+    }
 
     // 1. Postgres row + links (thread, correspondents, frames).
     await this.repo.storeLetter(stored);
-    this.log.info("ingest:stored", { letterId: id, thread: letter.envelope.thread });
+    this.log.info("ingest:stored", { letterId: id, thread: letter.envelope.thread, sealed });
 
-    // 2. Embed the plain-text body and index in Qdrant.
-    // Store first, index second: if embedding is transiently unavailable (e.g.
-    // Ollama waking up), log the error and preserve the stored archive row.
-    try {
-      const vector = await this.embedder.embed(bodyText);
-      this.log.info("ingest:embedded", { letterId: id, dimension: vector.length });
+    // 2. Embed the plain-text body and index in Qdrant — only for
+    //    unsealed letters. Sealed bodies never reach the semantic layer
+    //    (SPEC §15: "sealed = not indexed, not whispered, not
+    //    semantically connected").
+    if (!sealed) {
+      try {
+        const vector = await this.embedder.embed(bodyText);
+        this.log.info("ingest:embedded", { letterId: id, dimension: vector.length });
 
-      // 3. Qdrant vector.
-      await this.semantic.upsert(id, vector);
-      this.log.info("ingest:indexed-semantic", { letterId: id });
-    } catch (err) {
-      this.log.error("ingest:semantic-index-failed", {
-        letterId: id,
-        error: err instanceof Error ? err.message : String(err),
-      });
+        // 3. Qdrant vector.
+        await this.semantic.upsert(id, vector);
+        this.log.info("ingest:indexed-semantic", { letterId: id });
+      } catch (err) {
+        this.log.error("ingest:semantic-index-failed", {
+          letterId: id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    } else {
+      this.log.info("ingest:sealed-not-indexed", { letterId: id });
     }
 
     // 4. Full-text: the postgres FTS index is maintained by the row insert
@@ -118,6 +147,20 @@ export class IngestionPipeline {
     }
 
     return { letterId: id, created: true };
+  }
+
+  /**
+   * Verify a sealed letter's signature (SPEC §15). The signature is
+   * ed25519 over the letter id — the stored form. The sender's public key
+   * comes from the address_keys table (public keys are public). A missing
+   * key record or a bad signature fails verification: the house does not
+   * store what it cannot verify.
+   */
+  private async verifySealed(letter: Letter, id: string): Promise<boolean> {
+    if (letter.body.format !== "sealed") return false;
+    const key = await this.repo.getAddressKey(letter.envelope.from);
+    if (!key) return false;
+    return verifyLetterId(id, letter.body.signature, key.ed25519_public);
   }
 
   /**

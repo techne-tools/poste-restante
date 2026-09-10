@@ -48,13 +48,31 @@ export const BodySchema = z.object({
   content: z.string().max(25 * 1024 * 1024),
 });
 
+/**
+ * The sealed letter (SPEC §15) — the cryptographic horizon. A sealed
+ * letter's body is ciphertext; the house stores it, never reads it. The
+ * envelope keeps the pointers (thread, frames, addresses); the subject
+ * moves into the body (the one envelope field that is pure content).
+ *
+ * `sealed: true` + `recipients` (the age recipients the body was sealed
+ * to) + `signature` (ed25519 over the letter id, base64url). The house
+ * verifies the signature on ingest and at rest; it never embeds, FTSes,
+ * or whispers sealed bodies.
+ */
+export const SealedBodySchema = z.object({
+  format: z.literal("sealed"),
+  content: z.string().max(25 * 1024 * 1024),
+  recipients: z.array(z.string()).min(1).max(50),
+  signature: z.string().min(1),
+});
+
 export const LetterSchema = z.object({
   // The id is derived from the envelope+body. A caller-supplied id is
   // accepted for contract compatibility but ignored — the hash is the identity.
   id: z.string().optional(),
   envelope: EnvelopeSchema,
   time: TimeSchema,
-  body: BodySchema,
+  body: z.union([BodySchema, SealedBodySchema]),
 });
 
 export const AddressSchema = z.object({
