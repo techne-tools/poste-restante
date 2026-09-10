@@ -16,6 +16,7 @@ import type { ParticipationService } from "./participation/service.js";
 import type { BookService } from "./book/service.js";
 import type { AgentService } from "./agents/service.js";
 import type { IntegrationService } from "./integrations/service.js";
+import type { DayProjectionService } from "./day/projection.js";
 import type { OutboundRelay } from "./bridge/outbound.js";
 import type { MailboxSyncDrive } from "./bridge/mailbox-drive.js";
 
@@ -35,6 +36,8 @@ export interface House {
   agents: AgentService;
   /** External tool integrations (SPEC §17, direction B). */
   integrations: IntegrationService;
+  /** The day projection — the callsheet whiteboard (SPEC §18). */
+  day: DayProjectionService;
   /** Ingestion queue for letters (Direct or Redis). */
   queue: import("./queue/queue.js").IngestionQueue;
   /** Event bus for house events (Memory or Redis pub/sub). */

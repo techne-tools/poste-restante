@@ -771,6 +771,19 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
     return c.json({ frames });
   });
 
+  // The day projection — the callsheet whiteboard (SPEC §18). A thin
+  // derived view: letters in the resident's visible frames, their
+  // instruments alive in those frames, the whisper's current offers, the
+  // book's standing clauses. Derived, never stored. Privacy is the same
+  // line as everywhere — the board shows only what the resident is party
+  // to. Presence not pressure: the board holds, it never pings.
+  app.get("/v1/day", async (c) => {
+    const who = await caller(c);
+    if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
+    const projection = await house.day.project(who.address);
+    return c.json(projection);
+  });
+
   // ── The whisper ────────────────────────────────────────────────────────────
 
   // The whisper — the mailbox for the house's own letters. A GET resource.
