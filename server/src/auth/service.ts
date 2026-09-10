@@ -137,15 +137,33 @@ export class AuthService {
     return token;
   }
 
-  /** Bind an OIDC subject to an address (the claim step of first login). */
-  async bindOidc(address: string, sub: string): Promise<void> {
+  /** Bind an OIDC subject to an address's IDENTITY (the claim step of
+   *  first login). The binding is `provider sub → identity_id → current
+   *  handle`, never `sub → handle` (SPEC §19: OIDC is a door, not an
+   *  identity). The identity id is the address's key fingerprint (§15);
+   *  for legacy addresses without keys it is the handle itself. */
+  async bindOidc(address: string, sub: string, provider = "voidauth"): Promise<void> {
     await this.ensureAddress(address);
+    // The identity id: the address's current key fingerprint, or the
+    // handle itself for legacy addresses (the identity IS the handle
+    // until a key exists).
+    const identity = await this.identityIdFor(address);
     await this.pool.query(
-      `INSERT INTO credentials (address, kind, secret, oidc_sub)
-       VALUES ($1, 'oidc', '', $2)
-       ON CONFLICT (address) DO UPDATE SET oidc_sub = $2`,
-      [address, sub],
+      `INSERT INTO oidc_bindings (identity_id, provider, sub)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (provider, sub) DO UPDATE SET identity_id = $1`,
+      [identity, provider, sub],
     );
+  }
+
+  /** The address's identity id — the key fingerprint, or the handle for
+   *  legacy addresses without keys. */
+  private async identityIdFor(address: string): Promise<string> {
+    const { rows } = await this.pool.query<{ identity_id: string | null }>(
+      `SELECT identity_id FROM addresses WHERE id = $1`,
+      [address],
+    );
+    return rows[0]?.identity_id ?? address;
   }
 
   /**
@@ -156,7 +174,8 @@ export class AuthService {
    */
   private async ensureAddress(address: string): Promise<void> {
     await this.pool.query(
-      `INSERT INTO addresses (id) VALUES ($1) ON CONFLICT (id) DO NOTHING`,
+      `INSERT INTO addresses (id, identity_id) VALUES ($1, $1)
+       ON CONFLICT (id) DO NOTHING`,
       [address],
     );
   }
@@ -330,11 +349,18 @@ export class AuthService {
     const sub = payload.sub;
     if (!sub) throw new Error("OIDC id_token has no subject");
 
-    // Resolve the address: an existing credential binding, or the owner
-    // claiming the house on first login.
+    // Resolve the address: an existing OIDC binding, or the owner
+    // claiming the house on first login. The binding is keyed by the
+    // IDENTITY (the key fingerprint), never the handle — so a handle
+    // change, a provider change, or a key rotation never severs the
+    // person from their correspondence (SPEC §19: OIDC is a door, not
+    // an identity).
     const { rows } = await this.pool.query<{ address: string }>(
-      `SELECT address FROM credentials WHERE oidc_sub = $1`,
-      [sub],
+      `SELECT a.id AS address
+       FROM oidc_bindings ob
+       JOIN addresses a ON a.identity_id = ob.identity_id
+       WHERE ob.provider = $1 AND ob.sub = $2`,
+      [this.config.oidc?.issuer ?? "voidauth", sub],
     );
     const bound = rows[0];
     if (bound) {
