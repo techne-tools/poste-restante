@@ -362,6 +362,12 @@ export class WhisperService {
     );
   }
 
+  /** Delete every whisper pointing at a thread — the scrub's cleanup. The
+   *  house stops offering a correspondence that no longer exists. */
+  async deleteForThread(threadId: string): Promise<void> {
+    await this.pool.query("DELETE FROM whispers WHERE target_thread = $1", [threadId]);
+  }
+
   /**
    * Surface a house letter in the whisper. Called when a letter of kind
    * `system` from the house's own address is ingested. The summary is the

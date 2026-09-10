@@ -70,6 +70,27 @@ export default function ThreadView({ threadId, onError, onBack }: Props) {
     }
   }, [threadId, load, onError]);
 
+  // Scrub — the safety move (SPEC §19). Deletes every letter the caller
+  // is party to in the thread, plus the thread, payloads, qdrant points,
+  // and whispers pointing at it. Unilateral and immediate. The other
+  // party's letters stay; the caller's view of the thread is gone.
+  // Deliberately a two-step: the resident confirms before the house
+  // forgets. The confirmation is quiet — no red, no alarm — the house
+  // holds the boundary without dramatising it.
+  const [confirmScrub, setConfirmScrub] = useState(false);
+  const scrub = useCallback(async () => {
+    setActing(true);
+    try {
+      await house.scrubThread(threadId);
+      onBack();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "the house could not hold this scrub");
+      setConfirmScrub(false);
+    } finally {
+      setActing(false);
+    }
+  }, [threadId, onError, onBack]);
+
   if (loading) return <p className="empty">Opening the correspondence…</p>;
 
   return (
@@ -124,6 +145,21 @@ export default function ThreadView({ threadId, onError, onBack }: Props) {
                 <button className="clause-act" onClick={leave} disabled={acting}>
                   {acting ? "…" : "Leave this correspondence"}
                 </button>
+                {confirmScrub ? (
+                  <span className="scrub-confirm">
+                    <span className="scrub-question">Forget your part of this correspondence?</span>
+                    <button className="clause-act" onClick={scrub} disabled={acting}>
+                      {acting ? "…" : "Yes, forget it"}
+                    </button>
+                    <button className="door-link" onClick={() => setConfirmScrub(false)} disabled={acting}>
+                      Keep it
+                    </button>
+                  </span>
+                ) : (
+                  <button className="door-link" onClick={() => setConfirmScrub(true)} disabled={acting}>
+                    Scrub my part of this thread
+                  </button>
+                )}
               </div>
             </>
           )}

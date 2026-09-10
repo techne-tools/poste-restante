@@ -282,10 +282,26 @@ export class PostgresRepository {
          (SELECT json_agg(json_build_object('frame', f.name, 'value', f.value))
           FROM letter_frames lf JOIN frames f ON f.id = lf.frame_id
           WHERE lf.letter_id = l.id), '[]'::json) AS frames
-       FROM letters l
-       WHERE l.thread_id = $1
-       ORDER BY l.received_at ASC`,
+      FROM letters l
+      WHERE l.thread_id = $1
+      ORDER BY l.received_at ASC`,
       [threadId],
+    );
+    return rows;
+  }
+
+  /** The letters in a thread that an address is party to (from/to/cc). */
+  async listThreadForAddress(threadId: string, address: string): Promise<StoredLetterRow[]> {
+    const { rows } = await this.pool.query<StoredLetterRow>(
+      `SELECT l.*, COALESCE(
+         (SELECT json_agg(json_build_object('frame', f.name, 'value', f.value))
+          FROM letter_frames lf JOIN frames f ON f.id = lf.frame_id
+          WHERE lf.letter_id = l.id), '[]'::json) AS frames
+      FROM letters l
+      JOIN letter_addresses la ON la.letter_id = l.id
+      WHERE l.thread_id = $1 AND la.address_id = $2
+      ORDER BY l.received_at ASC`,
+      [threadId, address],
     );
     return rows;
   }

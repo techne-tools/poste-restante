@@ -302,6 +302,17 @@ export const house = {
     );
   },
 
+  /** Scrub a thread — the safety move (SPEC §19). Deletes every letter the
+   *  caller is party to in the thread, plus the thread, payloads, qdrant
+   *  points, and whispers pointing at it. Unilateral and immediate. The
+   *  other party's letters stay; the caller's view of the thread is gone. */
+  scrubThread(id: string) {
+    return request<{ scrubbed: boolean; thread: string; deleted: number }>(
+      `/threads/${encodeURIComponent(id)}/scrub`,
+      { method: "POST" },
+    );
+  },
+
   /** Frames — plural time navigation. */
   frames() {
     return request<{ frames: { id: string; name: string; value: string }[] }>("/frames");
