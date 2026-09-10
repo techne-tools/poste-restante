@@ -18,6 +18,7 @@ export const LETTER_KINDS = [
   "leave",
   "join",
   "agent",
+  "rename",
 ] as const;
 
 export type LetterKind = (typeof LETTER_KINDS)[number];

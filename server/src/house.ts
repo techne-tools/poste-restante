@@ -18,6 +18,7 @@ import type { AgentService } from "./agents/service.js";
 import type { IntegrationService } from "./integrations/service.js";
 import type { DayProjectionService } from "./day/projection.js";
 import type { LetterReadsService } from "./reads/service.js";
+import type { RelabelService } from "./relabel/service.js";
 import type { OutboundRelay } from "./bridge/outbound.js";
 import type { MailboxSyncDrive } from "./bridge/mailbox-drive.js";
 
@@ -41,6 +42,8 @@ export interface House {
   day: DayProjectionService;
   /** The living pass read-back (SPEC §5 #12) — per-resident letter reads. */
   reads: LetterReadsService;
+  /** The relabel mechanism (SPEC §19) — the handle is a label. */
+  relabel: RelabelService;
   /** Ingestion queue for letters (Direct or Redis). */
   queue: import("./queue/queue.js").IngestionQueue;
   /** Event bus for house events (Memory or Redis pub/sub). */

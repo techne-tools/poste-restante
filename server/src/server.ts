@@ -802,6 +802,38 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
     return c.json({ opened: true, id });
   });
 
+  // Relabel — the handle is a label, the identity is the key (SPEC §19).
+  // The act IS a letter: a `kind: "rename"` letter to the address book is
+  // the archive's record of the change; the mechanism is the change. The
+  // identity, the edges, the letter ids, the trust — all unchanged. The
+  // old handle is retired — a deadname must not become someone else's
+  // name. Quiet by default: no broadcast, no announcement.
+  app.post("/v1/addresses/:id/relabel", async (c) => {
+    const who = await caller(c);
+    if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
+    const address = c.req.param("id");
+    // Only the resident themselves may relabel their own handle.
+    if (address !== who.address) {
+      return c.json({ error: { code: "forged", message: "you can only relabel your own handle" } }, 403);
+    }
+    const body = (await c.req.json().catch(() => null)) as { handle?: string } | null;
+    const newHandle = body?.handle?.trim();
+    if (!newHandle || !/^[a-z0-9][a-z0-9._-]*@house$/.test(newHandle)) {
+      return c.json(
+        { error: { code: "invalid_handle", message: "the new handle must be a valid address" } },
+        400,
+      );
+    }
+    const ok = await house.relabel.relabel(address, newHandle);
+    if (!ok) {
+      return c.json(
+        { error: { code: "handle_taken", message: "that handle is taken or retired" } },
+        409,
+      );
+    }
+    return c.json({ relabeled: true, from: address, to: newHandle });
+  });
+
   // ── The whisper ────────────────────────────────────────────────────────────
 
   // The whisper — the mailbox for the house's own letters. A GET resource.
