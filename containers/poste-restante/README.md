@@ -86,6 +86,11 @@ and issue an invite the usual way. The house self-migrates on boot
 | `MINIO_ACCESS_KEY` | — | **required for enclosures** (secret, .env.enc); both keys activate the S3 payload store |
 | `MINIO_SECRET_KEY` | — | **required for enclosures** (secret, .env.enc) |
 | `AUTH_MODE` | `none` ⚠️ | `basic` in production. `none` = dev only; the house fails closed (door refuses) |
+| `OIDC_ISSUER` | unset | VoidAuth issuer; all four `OIDC_*` set → the OIDC door opens (secrets → .env.enc) |
+| `OIDC_CLIENT_ID` | unset | VoidAuth client id (secret, .env.enc) |
+| `OIDC_CLIENT_SECRET` | unset | VoidAuth client secret (secret, .env.enc) |
+| `OIDC_REDIRECT_URI` | unset | the house's callback — through the client proxy, same origin as sign-in |
+| `OIDC_OWNER_ADDRESS` | `alpha@house` | the address that claims the house on first OIDC login |
 | `POSTGRES_DB` | `poste_restante` | DB the house provisions/uses on shared-postgres |
 | `HOUSE_DOMAIN` | `house` | address-space boundary (SPEC §5 #13) |
 | `SMTP_ENABLED` | `0` | 1 opens the SMTP door (host 21036) |

@@ -84,6 +84,15 @@ services:
       # ── the resident (auth) — fail closed, never none.
       AUTH_MODE: ${AUTH_MODE:?AUTH_MODE must be set (basic/oidc/both)}
       HOUSE_DOMAIN: ${HOUSE_DOMAIN:-house}
+      # ── OIDC (VoidAuth). All four must be set for the OIDC door to open
+      #    (config.ts: oidc). Secrets → .env.enc. The redirect URI is the
+      #    house's own callback — through the client proxy, so the browser
+      #    lands on the same origin it signed in from.
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_REDIRECT_URI: ${OIDC_REDIRECT_URI:-}
+      OIDC_OWNER_ADDRESS: ${OIDC_OWNER_ADDRESS:-alpha@house}
       BOOK_SETTLING_DAYS: ${BOOK_SETTLING_DAYS:-7}
       GAP_PASS_INTERVAL_MS: ${GAP_PASS_INTERVAL_MS:-21600000}   # 6h; 0 disables
       # ── the mailbox seam (SPEC §5 #12). Provisioned residents' mailboxes
