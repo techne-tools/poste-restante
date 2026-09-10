@@ -14,6 +14,7 @@ import type { Retrieval } from "./retrieval/retrieval.js";
 import type { WhisperService } from "./whisper/service.js";
 import type { ParticipationService } from "./participation/service.js";
 import type { BookService } from "./book/service.js";
+import type { AgentService } from "./agents/service.js";
 import type { OutboundRelay } from "./bridge/outbound.js";
 import type { MailboxSyncDrive } from "./bridge/mailbox-drive.js";
 
@@ -29,6 +30,8 @@ export interface House {
   whisper: WhisperService;
   participation: ParticipationService;
   book: BookService;
+  /** Agents — instruments, not servants (SPEC §16). */
+  agents: AgentService;
   /** Ingestion queue for letters (Direct or Redis). */
   queue: import("./queue/queue.js").IngestionQueue;
   /** Event bus for house events (Memory or Redis pub/sub). */

@@ -243,6 +243,22 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
         403,
       );
     }
+    // The reach is enumerated, not discoverable (SPEC §16): an agent may
+    // address exactly its three doors — creator, opt-in group, pub. The
+    // server enforces who the agent may address on every write. The house
+    // enforces reach, never content.
+    if (auth && (await house.agents.isAgent(who.address))) {
+      const doors = await house.agents.doors(who.address);
+      const allowed =
+        doors !== null &&
+        parsed.data.envelope.to.every((r) => house.agents.canAddress(who.address, r));
+      if (!allowed) {
+        return c.json(
+          { error: { code: "out_of_reach", message: "this instrument cannot address that door" } },
+          403,
+        );
+      }
+    }
     // The id is derived from the envelope+body; a caller-supplied id is
     // ignored (the hash is the identity). Deliver — ingest, surface house
     // letters in the whisper, mark whispered threads replied.
