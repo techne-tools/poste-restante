@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { letterId, canonicalise } from "../../src/id.js";
+import { letterIdFromCanonical, canonicaliseWith, canonicaliseLegacy } from "../../src/id.js";
 import type { Letter } from "../../src/types.js";
 
 const base: Letter = {
@@ -23,19 +23,25 @@ const base: Letter = {
   body: { format: "markdown", content: "## The archive, in practice\n\n..." },
 };
 
-describe("letterId", () => {
+const noKeys = new Map<string, string>();
+
+describe("letterIdFromCanonical", () => {
   it("is a 64-char sha256 hex", () => {
-    const id = letterId(base);
+    const id = letterIdFromCanonical(canonicaliseWith(base, noKeys));
     expect(id).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it("is stable across calls", () => {
-    expect(letterId(base)).toBe(letterId(base));
+    expect(letterIdFromCanonical(canonicaliseWith(base, noKeys))).toBe(
+      letterIdFromCanonical(canonicaliseWith(base, noKeys)),
+    );
   });
 
   it("changes when the body changes", () => {
     const changed = { ...base, body: { ...base.body, content: "different" } };
-    expect(letterId(changed)).not.toBe(letterId(base));
+    expect(letterIdFromCanonical(canonicaliseWith(changed, noKeys))).not.toBe(
+      letterIdFromCanonical(canonicaliseWith(base, noKeys)),
+    );
   });
 
   it("changes when the envelope changes", () => {
@@ -43,7 +49,9 @@ describe("letterId", () => {
       ...base,
       envelope: { ...base.envelope, subject: "a new subject" },
     };
-    expect(letterId(changed)).not.toBe(letterId(base));
+    expect(letterIdFromCanonical(canonicaliseWith(changed, noKeys))).not.toBe(
+      letterIdFromCanonical(canonicaliseWith(base, noKeys)),
+    );
   });
 
   it("is order-independent over frames", () => {
@@ -67,12 +75,18 @@ describe("letterId", () => {
         ],
       },
     };
-    expect(letterId(a)).toBe(letterId(b));
+    expect(letterIdFromCanonical(canonicaliseWith(a, noKeys))).toBe(
+      letterIdFromCanonical(canonicaliseWith(b, noKeys)),
+    );
   });
 });
 
-describe("canonicalise", () => {
+describe("canonicaliseWith", () => {
   it("produces a stable serialisation", () => {
-    expect(canonicalise(base)).toBe(canonicalise(base));
+    expect(canonicaliseWith(base, noKeys)).toBe(canonicaliseWith(base, noKeys));
+  });
+
+  it("legacy form matches the no-key resolution — the identity IS the handle", () => {
+    expect(canonicaliseWith(base, noKeys)).toBe(canonicaliseLegacy(base));
   });
 });

@@ -12,7 +12,7 @@
  */
 import type { Logger } from "./logger.js";
 import type { Letter, StoredLetter } from "../types.js";
-import { letterId } from "../id.js";
+import { letterIdFromCanonical, canonicaliseWith } from "../id.js";
 import { markdownToText } from "./markdown.js";
 import { verifyLetterId } from "../crypto/keys.js";
 import type { PostgresRepository } from "../db/repository.js";
@@ -57,13 +57,14 @@ export class IngestionPipeline {
 
   /**
    * Ingest a letter. Idempotent: the same letter (same id) is stored once.
-   * Returns `created: false` if the letter already exists.
+   * The id is derived from the envelope+body with addresses resolved to
+   * their identity ids (SPEC §19) — a rename never changes a letter's id.
    */
   async ingest(letter: Letter): Promise<IngestResult> {
     // The id is always derived from the envelope+body. A caller-supplied id is
     // ignored — the hash is the identity, so two identical letters are the same
     // letter and a changed letter is a new one.
-    const id = letterId(letter);
+    const id = await this.deriveId(letter);
     const existing = await this.repo.getLetter(id);
     if (existing) {
       this.log.info("ingest:duplicate", { letterId: id });
@@ -147,6 +148,27 @@ export class IngestionPipeline {
     }
 
     return { letterId: id, created: true };
+  }
+
+  /**
+   * Derive the letter id with addresses resolved to their identity ids
+   * (SPEC §19). The resolver reads the address_keys table — the identity
+   * id is the ed25519 public key fingerprint; legacy addresses without
+   * keys resolve to themselves (the identity IS the handle until a key
+   * exists).
+   */
+  private async deriveId(letter: Letter): Promise<string> {
+    const handles = new Set<string>([
+      letter.envelope.from,
+      ...letter.envelope.to,
+      ...letter.envelope.cc,
+    ]);
+    const identities = new Map<string, string>();
+    for (const handle of handles) {
+      const key = await this.repo.getAddressKey(handle);
+      if (key) identities.set(handle, key.ed25519_public);
+    }
+    return letterIdFromCanonical(canonicaliseWith(letter, identities));
   }
 
   /**

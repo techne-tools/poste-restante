@@ -17,7 +17,7 @@ import {
   sealToRecipients,
   signLetterId,
 } from "../../src/crypto/keys.js";
-import { letterId } from "../../src/id.js";
+import { letterIdFromCanonical, canonicaliseWith } from "../../src/id.js";
 import type { House } from "../../src/house.js";
 
 const INTEGRATION = process.env.POSTE_RESTANTE_INTEGRATION === "1";
@@ -85,8 +85,12 @@ describe.skipIf(!INTEGRATION)("sealed letters (integration)", () => {
       },
     };
 
-    // The id is derived from the envelope+body — sign the stored form.
-    const derived = letterId(letter as never);
+    // The id is derived from the envelope+body with addresses resolved to
+    // their identity ids (SPEC §19). you's keys are registered, so the
+    // canonical form resolves you@house → the ed25519 public key — the
+    // same form the pipeline derives. Sign that.
+    const identities = new Map([["you@house", you.public.ed25519Public]]);
+    const derived = letterIdFromCanonical(canonicaliseWith(letter as never, identities));
     letter.body.signature = signLetterId(derived, you.ed25519Private);
 
     const res = await app.request("/v1/letters", {

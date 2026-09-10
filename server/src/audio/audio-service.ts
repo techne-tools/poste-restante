@@ -3,7 +3,7 @@ import type { PayloadStore } from "../minio/store.js";
 import type { IngestResult } from "../pipeline/pipeline.js";
 import type { AudioTranscriber } from "./transcriber.js";
 import type { Logger } from "../pipeline/logger.js";
-import { letterId } from "../id.js";
+import { letterIdFromCanonical, canonicaliseLegacy } from "../id.js";
 
 export interface AudioLetterServiceOptions {
   payloadStore: PayloadStore;
@@ -35,7 +35,7 @@ export class AudioLetterService {
       throw new Error(`Letter is not an audio letter (kind: ${audioLetter.envelope.kind})`);
     }
 
-    const id = audioLetter.id ?? letterId(audioLetter);
+    const id = audioLetter.id ?? letterIdFromCanonical(canonicaliseLegacy(audioLetter));
 
     // 1. Locate the payload
     let targetKey = preferredKey;

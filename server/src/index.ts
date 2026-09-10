@@ -5,7 +5,7 @@
  * no push channel. The letter server (server.ts) is a client of this spine.
  */
 export * from "./types.js";
-export { letterId, canonicalise } from "./id.js";
+export { letterIdFromCanonical, canonicaliseWith, canonicaliseLegacy } from "./id.js";
 export { loadConfig, type HouseConfig, type EmbeddingConfig } from "./config.js";
 export { connectDb, connectDbAndMigrate, type Db } from "./db/index.js";
 export { migrate, type MigrationResult } from "./db/migrate.js";
