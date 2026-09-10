@@ -19,6 +19,7 @@ const KIND_LABEL: Record<Whisper["kind"], string> = {
   "gap-uncited-connection": "an uncited connection",
   "gap-echo": "an echo",
   "gap-unvisited-corner": "an unvisited corner",
+  "door-knock": "a knock at the door",
 };
 
 export default function WhisperSidebar({

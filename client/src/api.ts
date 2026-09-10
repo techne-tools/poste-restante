@@ -42,11 +42,14 @@ export interface Whisper {
     | "gap-contradiction"
     | "gap-uncited-connection"
     | "gap-echo"
-    | "gap-unvisited-corner";
+    | "gap-unvisited-corner"
+    | "door-knock";
   targetThread: string | null;
   relatedLetterId: string | null;
   /** The room in a frame-scoped gap (gap-unvisited-corner). Null otherwise. */
   targetFrame: string | null;
+  /** The resident a door-knock is addressed to (door-knock). Null otherwise. */
+  targetAddress: string | null;
   /** The clause the house cites — "the household has held this; want to
    *  look?" A pointer, not a verdict. Null when no citation. */
   citedClause: string | null;

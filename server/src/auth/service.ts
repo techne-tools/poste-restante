@@ -22,6 +22,7 @@ import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypt
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import type pg from "pg";
 import type { Logger } from "../pipeline/logger.js";
+import type { WhisperService } from "../whisper/service.js";
 
 export interface OidcConfig {
   /** The provider's issuer URL, e.g. https://auth.example.com. */
@@ -95,6 +96,7 @@ export class AuthService {
     private readonly pool: pg.Pool,
     private readonly log: Logger,
     private readonly config: AuthConfig,
+    private readonly whisper?: WhisperService,
   ) {}
 
   /** Whether authentication is required at all. */
@@ -216,7 +218,20 @@ export class AuthService {
     );
     const row = rows[0];
     if (!row) return null;
-    if (!verifyPassword(password, row.secret)) return null;
+    if (!verifyPassword(password, row.secret)) {
+      // A real knock at a real door with the wrong key. The door answers
+      // the same silence either way — but the resident is told someone
+      // tried. Unknown addresses get no whisper: the house does not
+      // whisper about doors that do not exist (no existence leak).
+      this.log.warn("auth:failed", { address, method: "password" });
+      await this.whisper?.recordDoorKnock(address).catch((err) => {
+        this.log.error("auth:door-knock-failed", {
+          address,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+      return null;
+    }
 
     await this.touch(address);
     return { address, method: "password" };

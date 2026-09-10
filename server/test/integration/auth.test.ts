@@ -56,7 +56,7 @@ describe.skipIf(!INTEGRATION)("auth (integration)", () => {
     await house.db.pool.query(
       `TRUNCATE letters, threads, frames, addresses, credentials RESTART IDENTITY CASCADE`,
     );
-    auth = new AuthService(house.db.pool, house.log, house.config.auth);
+    auth = new AuthService(house.db.pool, house.log, house.config.auth, house.whisper);
     // Three residents: you (the owner), ben (a correspondent who must not
     // see your private mail), and hermes (the other voice in the pair).
     await auth.setPassword("you@house", "youyouyou");
@@ -424,6 +424,64 @@ describe.skipIf(!INTEGRATION)("auth (integration)", () => {
     // And the private mailbox stays sealed for the same guest.
     const anon = await app.request("/v1/addresses/you@house/inbox", { method: "GET" });
     expect(anon.status).toBe(401);
+  });
+
+  it("whispers a door-knock on a failed login — to the resident, not to others", async () => {
+    // A wrong password at you's door. The door answers 401; the house
+    // whispers to you — and only to you.
+    const knock = await app.request("/v1/whisper", {
+      method: "GET",
+      headers: { Authorization: basic("you@house", "wrongwrong") },
+    });
+    expect(knock.status).toBe(401);
+
+    // you sees the knock — the attempted address, nothing else.
+    const youWhisper = await app.request("/v1/whisper", {
+      method: "GET",
+      headers: { Authorization: basic("you@house", "youyouyou") },
+    });
+    const youJson = (await youWhisper.json()) as {
+      whispers: { id: string; kind: string; targetAddress: string | null; summary: string }[];
+    };
+    const knockWhisper = youJson.whispers.find((w) => w.kind === "door-knock");
+    expect(knockWhisper).toBeDefined();
+    expect(knockWhisper!.targetAddress).toBe("you@house");
+    expect(knockWhisper!.summary).toContain("key that does not fit");
+
+    // ben — a different resident — must not see it: the knock is
+    // addressed to you, and the house does not gossip about other
+    // people's doors.
+    const benWhisper = await app.request("/v1/whisper", {
+      method: "GET",
+      headers: { Authorization: basic("ben@house", "benbenben") },
+    });
+    const benJson = (await benWhisper.json()) as { whispers: { id: string }[] };
+    expect(benJson.whispers.some((w) => w.id === knockWhisper!.id)).toBe(false);
+
+    // ben cannot open it either — absence is silence at every door.
+    const benOpen = await app.request(`/v1/whisper/${knockWhisper!.id}/open`, {
+      method: "POST",
+      headers: { Authorization: basic("ben@house", "benbenben") },
+    });
+    expect(benOpen.status).toBe(404);
+  });
+
+  it("stays silent for an unknown address — no existence leak", async () => {
+    // A knock at a door that does not exist. The house answers 401 —
+    // and whispers nothing: the house does not whisper about doors
+    // that do not exist.
+    const knock = await app.request("/v1/whisper", {
+      method: "GET",
+      headers: { Authorization: basic("ghost@house", "wrongwrong") },
+    });
+    expect(knock.status).toBe(401);
+
+    const youWhisper = await app.request("/v1/whisper", {
+      method: "GET",
+      headers: { Authorization: basic("you@house", "youyouyou") },
+    });
+    const youJson = (await youWhisper.json()) as { whispers: { id: string }[] };
+    expect(youJson.whispers.some((w) => w.id.includes("ghost@house"))).toBe(false);
   });
 
   it("scopes address correction — ben cannot correct you's entry", async () => {

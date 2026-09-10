@@ -25,7 +25,7 @@ import { startGapScheduler } from "../whisper/scheduler.js";
 // The MCP server speaks JSON-RPC on stdout — every log line must go to
 // stderr or it corrupts the protocol channel.
 const house = await buildHouse(process.env, createStderrLogger());
-const auth = new AuthService(house.db.pool, house.log, house.config.auth);
+const auth = new AuthService(house.db.pool, house.log, house.config.auth, house.whisper);
 const server = createMcpHouse(house, {
   auth,
   token: process.env.POSTE_RESTANTE_TOKEN,

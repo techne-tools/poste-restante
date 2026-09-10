@@ -94,6 +94,35 @@ describe("AuthService", () => {
     expect(who).toBeNull();
   });
 
+  it("whispers a door-knock on a wrong password for a known address", async () => {
+    const stored = hashPassword("hunter2hunter2");
+    const pool = fakePool({
+      "SELECT secret FROM credentials WHERE address = $1 AND kind = 'password'": [
+        { secret: stored },
+      ],
+    });
+    let knocks = 0;
+    const whisper = { recordDoorKnock: async () => { knocks += 1; } } as never;
+    const svc = new AuthService(pool, noopLog, cfg("basic"), whisper);
+    const who = await svc.authenticate(
+      `Basic ${Buffer.from("you@house:wrong").toString("base64")}`,
+    );
+    expect(who).toBeNull();
+    expect(knocks).toBe(1);
+  });
+
+  it("stays silent for an unknown address — no existence leak", async () => {
+    const pool = fakePool(); // no credential row — the door does not exist
+    let knocks = 0;
+    const whisper = { recordDoorKnock: async () => { knocks += 1; } } as never;
+    const svc = new AuthService(pool, noopLog, cfg("basic"), whisper);
+    const who = await svc.authenticate(
+      `Basic ${Buffer.from("ghost@house:hunter2hunter2").toString("base64")}`,
+    );
+    expect(who).toBeNull();
+    expect(knocks).toBe(0);
+  });
+
   it("returns null for an unknown address", async () => {
     const svc = new AuthService(fakePool(), noopLog, cfg("basic"));
     const who = await svc.authenticate(

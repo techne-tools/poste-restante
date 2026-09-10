@@ -25,7 +25,7 @@ import { findThreadBySubject } from "./bridge/threads.js";
 const PORT = Number.parseInt(process.env.PORT ?? "8787", 10);
 
 const house = await buildHouse();
-const auth = new AuthService(house.db.pool, house.log, house.config.auth);
+const auth = new AuthService(house.db.pool, house.log, house.config.auth, house.whisper);
 const invites = new InviteService(house.db.pool, house.pipeline, auth);
 const book = new BookService(
   house.db.pool,

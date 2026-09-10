@@ -119,7 +119,8 @@ export type WhisperKind =
   | "gap-contradiction"
   | "gap-uncited-connection"
   | "gap-echo"
-  | "gap-unvisited-corner";
+  | "gap-unvisited-corner"
+  | "door-knock";
 
 export interface Whisper {
   id: string;
@@ -140,6 +141,12 @@ export interface Whisper {
    * anchored on the room itself, not on any one letter. Null otherwise.
    */
   targetFrame: string | null;
+  /**
+   * The resident a door-knock is addressed to (door-knock). The attempted
+   * address — the only fact the house records about a failed login. Null
+   * for every other kind.
+   */
+  targetAddress: string | null;
   /**
    * The clause the house cites — "the household has held this; want to
    * look?" A pointer, not a verdict: the book offers, never invokes.
@@ -166,6 +173,7 @@ export interface WhisperRow {
   target_thread: string | null;
   related_letter_id: string | null;
   target_frame: string | null;
+  target_address: string | null;
   cited_clause: string | null;
   cited_excerpt: string | null;
   summary: string;
@@ -183,6 +191,7 @@ const toWhisper = (r: WhisperRow): Whisper => ({
   targetThread: r.target_thread,
   relatedLetterId: r.related_letter_id,
   targetFrame: r.target_frame,
+  targetAddress: r.target_address,
   citedClause: r.cited_clause,
   citedExcerpt: r.cited_excerpt,
   summary: r.summary,
@@ -206,10 +215,15 @@ const toWhisper = (r: WhisperRow): Whisper => ({
  *     in the room. The room's territory is proven through the social
  *     graph; the house never whispers about a room its resident has never
  *     entered, and never leaks the room's existence to outsiders.
+ *   * Address-scoped whispers (door-knock) carry target_address and
+ *     nothing else — visible iff the caller IS that address. The house
+ *     whispers about a failed login only to the resident whose door was
+ *     tried; no one else learns the attempt happened.
  *
  * `w` is the whispers alias; `$1` is the address. The writers are
  * convergent by construction (thread writers set no frame; the corner
- * sets no thread), so exactly one branch applies per whisper.
+ * sets no thread; the knock sets only the address), so exactly one
+ * branch applies per whisper.
  *
  * The whole disjunction is parenthesised: callers suffix their own AND
  * conditions (`AND w.dismissed_at IS NULL`), and OR binds looser than
@@ -259,6 +273,11 @@ const VISIBLE_TO = `
         WHERE lf.frame_id = w.target_frame
           AND la.address_id = $1
       )
+    )
+    OR
+    (
+      w.target_address IS NOT NULL
+      AND w.target_address = $1
     )
   )`;
 
@@ -365,6 +384,30 @@ export class WhisperService {
   }
 
   /**
+   * Record a failed login as a door-knock whisper to the resident whose
+   * door was tried. The attempted address is the only fact recorded —
+   * the password is never stored, never logged, never whispered.
+   *
+   * Rate-limited by construction: the id is `door-knock:<address>:<15-min
+   * bucket>`, so ON CONFLICT DO NOTHING means one whisper per address per
+   * window no matter how many wrong keys are tried. The log keeps the
+   * detail; the whisper is the held door.
+   */
+  async recordDoorKnock(address: string, now = new Date()): Promise<void> {
+    const bucket = Math.floor(now.getTime() / (15 * 60 * 1000));
+    const id = `door-knock:${address}:${bucket}`;
+    const summary = `Someone knocked at your door with a key that does not fit.`;
+    const reasoning = `A password attempt for ${address} failed. The house does not know who was knocking — it only knows the key did not fit. If this was you, check the password; if it was not, the door held.`;
+    await this.pool.query(
+      `INSERT INTO whispers (id, kind, target_address, summary, reasoning)
+       VALUES ($1, 'door-knock', $2, $3, $4)
+       ON CONFLICT (id) DO NOTHING`,
+      [id, address, summary, reasoning],
+    );
+    this.log.info("whisper:door-knock", { address, id });
+  }
+
+  /**
    * Cheap structural gap detection (SPEC §2.4): dormant threads and
    * unanswered questions. Postgres queries only — no expensive semantic
    * scans. Runs on demand; the house never pushes the results.
@@ -429,6 +472,7 @@ export class WhisperService {
         targetThread: row.thread_id,
         relatedLetterId: null,
         targetFrame: null,
+        targetAddress: null,
         citedClause: null,
         citedExcerpt: null,
         summary,
@@ -490,6 +534,7 @@ export class WhisperService {
         targetThread: row.thread_id,
         relatedLetterId: null,
         targetFrame: null,
+        targetAddress: null,
         citedClause: null,
         citedExcerpt: null,
         summary,
@@ -555,6 +600,7 @@ export class WhisperService {
           targetThread: row.thread_id,
           relatedLetterId: row.related,
           targetFrame: null,
+          targetAddress: null,
           citedClause: null,
           citedExcerpt: null,
           summary,
@@ -625,6 +671,7 @@ export class WhisperService {
         targetThread: null,
         relatedLetterId: null,
         targetFrame: row.frame_id,
+        targetAddress: null,
         citedClause: null,
         citedExcerpt: null,
         summary,
@@ -783,6 +830,7 @@ export class WhisperService {
       targetThread: row.thread_id,
       relatedLetterId: relatedId,
       targetFrame: null,
+      targetAddress: null,
       citedClause: null,
       citedExcerpt: null,
       summary,
