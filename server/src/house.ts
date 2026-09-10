@@ -17,6 +17,7 @@ import type { BookService } from "./book/service.js";
 import type { AgentService } from "./agents/service.js";
 import type { IntegrationService } from "./integrations/service.js";
 import type { DayProjectionService } from "./day/projection.js";
+import type { LetterReadsService } from "./reads/service.js";
 import type { OutboundRelay } from "./bridge/outbound.js";
 import type { MailboxSyncDrive } from "./bridge/mailbox-drive.js";
 
@@ -38,6 +39,8 @@ export interface House {
   integrations: IntegrationService;
   /** The day projection — the callsheet whiteboard (SPEC §18). */
   day: DayProjectionService;
+  /** The living pass read-back (SPEC §5 #12) — per-resident letter reads. */
+  reads: LetterReadsService;
   /** Ingestion queue for letters (Direct or Redis). */
   queue: import("./queue/queue.js").IngestionQueue;
   /** Event bus for house events (Memory or Redis pub/sub). */

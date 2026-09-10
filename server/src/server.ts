@@ -784,6 +784,24 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
     return c.json(projection);
   });
 
+  // The living pass read-back (SPEC §5 #12). The client signals what the
+  // resident engaged with: opening a letter, replying to its thread. The
+  // house records per (letter, resident) — privacy as schema, the
+  // learning loop's signals. The convergence ordering reads this table.
+  app.post("/v1/letters/:id/read", async (c) => {
+    const who = await caller(c);
+    if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
+    const id = c.req.param("id");
+    const row = await house.repo.getLetter(id);
+    if (!row) return c.json({ error: { code: "not_found", message: "no such letter" } }, 404);
+    const state = await house.repo.participationStates([row.thread_id], who.address);
+    if (!isVisibleTo(row, who.address, state.get(row.thread_id) ?? "in")) {
+      return c.json({ error: { code: "not_found", message: "no such letter" } }, 404);
+    }
+    await house.reads.open(id, who.address);
+    return c.json({ opened: true, id });
+  });
+
   // ── The whisper ────────────────────────────────────────────────────────────
 
   // The whisper — the mailbox for the house's own letters. A GET resource.
