@@ -59,15 +59,16 @@ describe.skipIf(!INTEGRATION)("scrub (integration)", () => {
     await house.close();
   });
 
-  /** Deliver a letter from `from` to `to` in a fresh thread. */
+  /** Deliver a letter from `from` to `to` in a fresh thread (or the given one). */
   async function deliver(
     from: string,
     to: string[],
     subject: string,
     body: string,
+    threadOverride?: string,
   ): Promise<{ id: string; thread: string }> {
     const password = from === "you@house" ? "youyouyou" : "benbenben";
-    const thread = `th_scrub_${Math.random().toString(36).slice(2, 10)}`;
+    const thread = threadOverride ?? `th_scrub_${Math.random().toString(36).slice(2, 10)}`;
     const res = await app.request("/v1/letters", {
       method: "POST",
       headers: { Authorization: basic(from, password) },
@@ -92,7 +93,7 @@ describe.skipIf(!INTEGRATION)("scrub (integration)", () => {
 
   it("scrubs the resident's letters — the other party's stay, the view is gone", async () => {
     const { id: mine, thread } = await deliver("you@house", ["ben@house"], "the tempest", "the storm is coming");
-    const { id: theirs } = await deliver("ben@house", ["you@house"], "re: the tempest", "the storm will pass");
+    const { id: theirs } = await deliver("ben@house", ["you@house"], "re: the tempest", "the storm will pass", thread);
 
     // you scrubs the thread.
     const res = await app.request(`/v1/threads/${thread}/scrub`, {

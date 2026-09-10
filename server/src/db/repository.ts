@@ -290,7 +290,10 @@ export class PostgresRepository {
     return rows;
   }
 
-  /** The letters in a thread that an address is party to (from/to/cc). */
+  /** The letters in a thread that an address SENT (from_addr = the address).
+   *  The scrub's subject: the resident removes their own presence — letters
+   *  they wrote. Letters merely addressed to them (the other party's words)
+   *  stay: the house cannot delete what the resident does not own. */
   async listThreadForAddress(threadId: string, address: string): Promise<StoredLetterRow[]> {
     const { rows } = await this.pool.query<StoredLetterRow>(
       `SELECT l.*, COALESCE(
@@ -298,8 +301,7 @@ export class PostgresRepository {
           FROM letter_frames lf JOIN frames f ON f.id = lf.frame_id
           WHERE lf.letter_id = l.id), '[]'::json) AS frames
       FROM letters l
-      JOIN letter_addresses la ON la.letter_id = l.id
-      WHERE l.thread_id = $1 AND la.address_id = $2
+      WHERE l.thread_id = $1 AND l.from_addr = $2
       ORDER BY l.received_at ASC`,
       [threadId, address],
     );

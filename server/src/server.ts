@@ -724,6 +724,12 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
       const removed = await house.pipeline.delete(letter.id);
       if (removed) deleted += 1;
     }
+    // The other party's letters stay, but the resident is no longer party
+    // to them. Leaving is the house's own structural stop: the act IS a
+    // letter, participation flips to 'out', and visibility prunes itself —
+    // the view is gone even though the words remain. The leave letter is
+    // the archive's honest record of the act.
+    await house.participation.act(who.address, threadId, "leave");
     // Whispers pointing at the thread die with it — the house stops
     // offering a correspondence that no longer exists for this resident.
     await house.whisper.deleteForThread(threadId).catch((err) => {
