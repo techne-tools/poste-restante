@@ -19,7 +19,7 @@ land here as real IMAP mail.
 
 | | |
 |---|---|
-| IMAP (host) | 21032 → 11430 (operator / Spark check) |
+| IMAP (host) | 21037 → 11430 (operator / Spark check; 21032 is calibre on horza) |
 | IMAP (internal) | mailbox-sidecar:11430 on `backend_net` (the house's path) |
 | Networks | `backend_net` (external) |
 | Volumes | `sidecar-data` (RocksDb store), `sidecar-etc` (config) |

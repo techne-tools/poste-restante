@@ -25,6 +25,27 @@ const storage = new Map<string, string>();
   removeItem: (k: string) => void storage.delete(k),
 };
 
+// …and a minimal event shim for the signout signal (the browser's
+// EventTarget; Node's globalThis has none).
+const listeners = new Map<string, Set<(e: Event) => void>>();
+(globalThis as Record<string, unknown>).addEventListener = (
+  type: string,
+  fn: (e: Event) => void,
+) => {
+  if (!listeners.has(type)) listeners.set(type, new Set());
+  listeners.get(type)!.add(fn);
+};
+(globalThis as Record<string, unknown>).removeEventListener = (
+  type: string,
+  fn: (e: Event) => void,
+) => {
+  listeners.get(type)?.delete(fn);
+};
+(globalThis as Record<string, unknown>).dispatchEvent = (e: Event) => {
+  listeners.get(e.type)?.forEach((fn) => fn(e));
+  return true;
+};
+
 describe("house client", () => {
   const originalFetch = globalThis.fetch;
 
@@ -101,6 +122,39 @@ describe("house client", () => {
     await expect(house.deliver({} as never)).rejects.toThrow(
       "the envelope is missing a thread",
     );
+  });
+
+  it("a 401 clears the stored session and signals the door — a dead credential must not leave the resident surface standing", async () => {
+    localStorage.setItem(
+      "poste-restante.auth",
+      JSON.stringify({ address: "alpha@house", header: "Basic YWxwaGE6b2xk" }),
+    );
+    const events: string[] = [];
+    const listener = () => events.push("signout");
+    globalThis.addEventListener("poste-restante:signout", listener);
+    try {
+      globalThis.fetch = mockFetch(401, { error: { code: "unauthorized", message: "the house does not know you" } });
+      await expect(house.inbox("alpha@house")).rejects.toThrow("the house does not know you");
+      expect(localStorage.getItem("poste-restante.auth")).toBeNull();
+      expect(events).toEqual(["signout"]);
+    } finally {
+      globalThis.removeEventListener("poste-restante:signout", listener);
+    }
+  });
+
+  it("a 401 with no credential does NOT signal the door — the guest reading a closed pub keeps the pub's own closed handling", async () => {
+    localStorage.removeItem("poste-restante.auth");
+    const events: string[] = [];
+    const listener = () => events.push("signout");
+    globalThis.addEventListener("poste-restante:signout", listener);
+    try {
+      globalThis.fetch = mockFetch(401, { error: { code: "unauthorized", message: "the house does not know you" } });
+      await expect(house.inbox("pub@house")).rejects.toThrow("the house does not know you");
+      expect(localStorage.getItem("poste-restante.auth")).toBeNull();
+      expect(events).toEqual([]);
+    } finally {
+      globalThis.removeEventListener("poste-restante:signout", listener);
+    }
   });
 
   it("lists the payload catalog for a letter — the shape rides in, not the bytes", async () => {

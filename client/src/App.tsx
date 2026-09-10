@@ -123,6 +123,15 @@ export default function App() {
     setView("mailbox");
   }, []);
 
+  // A dead credential is keyless: the house answered 401 somewhere, the
+  // stored session was cleared, and the resident surface must not stand
+  // where the door should be. Return to Login (the same path as leave).
+  useEffect(() => {
+    const onSignout = () => signOut();
+    globalThis.addEventListener("poste-restante:signout", onSignout);
+    return () => globalThis.removeEventListener("poste-restante:signout", onSignout);
+  }, [signOut]);
+
   if (!auth) {
     // The keyless door: a guest enters the pub without a credential — the
     // only room that asks nothing. Nothing private is mounted; the pub's

@@ -32,10 +32,11 @@ services:
     # image — the house's convention, applied here too.
     labels:
       - com.centurylinklabs.watchtower.enable=false
-    # IMAP. 21032 = host published (operator / Spark check). The house
+    # IMAP. 21037 = host published (operator / Spark check; 21032 is
+    # calibre-web-automated on horza — recon 2026-09-07). The house
     # talks to mailbox-sidecar:11430 over backend_net, never this port.
     ports:
-      - "21032:11430"
+      - "${SIDECAR_IMAP_HOST_PORT:-21037}:11430"
     networks:
       - backend_net
     volumes:

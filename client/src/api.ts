@@ -150,6 +150,16 @@ export function clearAuth(): void {
   localStorage.removeItem(AUTH_KEY);
 }
 
+/** A dead credential is keyless. The house answered 401 — the stored
+ *  session is no longer a session. Clear it and signal the door so the
+ *  client returns to Login instead of sitting in a shell the house does
+ *  not recognise (a rotated or removed credential must not leave the
+ *  resident surface standing). */
+function signalUnauthorized(): void {
+  clearAuth();
+  globalThis.dispatchEvent(new Event("poste-restante:signout"));
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const auth = loadAuth();
   const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -159,6 +169,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
   });
   if (!res.ok) {
+    // A 401 with a credential attached means the credential is dead —
+    // clear it and signal the door. A 401 without one (the guest reading
+    // the pub while its door is closed) is the house answering "not for
+    // you" — the caller (Pub) handles that itself; no session to clear.
+    if (res.status === 401 && auth) signalUnauthorized();
     const body = (await res.json().catch(() => null)) as
       | { error?: { message?: string } }
       | null;
