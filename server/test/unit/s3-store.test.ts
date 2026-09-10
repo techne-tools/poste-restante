@@ -118,7 +118,7 @@ describe("S3PayloadStore", () => {
 describe("NoopPayloadStore", () => {
   it("fails closed on put and returns null on get", async () => {
     const stub = new NoopPayloadStore();
-    await expect(stub.put("let_1", "file.bin", new Uint8Array([1]))).rejects.toThrow("out of scope");
+    await expect(stub.put("let_1", "file.bin", new Uint8Array([1]))).rejects.toThrow("payload store is disabled");
     expect(await stub.get("letters/let_1/file.bin")).toBeNull();
     expect(await stub.listForLetter("let_1")).toEqual([]);
     await expect(stub.delete("letters/let_1/file.bin")).resolves.toBeUndefined();

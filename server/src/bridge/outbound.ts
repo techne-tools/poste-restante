@@ -23,6 +23,7 @@ import type { Logger } from "../pipeline/logger.js";
 import type { HouseConfig } from "../config.js";
 import type { Letter, StoredLetter } from "../types.js";
 import { markdownToText } from "../pipeline/markdown.js";
+import { parseBind } from "./smtp.js";
 
 /** Split an address into its local part and domain ("hermes@house" → ["hermes", "house"]). */
 export function splitAddress(address: string): { local: string; domain: string } {
@@ -96,20 +97,13 @@ export function parseSmtpUrl(url: string): {
 export function isOwnDoor(url: string, smtpBind: string): boolean {
   try {
     const parsed = new URL(url);
-    const bind = parseBindSafe(smtpBind);
+    const bind = parseBind(smtpBind);
     // The door's host:port. A URL pointing back at it is the house talking
     // to itself.
     return parsed.hostname === bind.host && (parsed.port ? Number.parseInt(parsed.port, 10) : 587) === bind.port;
   } catch {
     return false;
   }
-}
-
-function parseBindSafe(bind: string): { host: string; port: number } {
-  const idx = bind.lastIndexOf(":");
-  if (idx < 0) return { host: bind, port: 2525 };
-  const port = Number.parseInt(bind.slice(idx + 1), 10);
-  return { host: bind.slice(0, idx) || "127.0.0.1", port: Number.isNaN(port) ? 2525 : port };
 }
 
 /** The reverse translation — letter contract → RFC5322 mail. Pure, so it

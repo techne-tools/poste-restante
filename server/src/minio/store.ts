@@ -1,11 +1,10 @@
 /**
- * Minio/S3 raw payload store — STUBBED this phase.
+ * Minio/S3 raw payload store — the third tier of the archive spine.
  *
- * The brief scopes raw payloads (audio, video, images) out of phase 4a. The
- * letter is the unit in all three tiers (postgres row, qdrant vector, minio
- * file), so the interface is defined now and the implementation lands with the
- * payload pipeline. The letter points at the file; whisper transcribes it into
- * a *new* letter.
+ * The letter is the unit in all three tiers (postgres row, qdrant vector,
+ * minio file). The letter points at the file; whisper transcribes it into
+ * a *new* letter. The real store is S3PayloadStore (s3-store.ts); the
+ * NoopPayloadStore below is the fallback when MinIO is disabled.
  */
 export interface PayloadStore {
   /** Store a raw payload and return its object key. */
@@ -22,12 +21,13 @@ export interface PayloadStore {
 
 /**
  * A no-op payload store. It records nothing and returns null on read — the
- * honest stub for a phase where payloads are out of scope. It exists so the
- * archive spine has a stable seam to attach the real S3 store to in phase 4b.
+ * fallback when MinIO is disabled (the house runs on postgres + qdrant
+ * alone). It exists so the archive spine has a stable seam whether or not
+ * the raw-payload tier is configured.
  */
 export class NoopPayloadStore implements PayloadStore {
   async put(_letterId: string, _name: string, _data: Uint8Array, _contentType?: string): Promise<string> {
-    throw new Error("payload store is stubbed in phase 4a — payloads are out of scope");
+    throw new Error("payload store is disabled — MinIO is not configured");
   }
   async get(_key: string): Promise<Uint8Array | null> {
     return null;

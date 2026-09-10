@@ -188,27 +188,9 @@ export const house = {
     return request<SearchResponse>(`/letters${qs ? `?${qs}` : ""}`);
   },
 
-  /** Fetch one letter. */
-  letter(id: string) {
-    return request<Letter>(`/letters/${id}`);
-  },
-
   /** Delete a letter — first-class, no soft delete. */
   deleteLetter(id: string) {
     return request<{ deleted: boolean; id: string }>(`/letters/${id}`, {
-      method: "DELETE",
-    });
-  },
-
-  /** Pin / unpin — explicit house ranking signals. */
-  pin(id: string) {
-    return request<{ pinned: boolean; id: string }>(`/letters/${id}/pin`, {
-      method: "POST",
-    });
-  },
-
-  unpin(id: string) {
-    return request<{ pinned: boolean; id: string }>(`/letters/${id}/pin`, {
       method: "DELETE",
     });
   },

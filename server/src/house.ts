@@ -1,5 +1,5 @@
 /**
- * The House — the assembled archive spine. The letter server (phase 4b) is a
+ * The House — the assembled archive spine. The letter server (server.ts) is a
  * thin client over this. `buildHouse()` returns exactly this shape.
  */
 import type { HouseConfig } from "./config.js";

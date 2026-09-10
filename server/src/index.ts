@@ -2,7 +2,7 @@
  * Poste Restante — the archive spine. Public surface of the server package.
  *
  * This is the headless house: primitives as a protocol, no UI, no web server,
- * no push channel. The letter server (phase 4b) is a client of this spine.
+ * no push channel. The letter server (server.ts) is a client of this spine.
  */
 export * from "./types.js";
 export { letterId, canonicalise } from "./id.js";

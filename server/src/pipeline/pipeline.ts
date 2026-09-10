@@ -93,8 +93,9 @@ export class IngestionPipeline {
     // 4. Full-text: the postgres FTS index is maintained by the row insert
     //    (the GIN index on body_text). Nothing further to do here.
 
-    // 5. Payloads are out of scope this phase; the seam is stubbed.
-    //    await this.payloads.put(id, ...);
+    // 5. Raw payloads: the letter's enclosures live in the payload store
+    //    (MinIO when configured; the noop fallback otherwise). The payload
+    //    API (server.ts /v1/letters/:id/payloads) writes them directly.
 
     // 6. A leave/join letter updates the participation cache — the
     //    structural stop is derived from the letters, not declared.
