@@ -6,6 +6,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added — the door-knock: the house whispers about failed logins (2026-09-10)
+
+A failed password attempt at a resident's door becomes a whisper to that
+resident — *"Someone knocked at your door with a key that does not fit."*
+The door itself keeps answering the same silence; the knocker learns
+nothing, the resident learns someone tried.
+
+- **Privacy as schema** — migration 017 adds `whispers.target_address`
+  (FK to addresses, cascade). A knock is visible iff the caller IS that
+  address; no one else learns the attempt happened.
+- **Absence is silence** — unknown addresses get no whisper. No existence
+  leak: an attacker cannot probe which addresses exist by watching whisper
+  activity.
+- **Rate-limited by construction** — the whisper id is
+  `door-knock:<address>:<15-min-bucket>`, so `ON CONFLICT DO NOTHING`
+  means one whisper per address per window no matter how many wrong keys
+  are tried. The log keeps the detail (`auth:failed` + `whisper:door-knock`);
+  the whisper is the held door.
+- **Presence, not pressure** — it is a whisper like any other: pull-only,
+  dismissible, no push. The resident comes for it.
+- **Only the address is recorded** — never the password, never the token.
+- **Client** — `door-knock` kind + `targetAddress` in the whisper contract;
+  sidebar label "a knock at the door".
+- **Tests** — 2 unit (knock fires / ghost silent) + 2 integration (visible
+  to the resident, not to others; unknown address silent). Suite green:
+  217/217 server unit, 298/298 integration (2 pre-existing sidecar-gated
+  files excluded), 55/55 client, typecheck, build.
+
 ### Added — LIVE ALPHA on horza (2026-09-07)
 
 The house is running on the Docker homelab host, tailnet-only:
@@ -15,7 +43,7 @@ The house is running on the Docker homelab host, tailnet-only:
 - **Smoke proof**: image letter + PNG enclosure round-trip (catalogue + correct content-type), stranger → 404 (negative visibility), real 1s 440Hz WAV → transcript letter in-thread in 5s.
 - **Fixes found by deploying**: MinIO compose was missing `command: server /data` (crash-looped; official image's bare entrypoint prints help); the whisper transcriber now normalises BCP-47 locales to bare ISO 639-1 codes (`en-AU` → `en`) — faster-whisper 500s on full locales. Unit tests added for both.
 - `.env.enc` secrets seeded on horza in the fleet's binary-envelope sops format (plain `sops -d` works); values never crossed the wire.
-- Test residents `alpha@house` / `stranger@house` seeded with one-shot tokens — rotate before real testers (tokens were printed once by the CLI).
+- Test residents `alpha@house` / `stranger@house` seeded for the alpha. **Correction (2026-09-10):** the live house runs password auth — `alpha@house` holds Chris's password credential (the CHANGELOG's "one-shot tokens" line was aspirational, not the deployed state); `stranger@house` has no credential (the negative-visibility test subject). The alpha credential was rotated 2026-09-10 (removed, then a fresh token issued — the token was superseded the same day when the password was re-set; the live credential is password-only, verified on horza).
 
 ### Added — the tailnet face: host-serve for the protocol and the reference client (2026-09-07, corrected)
 
