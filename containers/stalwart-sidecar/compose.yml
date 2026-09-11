@@ -35,8 +35,11 @@ services:
     # IMAP. 21037 = host published (operator / Spark check; 21032 is
     # calibre-web-automated on horza — recon 2026-09-07). The house
     # talks to mailbox-sidecar:11430 over backend_net, never this port.
+    # SMTP submission (Spark's outgoing leg) publishes host 21038 → 11465
+    # (the sidecar's submission listener, applied by the operator plan).
     ports:
       - "${SIDECAR_IMAP_HOST_PORT:-21037}:11430"
+      - "${SIDECAR_SMTP_HOST_PORT:-21038}:11465"
     networks:
       - backend_net
     volumes:

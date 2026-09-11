@@ -20,9 +20,16 @@ land here as real IMAP mail.
 | | |
 |---|---|
 | IMAP (host) | 21037 → 11430 (operator / Spark check; 21032 is calibre on horza) |
+| SMTP submission (host) | 21038 → 11465 (Spark's outgoing leg; same sidecar account) |
 | IMAP (internal) | mailbox-sidecar:11430 on `backend_net` (the house's path) |
 | Networks | `backend_net` (external) |
 | Volumes | `sidecar-data` (RocksDb store), `sidecar-etc` (config) |
+
+The submission listener (and the PLAIN/LOGIN allowance for non-TLS ports —
+a dev/homelab posture, `MtaStageAuth`) is applied by the operator's plan
+in recovery mode (`plan-smtp.ndjson`), exactly like the domain/listener/
+account plan. The house's own SMTP door stays disabled; the sidecar speaks
+SMTP for residents' mail clients.
 
 ## Secrets
 
@@ -70,7 +77,7 @@ sync against (fail closed, exactly like the house itself).
 
 ## Deliberately NOT here
 
-- No SMTP listeners (the house has its own door + outbound seam).
+- No **external** inbound/outbound (movement C stays out of scope).
 - No admin UI (the house reuses the house — the operator's CLI is
   `stalwart-cli` from the dev Mac).
 - No external sync (movement C stays out of scope).
