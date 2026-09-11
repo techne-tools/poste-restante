@@ -291,7 +291,10 @@ export class PostgresRepository {
     return rows;
   }
 
-  /** List the letters in an address's mailbox, newest first. */
+  /** List the letters in an address's mailbox, newest first. Letters in
+   *  threads the resident has put away ('shelved') are excluded — the
+   *  thread is kept, the edges stand, but it is not in the mailbox (the
+   *  shelf, migration 025). */
   async listMailbox(
     address: string,
     limit: number,
@@ -302,7 +305,13 @@ export class PostgresRepository {
           FROM letter_frames lf JOIN frames f ON f.id = lf.frame_id
           WHERE lf.letter_id = l.id), '[]'::json) AS frames
        FROM letters l
-       WHERE l.from_addr = $1 OR $1 = ANY(l.to_addrs) OR $1 = ANY(l.cc_addrs)
+       WHERE (l.from_addr = $1 OR $1 = ANY(l.to_addrs) OR $1 = ANY(l.cc_addrs))
+         AND NOT EXISTS (
+           SELECT 1 FROM thread_participation tp
+           WHERE tp.thread_id = l.thread_id
+             AND tp.address_id = $1
+             AND tp.state = 'shelved'
+         )
        ORDER BY l.received_at DESC
        LIMIT $2`,
       [address, limit],
@@ -363,14 +372,14 @@ export class PostgresRepository {
   }
 
   /** The participation states of an address across a set of threads. 'in'
-   *  by default — an address with no leave/join letter has no row, and the
-   *  historical edges stand. Returns a map thread_id → state. */
+   *  by default — an address with no leave/join/shelve letter has no row,
+   *  and the historical edges stand. Returns a map thread_id → state. */
   async participationStates(
     threadIds: string[],
     address: string,
-  ): Promise<Map<string, "in" | "out">> {
+  ): Promise<Map<string, "in" | "out" | "shelved">> {
     if (threadIds.length === 0) return new Map();
-    const { rows } = await this.pool.query<{ thread_id: string; state: "in" | "out" }>(
+    const { rows } = await this.pool.query<{ thread_id: string; state: "in" | "out" | "shelved" }>(
       `SELECT thread_id, state FROM thread_participation
        WHERE address_id = $1 AND thread_id = ANY($2)`,
       [address, threadIds],

@@ -15,6 +15,8 @@ const KIND_META: Record<string, { glyph: string }> = {
   clause: { glyph: "c" },
   leave: { glyph: "↩" },
   join: { glyph: "→" },
+  shelve: { glyph: "▽" },
+  unshelve: { glyph: "△" },
 };
 
 export default function KindTag({ kind }: { kind: string }) {

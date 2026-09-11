@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { house, loadAuth, clearAuth } from "./api";
-import type { Whisper } from "./api";
+import type { HouseMeta, Whisper } from "./api";
 import Login from "./Login";
 import GuestShell from "./GuestShell";
 import WhisperSidebar from "./WhisperSidebar";
@@ -11,14 +11,17 @@ import Compose from "./Compose";
 import Pub from "./Pub";
 import ThreadView from "./ThreadView";
 import Book from "./Book";
+import Profile from "./Profile";
 
-type View = "mailbox" | "archive" | "addresses" | "compose" | "pub" | "thread" | "book";
+type View = "mailbox" | "archive" | "addresses" | "compose" | "pub" | "thread" | "book" | "profile";
 
 export default function App() {
   const [auth, setAuth] = useState(() => loadAuth());
   const [guest, setGuest] = useState(false);
   const [view, setView] = useState<View>("mailbox");
   const [whispers, setWhispers] = useState<Whisper[]>([]);
+  /** The house's own words — the serif voice's names for the rooms. */
+  const [meta, setMeta] = useState<HouseMeta | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [composeTo, setComposeTo] = useState<string | undefined>(undefined);
   const [composeThread, setComposeThread] = useState<string | undefined>(undefined);
@@ -43,7 +46,13 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (auth) refreshWhisper();
+    if (auth) {
+      refreshWhisper();
+      house
+        .houseMeta()
+        .then(setMeta)
+        .catch(() => setMeta(null));
+    }
   }, [auth, refreshWhisper]);
 
   const dismiss = useCallback(
@@ -119,6 +128,18 @@ export default function App() {
     setAuth(null);
     setGuest(false);
     setWhispers([]);
+    setMeta(null);
+    setError(null);
+    setView("mailbox");
+  }, []);
+
+  /** The resident relabelled — handle changed, identity stayed. The
+   *  credential died with the old handle; sign in under the new label. */
+  const relabeled = useCallback(() => {
+    setMeta(null);
+    setAuth(null);
+    setGuest(false);
+    setWhispers([]);
     setError(null);
     setView("mailbox");
   }, []);
@@ -174,7 +195,7 @@ export default function App() {
           </div>
         )}
         <header>
-          <h1>Poste Restante</h1>
+          <h1>{meta?.houseName ?? "Poste Restante"}</h1>
           <span className="address">{auth.address}</span>
           <button className="signout" onClick={signOut} aria-label="sign out">
             leave
@@ -188,13 +209,16 @@ export default function App() {
             Archive
           </button>
           <button className={view === "pub" ? "active" : ""} onClick={() => navigate("pub")}>
-            Pub
+            {meta?.pubName ?? "Pub"}
           </button>
           <button className={view === "book" ? "active" : ""} onClick={() => navigate("book")}>
-            Book
+            {meta?.bookName ?? "Book"}
           </button>
           <button className={view === "addresses" ? "active" : ""} onClick={() => navigate("addresses")}>
             Addresses
+          </button>
+          <button className={view === "profile" ? "active" : ""} onClick={() => navigate("profile")}>
+            Profile
           </button>
           <button className={view === "compose" ? "active" : ""} onClick={() => navigate("compose")}>
             Write
@@ -223,10 +247,12 @@ export default function App() {
         )}
         {view === "book" && <Book onError={setError} initialClause={bookClause} />}
         {view === "addresses" && <AddressBook onError={setError} onCompose={composeToAddress} />}
+        {view === "profile" && <Profile onError={setError} address={auth.address} onRelabeled={relabeled} />}
         {view === "thread" && threadId && (
           <ThreadView
             threadId={threadId}
             onError={setError}
+            onWhisperRefresh={refreshWhisper}
             onBack={() => {
               setThreadId(undefined);
               setView("mailbox");

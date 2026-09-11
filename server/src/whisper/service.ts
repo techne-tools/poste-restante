@@ -207,9 +207,13 @@ const toWhisper = (r: WhisperRow): Whisper => ({
  * address is a participant in the whisper's subject. Two shapes:
  *
  *   * Thread-scoped whispers (all kinds except the corner) carry a
- *     target_thread — visible iff the caller is a participant. Pair gaps
- *     add a second limb (party to BOTH letters); the room limb guards a
- *     thread whisper that also names a frame.
+ *     target_thread — visible iff the caller is a participant AND is not
+ *     out of it AND has not shelved it. Pair gaps add a second limb (party
+ *     to BOTH letters); the room limb guards a thread whisper that also
+ *     names a frame. Shelving is not leaving: the edges stand, the thread
+ *     stays readable — but the house stops offering it, exactly like a
+ *     left thread (the resident put it away; the whisper respects the
+ *     shelf).
  *   * Frame-scoped whispers (gap-unvisited-corner) carry target_frame and
  *     NO thread — visible iff the caller is party to at least one letter
  *     in the room. The room's territory is proven through the social
@@ -243,7 +247,7 @@ const VISIBLE_TO = `
         SELECT 1 FROM thread_participation tp
         WHERE tp.thread_id = w.target_thread
           AND tp.address_id = $1
-          AND tp.state = 'out'
+          AND tp.state IN ('out', 'shelved')
       )
       AND (
         w.related_letter_id IS NULL
@@ -450,7 +454,7 @@ export class WhisperService {
          )
          AND NOT EXISTS (
            SELECT 1 FROM thread_participation tp
-           WHERE tp.thread_id = t.id AND tp.address_id = $3 AND tp.state = 'out'
+           WHERE tp.thread_id = t.id AND tp.address_id = $3 AND tp.state IN ('out', 'shelved')
         )`,
       [
         new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000),
@@ -518,7 +522,7 @@ export class WhisperService {
          )
          AND NOT EXISTS (
            SELECT 1 FROM thread_participation tp
-           WHERE tp.thread_id = l.thread_id AND tp.address_id = $2 AND tp.state = 'out'
+           WHERE tp.thread_id = l.thread_id AND tp.address_id = $2 AND tp.state IN ('out', 'shelved')
         )`,
       [new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000), address],
     );
@@ -707,6 +711,12 @@ export class WhisperService {
          JOIN letter_addresses la ON la.letter_id = l.id
          WHERE la.address_id = $1
            AND l.received_at > $2
+           AND NOT EXISTS (
+             SELECT 1 FROM thread_participation tp
+             WHERE tp.thread_id = l.thread_id
+               AND tp.address_id = $1
+               AND tp.state IN ('out', 'shelved')
+           )
          ORDER BY l.received_at DESC
          LIMIT $3`,
         [address, new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000), SEMANTIC_CANDIDATES],
@@ -744,16 +754,16 @@ export class WhisperService {
           if (seenPairs.has(pairKey)) continue;
           if (hit.score >= ECHO_SCORE) {
             const id = `gap-echo:${row.id}:${hit.letterId}`;
-            await this.insertPairGap(id, "gap-echo", row.id, hit.letterId, row);
-            created.push(this.pairWhisper(id, "gap-echo", row.id, hit.letterId, row, now));
+            await this.insertPairGap(id, "gap-echo", row.id, hit.letterId, row, hitRow);
+            created.push(this.pairWhisper(id, "gap-echo", row.id, hit.letterId, row, hitRow, now));
             seenPairs.add(pairKey);
             createdSemantic += 1;
             break; // this anchor's strongest neighbour is an echo — move on
           }
           if (hit.score >= CONNECTION_SCORE) {
             const id = `gap-uncited:${row.id}:${hit.letterId}`;
-            await this.insertPairGap(id, "gap-uncited-connection", row.id, hit.letterId, row);
-            created.push(this.pairWhisper(id, "gap-uncited-connection", row.id, hit.letterId, row, now));
+            await this.insertPairGap(id, "gap-uncited-connection", row.id, hit.letterId, row, hitRow);
+            created.push(this.pairWhisper(id, "gap-uncited-connection", row.id, hit.letterId, row, hitRow, now));
             seenPairs.add(pairKey);
             createdSemantic += 1;
             break; // one distinct neighbour per anchor — generosity, quiet
@@ -808,14 +818,15 @@ export class WhisperService {
     kind: "gap-echo" | "gap-uncited-connection",
     anchorId: string,
     relatedId: string,
-    row: { thread_id: string; subject: string | null },
+    anchor: { thread_id: string; subject: string | null },
+    related: { thread_id: string; subject: string | null },
   ): Promise<void> {
-    const { summary, reasoning } = this.pairCopy(kind, row);
+    const { summary, reasoning } = this.pairCopy(kind, anchor, related);
     await this.pool.query(
       `INSERT INTO whispers (id, kind, letter_id, related_letter_id, target_thread, summary, reasoning, cited_clause, cited_excerpt)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        ON CONFLICT (id) DO NOTHING`,
-      [id, kind, anchorId, relatedId, row.thread_id, summary, reasoning, null, null],
+      [id, kind, anchorId, relatedId, anchor.thread_id, summary, reasoning, null, null],
     );
   }
 
@@ -825,15 +836,16 @@ export class WhisperService {
     kind: "gap-echo" | "gap-uncited-connection",
     anchorId: string,
     relatedId: string,
-    row: { thread_id: string; subject: string | null },
+    anchor: { thread_id: string; subject: string | null },
+    related: { thread_id: string; subject: string | null },
     now: Date,
   ): Whisper {
-    const { summary, reasoning } = this.pairCopy(kind, row);
+    const { summary, reasoning } = this.pairCopy(kind, anchor, related);
     return {
       id,
       letterId: anchorId,
       kind,
-      targetThread: row.thread_id,
+      targetThread: anchor.thread_id,
       relatedLetterId: relatedId,
       targetFrame: null,
       targetAddress: null,
@@ -848,24 +860,30 @@ export class WhisperService {
     };
   }
 
-  /** The serif voice for the semantic pair gaps. */
+  /** The serif voice for the semantic pair gaps. Names BOTH
+   *  correspondences — the alpha fix (2026-09-11): a whisper that says
+   *  \"the work is circling in X\" without naming the other thread is
+   *  gnomic; the house's speech names the pair, and the reasoning says
+   *  what kind of connection the house is holding. */
   private pairCopy(
     kind: "gap-echo" | "gap-uncited-connection",
-    row: { thread_id: string; subject: string | null },
+    anchor: { thread_id: string; subject: string | null },
+    related: { thread_id: string; subject: string | null },
   ): { summary: string; reasoning: string } {
-    // The serif voice names the correspondence by its latest letter's
+    // The serif voice names each correspondence by its latest letter's
     // subject — a raw thread id is the machine's index, not the house's
     // speech. The machine's index stays in the reasoning, where it belongs.
-    const name = row.subject?.trim() || row.thread_id;
+    const anchorName = anchor.subject?.trim() || anchor.thread_id;
+    const relatedName = related.subject?.trim() || related.thread_id;
     if (kind === "gap-echo") {
       return {
-        summary: `The work is circling — a letter in “${name}” echoes another correspondence, said twice in different words.`,
-        reasoning: `Two letters share their ground nearly word-for-word in meaning (threads ${row.thread_id} and another). The house is not saying either is redundant — it is saying the work has stopped moving.`,
+        summary: `The work is circling — “${anchorName}” and “${relatedName}” say much the same, in different words.`,
+        reasoning: `Two letters share their ground nearly word-for-word in meaning — one in ${anchor.thread_id}, one in ${related.thread_id}. The house is not saying either is redundant — it is saying the work has stopped moving between them.`,
       };
     }
     return {
-      summary: `An uncited connection — a letter in “${name}” shares ground with another correspondence.`,
-      reasoning: `A letter in ${row.thread_id} and a letter in a different thread stand close in meaning, yet neither cites the other. The house is not citing for you — it is holding the correspondence between them.`,
+      summary: `An uncited connection — “${anchorName}” and “${relatedName}” share ground without citing each other.`,
+      reasoning: `A letter in ${anchor.thread_id} and a letter in ${related.thread_id} stand close in meaning, yet neither cites the other. The house is not citing for you — it is holding the correspondence between them.`,
     };
   }
 }

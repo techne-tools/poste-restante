@@ -418,6 +418,55 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
     },
   );
 
+  // Put a thread away — the shelf (migration 025). The edges stand, the
+  // thread stays readable, the mailbox and the whisper stop offering it.
+  server.registerTool(
+    "shelve_thread",
+    {
+      title: "Put a thread away",
+      description:
+        "Put a correspondence thread away — the resident's own shelf. The act IS a letter; the archive keeps the history; participation is derived. The edges stand and the thread stays readable from the archive — gentler than leave, which dissolves the edges — but the mailbox and the whisper will not offer it until it is brought back (unshelve_thread). The book is exempt — clause threads are commons by right.",
+      inputSchema: {
+        thread: z.string().min(1).describe("the thread id, e.g. th_9f2c1"),
+      },
+    },
+    async ({ thread }) => {
+      const who = await caller();
+      if (!who) return fail("the house does not know you — set POSTE_RESTANTE_TOKEN");
+      const letters = await house.repo.listThread(thread);
+      if (letters.length === 0) return fail("no such thread");
+      if (letters.some((l) => l.kind === "clause")) {
+        return fail("the book is commons by right — you cannot put it away");
+      }
+      const { letterId, state: newState } = await house.participation.act(who.address, thread, "shelve");
+      return text({ id: letterId, thread, participation: newState });
+    },
+  );
+
+  // Bring a thread back from the shelf — the edges stood the whole time.
+  server.registerTool(
+    "unshelve_thread",
+    {
+      title: "Bring a thread back",
+      description:
+        "Bring a correspondence thread back from the shelf — the edges stood while it was put away; the mailbox and the whisper offer it again. The act IS a letter; the archive keeps the history; participation is derived. The book is exempt — clause threads are commons by right.",
+      inputSchema: {
+        thread: z.string().min(1).describe("the thread id, e.g. th_9f2c1"),
+      },
+    },
+    async ({ thread }) => {
+      const who = await caller();
+      if (!who) return fail("the house does not know you — set POSTE_RESTANTE_TOKEN");
+      const letters = await house.repo.listThread(thread);
+      if (letters.length === 0) return fail("no such thread");
+      if (letters.some((l) => l.kind === "clause")) {
+        return fail("the book is commons by right — you cannot put it away");
+      }
+      const { letterId, state: newState } = await house.participation.act(who.address, thread, "unshelve");
+      return text({ id: letterId, thread, participation: newState });
+    },
+  );
+
   // Frames — plural time navigation. Queries work in any frame.
   server.registerTool(
     "list_frames",

@@ -275,8 +275,10 @@ describe("mcp house", () => {
         "read_mailbox",
         "read_thread",
         "search_letters",
+        "shelve_thread",
         "undismiss_whisper",
         "unpin_letter",
+        "unshelve_thread",
         "update_address",
       ].sort(),
     );

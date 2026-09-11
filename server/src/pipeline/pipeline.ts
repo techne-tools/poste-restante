@@ -127,9 +127,16 @@ export class IngestionPipeline {
     //    (MinIO when configured; the noop fallback otherwise). The payload
     //    API (server.ts /v1/letters/:id/payloads) writes them directly.
 
-    // 6. A leave/join letter updates the participation cache — the
-    //    structural stop is derived from the letters, not declared.
-    if (this.onLeaveJoin && (letter.envelope.kind === "leave" || letter.envelope.kind === "join")) {
+    // 6. A leave/join/shelve/unshelve letter updates the participation
+    //    cache — the structural stop and the shelf are derived from the
+    //    letters, not declared.
+    if (
+      this.onLeaveJoin &&
+      (letter.envelope.kind === "leave" ||
+        letter.envelope.kind === "join" ||
+        letter.envelope.kind === "shelve" ||
+        letter.envelope.kind === "unshelve")
+    ) {
       await this.onLeaveJoin(stored);
     }
 

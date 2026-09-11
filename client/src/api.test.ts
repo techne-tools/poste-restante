@@ -117,6 +117,56 @@ describe("house client", () => {
     expect(init.method).toBe("DELETE");
   });
 
+  it("puts a thread away — the shelf keeps the edges, the mailbox and whisper stop offering it", async () => {
+    globalThis.fetch = mockFetch(201, { id: "letter_1", thread: "th_9f2c1", participation: "shelved" });
+    const res = await house.shelveThread("th_9f2c1");
+    expect(res.participation).toBe("shelved");
+    const [url, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe("/v1/threads/th_9f2c1/shelve");
+    expect(init.method).toBe("POST");
+  });
+
+  it("brings a thread back from the shelf", async () => {
+    globalThis.fetch = mockFetch(201, { id: "letter_2", thread: "th_9f2c1", participation: "in" });
+    const res = await house.unshelveThread("th_9f2c1");
+    expect(res.participation).toBe("in");
+    const [url, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe("/v1/threads/th_9f2c1/unshelve");
+    expect(init.method).toBe("POST");
+  });
+
+  it("reads the house's own words — the serif voice's names for the rooms", async () => {
+    globalThis.fetch = mockFetch(200, {
+      houseName: "Poste Restante",
+      pubName: "the pub",
+      bookName: "the book",
+      domain: "house",
+    });
+    const res = await house.houseMeta();
+    expect(res.pubName).toBe("the pub");
+    const [url] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe("/v1/house/meta");
+  });
+
+  it("corrects the address book — the house takes corrections at face value", async () => {
+    globalThis.fetch = mockFetch(200, { id: "you@house", names: ["Yusuf"], pronouns: "he" });
+    const res = await house.correctAddress("you@house", ["Yusuf"], "he");
+    expect(res.names).toEqual(["Yusuf"]);
+    const [url, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe("/v1/addresses/you%40house");
+    expect(init.method).toBe("PATCH");
+    expect(JSON.parse(init.body).names).toEqual(["Yusuf"]);
+  });
+
+  it("relabels — the handle is a label, the identity is the key", async () => {
+    globalThis.fetch = mockFetch(200, { relabeled: true, from: "ben@house", to: "sam@house" });
+    const res = await house.relabel("ben@house", "sam@house");
+    expect(res.to).toBe("sam@house");
+    const [url, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe("/v1/addresses/ben%40house/relabel");
+    expect(JSON.parse(init.body).handle).toBe("sam@house");
+  });
+
   it("throws a readable error when the house answers with a status", async () => {
     globalThis.fetch = mockFetch(400, { error: { message: "the envelope is missing a thread" } });
     await expect(house.deliver({} as never)).rejects.toThrow(

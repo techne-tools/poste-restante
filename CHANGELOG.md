@@ -6,6 +6,72 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added — alpha fixes: the profile, the shelf, named whispers, develop on the book, and the house's own words (2026-09-11)
+
+A five-item alpha pass from the first real users of the house. Three new
+surfaces, one voice fix, one naming seam:
+
+- **The profile — the resident's self-regard.** Identity change was
+  philosophically grounded (§19: the handle is a label) but had no
+  surface. A new **Profile** room shows the resident the record the house
+  keeps of them — names, pronouns (PATCH, corrections at face value) —
+  and the relabel act. After a relabel the client signs out: the
+  credential row cascades to the new handle, so the old Basic header is
+  dead; the house holds the history, the resident signs in under their
+  new label. (`client/src/Profile.tsx`, `App.tsx` nav)
+- **The shelf — put a thread away without leaving it.** Leave dissolves
+  edges; the shelf keeps them. Migration 025 adds a third participation
+  state (`shelved`) and the `shelve`/`unshelve` letter kinds; the act IS
+  a letter, the archive keeps the history. A shelved thread stays
+  readable (edges stand), but the mailbox and the whisper stop offering
+  it — the whisper's visibility predicate, the gap detectors (including
+  the semantic candidate cloud, which had a real silent gap), and the
+  mailbox query all treat `shelved` like `out` for offering while
+  visibility keeps it readable. HTTP routes `/v1/threads/:id/shelve` and
+  `/unshelve`; MCP tools `shelve_thread`/`unshelve_thread`; the
+  ThreadView shows a calm "this correspondence is put away" surface.
+  The book stays exempt — commons by right.
+- **Named whispers — the house names both correspondences.** The semantic
+  pair gaps (`gap-echo`, `gap-uncited-connection`) now name both threads
+  by subject and state the connection type in the reasoning. A whisper
+  that said "circles another correspondence" now says the pair.
+- **Develop on the book.** The book's vocabulary already had `develop`
+  (new text, fresh settling, stops cleared, supports persist); the
+  reference client only surfaced support/stop/set aside. A develop
+  affordance on every clause card opens an inline draft pre-filled with
+  the current text and writes the develop — the correspondence is one
+  click away.
+- **The house's own words.** `HOUSE_NAME`/`PUB_NAME`/`BOOK_NAME` config
+  + `GET /v1/house/meta`; the client renders the rooms by their
+  community's names. The addresses stay protocol-stable (`@house`,
+  `pub@house`, `book@house` — hashing, dedup, OIDC bindings all key off
+  the identity); the words on the page are the community's. An Islamic
+  community, an addiction group, a study circle — the serif voice speaks
+  their language without the architecture renaming itself. The deep
+  rename (the address domain itself) stays a named deferred decision.
+- **Fix — stale `letterId` import** in `mailbox-drive.test.ts` (the
+  identity-key refactor renamed it; the suite had been failing at load).
+- **Tests** — 4 new integration tests for the shelf (edges stand +
+  mailbox/whisper stop + gaps stop + book exempt + unshelve restores),
+  5 new client API tests; server 248/248 unit + 115 skipped, client 60/60;
+  shelve/leaving/relabel/book integration suites green; typecheck, build.
+- **Browser E2E + two real bugs the browser caught (2026-09-11, deploy pass).**
+  Live house + client (`AUTH_MODE=basic`, dedicated DB/ports) proved the
+  whole pass in the browser: profile → relabel → re-sign-in as the new
+  handle → the archive shows the new handle everywhere → put away →
+  mailbox + whisper quiet, edges stand → bring back → inbox restored.
+  **Bug 1 — relabel left the mailbox empty.** The FKs cascade on
+  `letter_addresses` (the join edges), but the stored letter envelope
+  strings (`from_addr`/`to_addrs`/`cc_addrs`) are plain text: after a
+  relabel the mailbox predicate matched nothing. Fix: the relabel sweep
+  rewrites every letter's stored strings in the same transaction (letter
+  ids unchanged — the id hashes the identity, not the handle). Integration
+  test asserts the sweep. **Bug 2 — the sidebar stayed stale after a
+  shelve.** Putting a thread away quieted the house's offers, but the
+  whisper card lingered until a manual reload. Fix: ThreadView re-pulls
+  the whisper on shelve. Both are now in the CHANGELOG'd pass; the deploy
+  carries migration 025 + the relabel sweep.
+
 ### Added — the door-knock: the house whispers about failed logins (2026-09-10)
 
 A failed password attempt at a resident's door becomes a whisper to that

@@ -83,6 +83,17 @@ export interface HouseConfig {
   /** The address-space boundary: addresses whose domain equals this are the
    *  house's own; everyone else is external and relayable (SPEC §5 #13). */
   houseDomain: string;
+  /** The community's names for the rooms (SPEC §5 #14). The addresses stay
+   *  protocol-stable (`@house` — hashing, dedup, OIDC bindings); the serif
+   *  voice on the page is the community's. An Islamic community, an
+   *  addiction group, a study circle — the words they see are their own.
+   *  Defaults are the house's founding vocabulary; operators may rename
+   *  the rooms without renaming the architecture. */
+  houseName: string;
+  /** The public room's name — what the serif voice calls the pub. */
+  pubName: string;
+  /** The commons' name — what the serif voice calls the book. */
+  bookName: string;
   /** The mailbox sync heartbeat (SPEC §5 #12, the sync drive): how often
    *  the scheduled re-pass re-mirrors provisioned mailbox accounts. 0
    *  disables the scheduler — the house only syncs on start and on each
@@ -155,6 +166,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): HouseConfig {
     smtpBind: env.SMTP_BIND ?? "127.0.0.1:2525",
     smtpOutboundUrl: env.SMTP_OUTBOUND_URL || undefined,
     houseDomain: env.HOUSE_DOMAIN ?? "house",
+    houseName: env.HOUSE_NAME ?? "Poste Restante",
+    pubName: env.PUB_NAME ?? "the pub",
+    bookName: env.BOOK_NAME ?? "the book",
     mailboxSyncIntervalMs: intFromEnv(env.MAILBOX_SYNC_INTERVAL_MS, 0),
     mailboxTlsInsecure: boolFromEnv(env.MAILBOX_TLS_INSECURE, false),
   };

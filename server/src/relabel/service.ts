@@ -53,6 +53,20 @@ export class RelabelService {
         await client.query("ROLLBACK");
         return false;
       }
+      // The stored letter envelope strings (from_addr, to_addrs, cc_addrs)
+      // are plain text — the FKs cascade on the join edges, but the text
+      // arrays do not. The archive must show the new handle everywhere the
+      // old one was (SPEC §19): sweep every letter's stored strings in the
+      // same transaction. Letter ids do NOT change — the id hashes the
+      // identity (migration 022), and the identity just changed its label.
+      await client.query(
+        `UPDATE letters
+         SET from_addr = CASE WHEN from_addr = $1 THEN $2 ELSE from_addr END,
+             to_addrs = array_replace(to_addrs, $1, $2),
+             cc_addrs = array_replace(cc_addrs, $1, $2)
+         WHERE from_addr = $1 OR $1 = ANY(to_addrs) OR $1 = ANY(cc_addrs)`,
+        [address, newHandle],
+      );
       // The old handle is retired — a deadname must not become someone
       // else's name.
       await client.query(

@@ -97,6 +97,15 @@ export interface BookHead {
 
 export type ClauseRole = "offer" | "develop" | "stop" | "support" | "set aside";
 
+/** The house's own words (SPEC §5 #14) — the serif voice on the page.
+ *  The addresses are protocol-stable; the names are the community's. */
+export interface HouseMeta {
+  houseName: string;
+  pubName: string;
+  bookName: string;
+  domain: string;
+}
+
 export interface SearchHit {
   letterId: string;
   score: number;
@@ -268,6 +277,33 @@ export const house = {
     return request<{ addresses: Address[] }>("/addresses");
   },
 
+  /** One address — the resident's own record, by handle. */
+  address(id: string) {
+    return request<Address & { is_public: boolean }>(`/addresses/${encodeURIComponent(id)}`);
+  },
+
+  /** Correct the address book. The house takes corrections at face value.
+   *  Only the address itself may correct its own entry. */
+  correctAddress(id: string, names: string[], pronouns: string | null) {
+    return request<Address & { is_public: boolean }>(`/addresses/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ names, pronouns }),
+    });
+  },
+
+  /** Relabel — the handle is a label, the identity is the key (SPEC §19). */
+  relabel(id: string, handle: string) {
+    return request<{ relabeled: boolean; from: string; to: string }>(
+      `/addresses/${encodeURIComponent(id)}/relabel`,
+      { method: "POST", body: JSON.stringify({ handle }) },
+    );
+  },
+
+  /** The house's own words — the serif voice's names for the rooms. */
+  houseMeta() {
+    return request<HouseMeta>("/house/meta");
+  },
+
   /** The mailbox — pull by default. */
   inbox(address: string, limit = 50) {
     return request<{ address: string; letters: Letter[] }>(
@@ -277,11 +313,15 @@ export const house = {
 
   /** Threads are correspondences. The thread is the unit, not the message.
    *  `participation` is the caller's derived state — 'in' by default; 'out'
-   *  when the caller has left (leaving as first-class, the structural stop). */
+   *  when the caller has left (leaving as first-class, the structural stop);
+   *  'shelved' when the caller has put it away (the shelf, migration 025 —
+   *  the edges stand, but the mailbox and the whisper stop offering it). */
   thread(id: string) {
-    return request<{ thread: string; participation: "in" | "out"; letters: Letter[] }>(
-      `/threads/${encodeURIComponent(id)}`,
-    );
+    return request<{
+      thread: string;
+      participation: "in" | "out" | "shelved";
+      letters: Letter[];
+    }>(`/threads/${encodeURIComponent(id)}`);
   },
 
   /** Leave a thread — the structural stop. The act IS a letter; the archive
@@ -296,8 +336,26 @@ export const house = {
 
   /** Rejoin a thread — the historical edges stand again. */
   joinThread(id: string) {
-    return request<{ id: string; thread: string; participation: "in" | "out" }>(
+    return request<{ id: string; thread: string; participation: "in" | "out" | "shelved" }>(
       `/threads/${encodeURIComponent(id)}/join`,
+      { method: "POST" },
+    );
+  },
+
+  /** Put a thread away — the resident's own shelf. The edges stand, the
+   *  thread stays readable; the mailbox and the whisper stop offering it.
+   *  Bring it back with unshelveThread. */
+  shelveThread(id: string) {
+    return request<{ id: string; thread: string; participation: "out" | "shelved" }>(
+      `/threads/${encodeURIComponent(id)}/shelve`,
+      { method: "POST" },
+    );
+  },
+
+  /** Bring a thread back from the shelf — the edges stood the whole time. */
+  unshelveThread(id: string) {
+    return request<{ id: string; thread: string; participation: "in" | "shelved" }>(
+      `/threads/${encodeURIComponent(id)}/unshelve`,
       { method: "POST" },
     );
   },

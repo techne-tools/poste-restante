@@ -26,7 +26,7 @@ import { createLetterServer } from "../../src/server.js";
 import { AuthService } from "../../src/auth/service.js";
 import { MailboxAccountsService } from "../../src/bridge/mailbox-accounts.js";
 import { parseImapUrl } from "../../src/bridge/imap-writer.js";
-import { letterId } from "../../src/id.js";
+import { letterIdFromCanonical, canonicaliseWith } from "../../src/id.js";
 import type { House } from "../../src/house.js";
 
 const INTEGRATION = process.env.POSTE_RESTANTE_INTEGRATION === "1";
@@ -113,9 +113,9 @@ describe.skipIf(!INTEGRATION)("the mailbox sync drive (integration)", () => {
   let imap: ReturnType<typeof parseImapUrl>;
 
   const IDs = {
-    frame: letterId(FRAME_LETTER as never),
-    inbox: letterId(INBOX_LETTER as never),
-    ghost: letterId(GHOST_LETTER as never),
+    frame: letterIdFromCanonical(canonicaliseWith(FRAME_LETTER as never, new Map())),
+    inbox: letterIdFromCanonical(canonicaliseWith(INBOX_LETTER as never, new Map())),
+    ghost: letterIdFromCanonical(canonicaliseWith(GHOST_LETTER as never, new Map())),
   };
   const messageIds = [IDs.frame, IDs.inbox, IDs.ghost].map((id) => `<${id}@house>`);
 

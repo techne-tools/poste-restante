@@ -39,6 +39,11 @@ export default function Book({ onError, initialClause }: Props) {
   const [draft, setDraft] = useState("");
   const [draftBinding, setDraftBinding] = useState(false);
   const [acting, setActing] = useState<string | null>(null);
+  /** The thread being developed — the inline draft that continues the
+   *  correspondence with new text (fresh settling, stops cleared,
+   *  supports persist). */
+  const [developing, setDeveloping] = useState<string | null>(null);
+  const [developDraft, setDevelopDraft] = useState("");
 
   const refresh = useCallback(async () => {
     try {
@@ -138,6 +143,30 @@ export default function Book({ onError, initialClause }: Props) {
     [openThread, onError],
   );
 
+  /** Open the develop draft pre-filled with the clause's current text —
+   *  a develop continues the correspondence with new wording. */
+  const startDevelop = useCallback((thread: string, text: string) => {
+    setThreadLetters(null);
+    setOpenThread(thread);
+    setDevelopDraft(text);
+    setDeveloping(thread);
+  }, []);
+
+  const develop = useCallback(async () => {
+    if (!developing || !developDraft.trim()) return;
+    setActing(developing);
+    try {
+      await house.actOnBook({ role: "develop", continues: developing, text: developDraft });
+      setDeveloping(null);
+      setDevelopDraft("");
+      await refresh();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "the book could not hold this develop");
+    } finally {
+      setActing(null);
+    }
+  }, [developing, developDraft, refresh, onError]);
+
   if (loading) return <p className="empty">Opening the book…</p>;
   if (!head) return <p className="empty">The book is closed.</p>;
 
@@ -181,10 +210,37 @@ export default function Book({ onError, initialClause }: Props) {
                 <span>offered by {c.proposedBy}</span>
                 {c.vouches > 0 && <span>{c.vouches} support{c.vouches === 1 ? "" : "s"}</span>}
                 {c.objections > 0 && <span>{c.objections} stop{c.objections === 1 ? "" : "s"}</span>}
-                <button className="clause-toggle" onClick={() => openClause(c.thread)}>
-                  {openThread === c.thread ? "the correspondence" : "the correspondence"}
-                </button>
+                <div className="clause-actions">
+                  <button
+                    className="clause-act"
+                    disabled={acting === c.thread}
+                    onClick={() => startDevelop(c.thread, c.text)}
+                  >
+                    develop
+                  </button>
+                  <button className="clause-toggle" onClick={() => openClause(c.thread)}>
+                    {openThread === c.thread ? "the correspondence" : "the correspondence"}
+                  </button>
+                </div>
               </div>
+              {developing === c.thread && (
+                <div className="clause-develop">
+                  <textarea
+                    className="book-draft"
+                    value={developDraft}
+                    onChange={(e) => setDevelopDraft(e.target.value)}
+                    rows={4}
+                  />
+                  <div className="book-propose-actions">
+                    <button className="clause-act" disabled={acting === c.thread || !developDraft.trim()} onClick={develop}>
+                      {acting === c.thread ? "…" : "Develop the norm"}
+                    </button>
+                    <button className="door-link" onClick={() => setDeveloping(null)} disabled={acting === c.thread}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
               {openThread === c.thread && threadLetters && (
                 <div className="clause-thread">
                   {threadLetters.map((l) => (
@@ -252,10 +308,43 @@ export default function Book({ onError, initialClause }: Props) {
                     {acting === c.thread ? "…" : "set aside"}
                   </button>
                 )}
+                <button
+                  className="clause-act"
+                  disabled={acting === c.thread}
+                  onClick={() => startDevelop(c.thread, c.text)}
+                >
+                  develop
+                </button>
                 <button className="clause-toggle" onClick={() => openClause(c.thread)}>
                   the correspondence
                 </button>
               </div>
+              {developing === c.thread && (
+                <div className="clause-develop">
+                  <textarea
+                    className="book-draft"
+                    value={developDraft}
+                    onChange={(e) => setDevelopDraft(e.target.value)}
+                    rows={4}
+                  />
+                  <div className="book-propose-actions">
+                    <button
+                      className="clause-act"
+                      disabled={acting === c.thread || !developDraft.trim()}
+                      onClick={develop}
+                    >
+                      {acting === c.thread ? "…" : "Develop the norm"}
+                    </button>
+                    <button
+                      className="door-link"
+                      onClick={() => setDeveloping(null)}
+                      disabled={acting === c.thread}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
               {openThread === c.thread && threadLetters && (
                 <div className="clause-thread">
                   {threadLetters.map((l) => (

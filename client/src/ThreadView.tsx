@@ -9,6 +9,9 @@ interface Props {
   threadId: string;
   onError: (msg: string) => void;
   onBack: () => void;
+  /** The whisper re-pulls when a thread is put away — shelving quiets
+   *  the house's offers in the same breath. */
+  onWhisperRefresh?: () => void;
 }
 
 /**
@@ -22,10 +25,17 @@ interface Props {
  * leaver's edges dissolve. The left state renders calmly: "you have left
  * this correspondence" with a rejoin action. Symmetric by construction —
  * the move that protects you from someone protects them from you.
+ *
+ * Putting away as the shelf: a resident may put a thread away without
+ * leaving it (migration 025) — the edges stand, the letters stay
+ * readable, the mailbox and the whisper stop offering it. The shelved
+ * state renders as its own quiet surface: "this correspondence is put
+ * away" with a bring-back action. Gentler than leave: the shelf keeps
+ * the correspondence in the archive; leave dissolves the edges.
  */
-export default function ThreadView({ threadId, onError, onBack }: Props) {
+export default function ThreadView({ threadId, onError, onBack, onWhisperRefresh }: Props) {
   const [letters, setLetters] = useState<Letter[]>([]);
-  const [participation, setParticipation] = useState<"in" | "out">("in");
+  const [participation, setParticipation] = useState<"in" | "out" | "shelved">("in");
   const [selected, setSelected] = useState<Letter | null>(null);
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState(false);
@@ -65,6 +75,33 @@ export default function ThreadView({ threadId, onError, onBack }: Props) {
       await load();
     } catch (err) {
       onError(err instanceof Error ? err.message : "the house could not hold this rejoin");
+    } finally {
+      setActing(false);
+    }
+  }, [threadId, load, onError]);
+
+  const putAway = useCallback(async () => {
+    setActing(true);
+    try {
+      await house.shelveThread(threadId);
+      await load();
+      // The house stopped offering the thread — the sidebar must stop
+      // showing it in the same breath.
+      onWhisperRefresh?.();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "the house could not put this away");
+    } finally {
+      setActing(false);
+    }
+  }, [threadId, load, onError, onWhisperRefresh]);
+
+  const bringBack = useCallback(async () => {
+    setActing(true);
+    try {
+      await house.unshelveThread(threadId);
+      await load();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "the house could not bring this back");
     } finally {
       setActing(false);
     }
@@ -115,6 +152,17 @@ export default function ThreadView({ threadId, onError, onBack }: Props) {
                 {acting ? "…" : "Rejoin this correspondence"}
               </button>
             </div>
+          ) : participation === "shelved" ? (
+            <div className="thread-left">
+              <p className="empty">This correspondence is put away.</p>
+              <p className="book-hint">
+                You are still party to it — the edges stand, the letters stay in the archive.
+                The mailbox and the whisper will not offer it until you bring it back.
+              </p>
+              <button className="primary" onClick={bringBack} disabled={acting}>
+                {acting ? "…" : "Bring it back"}
+              </button>
+            </div>
           ) : (
             <>
               <div className="letter-list">
@@ -142,6 +190,9 @@ export default function ThreadView({ threadId, onError, onBack }: Props) {
                 ))}
               </div>
               <div className="thread-actions">
+                <button className="clause-act" onClick={putAway} disabled={acting}>
+                  {acting ? "…" : "Put this correspondence away"}
+                </button>
                 <button className="clause-act" onClick={leave} disabled={acting}>
                   {acting ? "…" : "Leave this correspondence"}
                 </button>

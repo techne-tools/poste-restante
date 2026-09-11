@@ -111,6 +111,18 @@ describe.skipIf(!INTEGRATION)("relabel (integration)", () => {
     );
     expect(edge.rows).toHaveLength(1);
 
+    // The stored envelope strings swept — the archive shows the new
+    // handle everywhere the old one was (SPEC §19). The letter id did NOT
+    // change (the id hashes the identity, not the handle).
+    const swept = await house.db.pool.query<{ from_addr: string; to_addrs: string[] }>(
+      `SELECT from_addr, to_addrs FROM letters WHERE id = $1`,
+      [letterId],
+    );
+    expect(swept.rows).toHaveLength(1);
+    expect(swept.rows[0].from_addr).toBe("sam@house");
+    expect(swept.rows[0].to_addrs).toContain("sam@house");
+    expect(swept.rows[0].to_addrs).not.toContain("ben@house");
+
     // The old handle is retired — a deadname must not become someone
     // else's name.
     const retired = await house.db.pool.query<{ handle: string }>(

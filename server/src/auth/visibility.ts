@@ -23,6 +23,8 @@ export interface LetterParty {
   cc_addrs: string[];
 }
 
+export type ParticipationLike = "in" | "out" | "shelved";
+
 /** A letter is public iff pub@house is a participant. */
 export function isPublicLetter(l: LetterParty): boolean {
   return (
@@ -61,20 +63,24 @@ export function isPublicAddress(addr: { is_public: boolean } | null): boolean {
 export function isVisibleTo(
   l: LetterParty & { thread_id: string },
   address: string,
-  participation: "in" | "out" = "in",
+  participation: ParticipationLike = "in",
 ): boolean {
   if (isPublicLetter(l)) return true;
   if (participation === "out") return false;
+  // 'shelved' stays visible: putting a thread away is not leaving — the
+  // edges stand, the letters stay readable (only the mailbox and the
+  // whisper stop offering it).
   return isParticipant(l, address);
 }
 
 /** Filter letters by visibility with the caller's participation states
- *  (thread_id → 'in' | 'out'; absent means 'in' — the historical edges
- *  stand). Use after fetching the states for the letters' threads. */
+ *  (thread_id → 'in' | 'out' | 'shelved'; absent means 'in' — the
+ *  historical edges stand). Use after fetching the states for the
+ *  letters' threads. */
 export function filterVisible<T extends LetterParty & { thread_id: string }>(
   letters: T[],
   address: string,
-  participation: Map<string, "in" | "out">,
+  participation: Map<string, ParticipationLike>,
 ): T[] {
   return letters.filter(
     (l) => isVisibleTo(l, address, participation.get(l.thread_id) ?? "in"),

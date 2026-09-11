@@ -714,6 +714,50 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
     return c.json({ id: letterId, thread: threadId, participation: newState }, 201);
   });
 
+  // Put away a thread — the shelf (migration 025). The resident keeps the
+  // thread: the edges stand, the letters stay readable from the archive,
+  // and the house stops offering it in the mailbox and the whisper —
+  // until it is brought back. Gentler than leave: leaving dissolves the
+  // edges; shelving shelves the correspondence. The act IS a letter; the
+  // archive keeps the history; participation is derived. The book is
+  // exempt: clause threads are commons by right.
+  app.post("/v1/threads/:id/shelve", async (c) => {
+    const who = await caller(c);
+    if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
+    const threadId = c.req.param("id");
+    const letters = await house.repo.listThread(threadId);
+    if (letters.length === 0) {
+      return c.json({ error: { code: "not_found", message: "no such thread" } }, 404);
+    }
+    if (letters.some((l) => l.kind === "clause")) {
+      return c.json(
+        { error: { code: "invalid_shelve", message: "the book is commons by right — you cannot put it away" } },
+        400,
+      );
+    }
+    const { letterId, state: newState } = await house.participation.act(who.address, threadId, "shelve");
+    return c.json({ id: letterId, thread: threadId, participation: newState }, 201);
+  });
+
+  // Bring a thread back from the shelf — the edges stood the whole time.
+  app.post("/v1/threads/:id/unshelve", async (c) => {
+    const who = await caller(c);
+    if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
+    const threadId = c.req.param("id");
+    const letters = await house.repo.listThread(threadId);
+    if (letters.length === 0) {
+      return c.json({ error: { code: "not_found", message: "no such thread" } }, 404);
+    }
+    if (letters.some((l) => l.kind === "clause")) {
+      return c.json(
+        { error: { code: "invalid_unshelve", message: "the book is commons by right — you cannot put it away" } },
+        400,
+      );
+    }
+    const { letterId, state: newState } = await house.participation.act(who.address, threadId, "unshelve");
+    return c.json({ id: letterId, thread: threadId, participation: newState }, 201);
+  });
+
   // Scrub a thread — the safety move (SPEC §19). Deletes every letter the
   // caller is party to in the thread, plus the thread, payloads, qdrant
   // points, and whispers pointing at it. The pipeline cascades deletes
@@ -904,6 +948,24 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
     if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
     const created = await house.whisper.detectGaps(who.address);
     return c.json({ created: created.map((w) => w.id) });
+  });
+
+  // ── The house's own words ───────────────────────────────────────────────
+
+  // The serif voice's names for the rooms (SPEC §5 #14). The addresses are
+  // protocol-stable (@house, pub@house, book@house); the words on the page
+  // are the community's. A residential request answers with the house's
+  // self-regard so the client can render its own rooms by name — an
+  // Islamic community calls them what it calls them. No sensitive state.
+  app.get("/v1/house/meta", async (c) => {
+    const who = await caller(c);
+    if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
+    return c.json({
+      houseName: house.config.houseName,
+      pubName: house.config.pubName,
+      bookName: house.config.bookName,
+      domain: house.config.houseDomain,
+    });
   });
 
   // ── The house book ────────────────────────────────────────────────────────

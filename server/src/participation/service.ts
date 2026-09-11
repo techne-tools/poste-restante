@@ -35,7 +35,7 @@ import type { Logger } from "../pipeline/logger.js";
 import type { IngestionPipeline } from "../pipeline/pipeline.js";
 import type { Letter } from "../types.js";
 
-export type ParticipationState = "in" | "out";
+export type ParticipationState = "in" | "out" | "shelved";
 
 export interface ParticipationRow {
   thread_id: string;
@@ -60,10 +60,11 @@ export class ParticipationService {
   async act(
     who: string,
     threadId: string,
-    kind: "leave" | "join",
+    kind: "leave" | "join" | "shelve" | "unshelve",
   ): Promise<{ letterId: string; state: ParticipationState }> {
     // The letter is addressed to the thread's current participants — the
-    // act is the correspondence. The leaver is `from`; the others receive.
+    // act is the correspondence. The leaver/shelver is `from`; the others
+    // receive.
     const { rows } = await this.pool.query<{ address_id: string }>(
       `SELECT DISTINCT la.address_id
        FROM letter_addresses la
@@ -74,6 +75,19 @@ export class ParticipationService {
     const to = rows.map((r) => r.address_id);
     if (to.length === 0) to.push(who); // a thread with no other participants — the letter is to oneself
 
+    const subjects: Record<typeof kind, string> = {
+      leave: "i am leaving this correspondence",
+      join: "i am rejoining this correspondence",
+      shelve: "i am putting this correspondence away",
+      unshelve: "i am bringing this correspondence back",
+    };
+    const bodies: Record<typeof kind, string> = {
+      leave: "i am leaving this correspondence. the archive keeps the history; i am no longer party to it.",
+      join: "i am rejoining this correspondence. the historical edges stand again.",
+      shelve: "i am putting this correspondence away. the edges stay; the mailbox and the whisper will not offer it until i bring it back.",
+      unshelve: "i am bringing this correspondence back. the mailbox and the whisper will offer it again.",
+    };
+
     const letter: Letter = {
       envelope: {
         from: who,
@@ -82,15 +96,12 @@ export class ParticipationService {
         thread: threadId,
         kind,
         lang: "en-AU",
-        subject: kind === "leave" ? "i am leaving this correspondence" : "i am rejoining this correspondence",
+        subject: subjects[kind],
       },
       time: { gregorian: new Date().toISOString(), frames: [] },
       body: {
         format: "markdown",
-        content:
-          kind === "leave"
-            ? "i am leaving this correspondence. the archive keeps the history; i am no longer party to it."
-            : "i am rejoining this correspondence. the historical edges stand again.",
+        content: bodies[kind],
       },
     };
 
@@ -109,10 +120,11 @@ export class ParticipationService {
    */
   async record(letter: Letter): Promise<ParticipationState> {
     const kind = letter.envelope.kind;
-    if (kind !== "leave" && kind !== "join") {
-      throw new Error("participation:record expects a leave or join letter");
+    if (kind !== "leave" && kind !== "join" && kind !== "shelve" && kind !== "unshelve") {
+      throw new Error("participation:record expects a leave, join, shelve, or unshelve letter");
     }
-    const state: ParticipationState = kind === "leave" ? "out" : "in";
+    const state: ParticipationState =
+      kind === "leave" ? "out" : kind === "shelve" ? "shelved" : "in";
     const receivedAt = new Date(letter.time.gregorian);
     const letterId = letter.id ?? "";
 
@@ -147,7 +159,7 @@ export class ParticipationService {
     return rows[0]?.state ?? "in";
   }
 
-  /** Re-derive the participation cache from the leave/join letters
+  /** Re-derive the participation cache from the leave/join/shelve letters
    *  (idempotent — the cache is rebuilt from the letters; the letters are
    *  the source of truth). Runs on demand; the house never needs a cron. */
   async reconcile(): Promise<void> {
@@ -160,10 +172,14 @@ export class ParticipationService {
     }>(
       `SELECT DISTINCT ON (l.thread_id, l.from_addr)
               l.thread_id, l.from_addr AS address_id,
-              CASE WHEN l.kind = 'leave' THEN 'out' ELSE 'in' END AS state,
+              CASE l.kind
+                WHEN 'leave' THEN 'out'
+                WHEN 'shelve' THEN 'shelved'
+                ELSE 'in'
+              END AS state,
               l.id AS since_letter_id, l.received_at AS since_received_at
        FROM letters l
-       WHERE l.kind IN ('leave','join')
+       WHERE l.kind IN ('leave','join','shelve','unshelve')
        ORDER BY l.thread_id, l.from_addr, l.received_at DESC`,
     );
     await this.pool.query("DELETE FROM thread_participation");
