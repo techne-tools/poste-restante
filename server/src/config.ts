@@ -94,6 +94,14 @@ export interface HouseConfig {
   pubName: string;
   /** The commons' name — what the serif voice calls the book. */
   bookName: string;
+  /** The remaining rooms' names — the nav and the whisper sidebar read from
+   *  these, so a community renames every room, not just the three above. */
+  mailboxName: string;
+  archiveName: string;
+  addressesName: string;
+  profileName: string;
+  writeName: string;
+  whisperName: string;
   /** The mailbox sync heartbeat (SPEC §5 #12, the sync drive): how often
    *  the scheduled re-pass re-mirrors provisioned mailbox accounts. 0
    *  disables the scheduler — the house only syncs on start and on each
@@ -169,6 +177,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): HouseConfig {
     houseName: env.HOUSE_NAME ?? "Poste Restante",
     pubName: env.PUB_NAME ?? "the pub",
     bookName: env.BOOK_NAME ?? "the book",
+    mailboxName: env.MAILBOX_NAME ?? "the mailbox",
+    archiveName: env.ARCHIVE_NAME ?? "the archive",
+    addressesName: env.ADDRESSES_NAME ?? "the address book",
+    profileName: env.PROFILE_NAME ?? "your record",
+    writeName: env.WRITE_NAME ?? "the writing desk",
+    whisperName: env.WHISPER_NAME ?? "the whisper",
     mailboxSyncIntervalMs: intFromEnv(env.MAILBOX_SYNC_INTERVAL_MS, 0),
     mailboxTlsInsecure: boolFromEnv(env.MAILBOX_TLS_INSECURE, false),
   };

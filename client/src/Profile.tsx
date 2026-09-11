@@ -11,6 +11,8 @@ interface Props {
    *  Basic header is stale). The house holds the history; the resident
    *  signs in under their new label. */
   onRelabeled: (newHandle: string) => void;
+  /** The community's name for the room — GET /v1/house/meta. */
+  name?: string;
 }
 
 /**
@@ -23,7 +25,7 @@ interface Props {
  * never changes who you are — the edges, the letters, the trust all stay.
  * The old handle is retired. Quiet by default: no broadcast.
  */
-export default function Profile({ onError, address, onRelabeled }: Props) {
+export default function Profile({ onError, address, onRelabeled, name }: Props) {
   const [record, setRecord] = useState<Address | null>(null);
   const [namesText, setNamesText] = useState("");
   const [pronouns, setPronouns] = useState("");
@@ -91,8 +93,8 @@ export default function Profile({ onError, address, onRelabeled }: Props) {
 
   return (
     <div className="profile">
-      <div className="pub-ledger" aria-label="Your record">
-        <h2>Your record</h2>
+      <div className="ledger" aria-label="your record">
+        <h2>{name ?? "your record"}</h2>
         <span className="address">{record.id}</span>
       </div>
 

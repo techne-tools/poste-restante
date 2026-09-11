@@ -964,6 +964,12 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
       houseName: house.config.houseName,
       pubName: house.config.pubName,
       bookName: house.config.bookName,
+      mailboxName: house.config.mailboxName,
+      archiveName: house.config.archiveName,
+      addressesName: house.config.addressesName,
+      profileName: house.config.profileName,
+      writeName: house.config.writeName,
+      whisperName: house.config.whisperName,
       domain: house.config.houseDomain,
     });
   });

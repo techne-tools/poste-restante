@@ -140,10 +140,18 @@ describe("house client", () => {
       houseName: "Poste Restante",
       pubName: "the pub",
       bookName: "the book",
+      mailboxName: "the mailbox",
+      archiveName: "the archive",
+      addressesName: "the address book",
+      profileName: "your record",
+      writeName: "the writing desk",
+      whisperName: "the whisper",
       domain: "house",
     });
     const res = await house.houseMeta();
     expect(res.pubName).toBe("the pub");
+    expect(res.mailboxName).toBe("the mailbox");
+    expect(res.whisperName).toBe("the whisper");
     const [url] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(url).toBe("/v1/house/meta");
   });

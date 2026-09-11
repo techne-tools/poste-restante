@@ -45,6 +45,21 @@ Callsheet's lineage, extended to the house:
 
 **Interaction contract.** Presence not pressure — hold, never ping; visible not sent. No pings, no badges, no counts, no alert tones. No red for errors (ink-secondary grey). Hover/focus never lowers contrast; every focusable element has an accent `:focus-visible` ring.
 
+## Adherence Rules
+
+The checklist a new surface must pass before it joins the house (distilled from the four adherence passes over the alpha surfaces, 2026-09-11):
+
+1. **One accent, ≤2 uses per surface.** The seal is a punctuation mark, never a fill or a wash. When in doubt, ink.
+2. **Three voices, never blurred.** Serif is the writer (headings, ledes, signoffs). Sans is the reader (body, UI, buttons). Mono is the machine (addresses, frames, kind labels, metadata — never body prose).
+3. **Every surface is made of letters.** A letter reads as a letter: envelope, serif subject, quiet mono frames, sans body, italic signoff — not a chat bubble, not a feed card.
+4. **No class ships without a rule.** New markup gets its `styles.css` rule in the same change. `.empty` is for empty pages only; a state line is its own block (`.thread-state`).
+5. **Buttons rest in ink; the seal arrives on hover.** A disabled control looks held (no fill, hairline border, faint ink), never half-lit.
+6. **No red, no pings, no badges, no counts.** Errors are ink-secondary grey and dismissible. Calm is the default.
+7. **Contrast only rises.** Hover, focus, and active never move text toward the background. Every focusable element carries the accent `:focus-visible` ring.
+8. **Actions mean what they say.** Never render a control that resolves to nothing; a pick-up or ignore is one tap and reversible-feeling.
+9. **The house's words are the community's.** Any user-visible room name reads from `GET /v1/house/meta`, never a hardcoded label.
+10. **One pattern, one rule.** A shared shape gets one class (one `.ledger`, one `.thread-state`), referenced everywhere — never a copy per room.
+
 ## What this is not
 
 - Not a feed. No infinite scroll, no engagement, no "you might also like."

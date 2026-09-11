@@ -103,6 +103,12 @@ export interface HouseMeta {
   houseName: string;
   pubName: string;
   bookName: string;
+  mailboxName: string;
+  archiveName: string;
+  addressesName: string;
+  profileName: string;
+  writeName: string;
+  whisperName: string;
   domain: string;
 }
 

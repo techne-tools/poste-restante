@@ -18,6 +18,8 @@ interface Props {
   onPost?: () => void;
   /** Back to the door (login) — used when the guest finds the pub closed. */
   onEnterHouse?: () => void;
+  /** The community's name for the room — GET /v1/house/meta. */
+  name?: string;
 }
 
 /**
@@ -29,7 +31,7 @@ interface Props {
  * voice). The pub is an address (pub@house), not a separate mechanism —
  * everything is mail.
  */
-export default function Pub({ onError, onReply, onPost, onEnterHouse }: Props) {
+export default function Pub({ onError, onReply, onPost, onEnterHouse, name }: Props) {
   const [letters, setLetters] = useState<Letter[]>([]);
   const [selected, setSelected] = useState<Letter | null>(null);
   const [openThread, setOpenThread] = useState<string | null>(null);
@@ -66,8 +68,8 @@ export default function Pub({ onError, onReply, onPost, onEnterHouse }: Props) {
   if (closed) {
     return (
       <div className="pub-closed">
-        <div className="pub-ledger" aria-label="The pub">
-          <h2>The pub</h2>
+        <div className="ledger" aria-label="the pub">
+          <h2>{name ?? "the pub"}</h2>
           <span className="address">pub@house</span>
         </div>
         <p className="empty">The pub is closed to visitors tonight.</p>
@@ -95,7 +97,7 @@ export default function Pub({ onError, onReply, onPost, onEnterHouse }: Props) {
           >
             ← Back to the pub
           </button>
-          <div className="pub-ledger" aria-label="A public conversation">
+          <div className="ledger" aria-label="a public conversation">
             <h2>{openConv.title}</h2>
             <span className="address">
               {openConv.letters[0]?.envelope.to.join(", ") ?? "pub@house"}
@@ -134,8 +136,8 @@ export default function Pub({ onError, onReply, onPost, onEnterHouse }: Props) {
         </div>
       ) : (
         <div className="pub-board">
-          <div className="pub-ledger" aria-label="The pub — shared public letters">
-            <h2>The pub</h2>
+          <div className="ledger" aria-label="the pub — shared public letters">
+            <h2>{name ?? "the pub"}</h2>
             <span className="address">pub@house</span>
           </div>
           {onPost && (

@@ -7,6 +7,7 @@
  */
 import { z } from "zod";
 import { LETTER_KINDS } from "./types.js";
+import { stripClauseFrontmatter } from "./book/frontmatter.js";
 import type { StoredLetterRow } from "./db/repository.js";
 
 export const FrameSchema = z.object({
@@ -139,7 +140,13 @@ export function toLetter(row: StoredLetterRow) {
     },
     body: {
       format: "markdown" as const,
-      content: row.body,
+      // A clause letter's body begins with the stated-will frontmatter
+      // (the role/continues block). The reading surface never shows it —
+      // the act is the letter, the text is the clause. Stripped here, at
+      // the shared mapper, so every protocol face (HTTP + MCP) returns
+      // letters that read as letters. Derivation keeps stripping for the
+      // engine's own use; the archive stores the full body.
+      content: row.kind === "clause" ? stripClauseFrontmatter(row.body) : row.body,
     },
     receivedAt: row.received_at.toISOString(),
     pinnedAt: row.pinned_at?.toISOString() ?? null,

@@ -159,7 +159,7 @@ export default function Archive({ onError, initialFrame = null }: Props) {
       </div>
 
       <div className="horizon-body">
-        <div className="frame-legend" aria-label="Frames">
+        <div className="frame-legend" aria-label="frames">
           {frames.length === 0 ? (
             <p className="empty">No frames yet — time is still singular.</p>
           ) : (

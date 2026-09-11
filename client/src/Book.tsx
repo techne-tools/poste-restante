@@ -8,6 +8,8 @@ interface Props {
   /** A clause to open on mount — the resident followed a citation from
    *  the whisper: "the household has held this; want to look?" */
   initialClause?: string | null;
+  /** The community's name for the room — GET /v1/house/meta. */
+  name?: string;
 }
 
 /** The state voice — quiet, legible, never a verdict. */
@@ -30,7 +32,7 @@ function doorName(door: string): string {
   return door;
 }
 
-export default function Book({ onError, initialClause }: Props) {
+export default function Book({ onError, initialClause, name }: Props) {
   const [head, setHead] = useState<BookHead | null>(null);
   const [loading, setLoading] = useState(true);
   const [openThread, setOpenThread] = useState<string | null>(null);
@@ -176,8 +178,8 @@ export default function Book({ onError, initialClause }: Props) {
 
   return (
     <div className="book">
-      <div className="book-ledger">
-        <h2>The house book</h2>
+      <div className="ledger">
+        <h2>{name ?? "the book"}</h2>
         <span className="address">book@house</span>
       </div>
 
@@ -210,18 +212,21 @@ export default function Book({ onError, initialClause }: Props) {
                 <span>offered by {c.proposedBy}</span>
                 {c.vouches > 0 && <span>{c.vouches} support{c.vouches === 1 ? "" : "s"}</span>}
                 {c.objections > 0 && <span>{c.objections} stop{c.objections === 1 ? "" : "s"}</span>}
-                <div className="clause-actions">
-                  <button
-                    className="clause-act"
-                    disabled={acting === c.thread}
-                    onClick={() => startDevelop(c.thread, c.text)}
-                  >
-                    develop
-                  </button>
-                  <button className="clause-toggle" onClick={() => openClause(c.thread)}>
-                    {openThread === c.thread ? "the correspondence" : "the correspondence"}
-                  </button>
-                </div>
+              </div>
+              <div className="clause-actions">
+                <button
+                  className="clause-act"
+                  disabled={acting === c.thread}
+                  onClick={() => startDevelop(c.thread, c.text)}
+                >
+                  develop
+                </button>
+                <button
+                  className={`clause-toggle${openThread === c.thread ? " active" : ""}`}
+                  onClick={() => openClause(c.thread)}
+                >
+                  {openThread === c.thread ? "close the correspondence" : "the correspondence"}
+                </button>
               </div>
               {developing === c.thread && (
                 <div className="clause-develop">
@@ -315,8 +320,11 @@ export default function Book({ onError, initialClause }: Props) {
                 >
                   develop
                 </button>
-                <button className="clause-toggle" onClick={() => openClause(c.thread)}>
-                  the correspondence
+                <button
+                  className={`clause-toggle${openThread === c.thread ? " active" : ""}`}
+                  onClick={() => openClause(c.thread)}
+                >
+                  {openThread === c.thread ? "close the correspondence" : "the correspondence"}
                 </button>
               </div>
               {developing === c.thread && (

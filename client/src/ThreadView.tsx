@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import { house } from "./api";
 import type { Letter } from "./api";
 import LetterView from "./LetterView";
@@ -33,6 +34,68 @@ interface Props {
  * away" with a bring-back action. Gentler than leave: the shelf keeps
  * the correspondence in the archive; leave dissolves the edges.
  */
+/**
+ * The put-away and left surfaces — the states where the correspondence is held
+ * but no longer offered. The safety move (scrub) stays available in both; the
+ * put-away surface keeps `Leave` beside it. Exported so the action set can be
+ * unit-tested without the live house.
+ */
+export function ThreadStateSurface({
+  state,
+  acting,
+  scrubControl,
+  onLeave,
+  onRejoin,
+  onBringBack,
+}: {
+  state: "out" | "shelved";
+  acting: boolean;
+  scrubControl: ReactNode;
+  onLeave: () => void;
+  onRejoin: () => void;
+  onBringBack: () => void;
+}) {
+  if (state === "out") {
+    return (
+      <>
+        <div className="thread-state">
+          <p className="state-line">You have left this correspondence.</p>
+          <p className="state-hint">
+            The archive keeps the history; you are no longer party to it. The house
+            has stopped whispering about it. You may rejoin at any time — the
+            historical edges stand again.
+          </p>
+          <button className="primary" onClick={onRejoin} disabled={acting}>
+            {acting ? "…" : "Rejoin this correspondence"}
+          </button>
+        </div>
+        <div className="thread-actions">{scrubControl}</div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <div className="thread-state">
+        <p className="state-line">This correspondence is put away.</p>
+        <p className="state-hint">
+          You are still party to it — the edges stand, the letters stay in the archive.
+          The mailbox and the whisper will not offer it until you bring it back.
+        </p>
+        <button className="primary" onClick={onBringBack} disabled={acting}>
+          {acting ? "…" : "Bring it back"}
+        </button>
+      </div>
+      <div className="thread-actions">
+        <button className="clause-act" onClick={onLeave} disabled={acting}>
+          {acting ? "…" : "Leave this correspondence"}
+        </button>
+        {scrubControl}
+      </div>
+    </>
+  );
+}
+
 export default function ThreadView({ threadId, onError, onBack, onWhisperRefresh }: Props) {
   const [letters, setLetters] = useState<Letter[]>([]);
   const [participation, setParticipation] = useState<"in" | "out" | "shelved">("in");
@@ -128,6 +191,24 @@ export default function ThreadView({ threadId, onError, onBack, onWhisperRefresh
     }
   }, [threadId, onError, onBack]);
 
+  // The safety move — available wherever the resident still stands, including
+  // after they put the thread away. The confirm is quiet: no red, two steps.
+  const scrubControl = confirmScrub ? (
+    <span className="scrub-confirm">
+      <span className="scrub-question">Forget your part of this correspondence?</span>
+      <button className="clause-act" onClick={scrub} disabled={acting}>
+        {acting ? "…" : "Yes, forget it"}
+      </button>
+      <button className="door-link" onClick={() => setConfirmScrub(false)} disabled={acting}>
+        Keep it
+      </button>
+    </span>
+  ) : (
+    <button className="door-link" onClick={() => setConfirmScrub(true)} disabled={acting}>
+      Scrub my part of this thread
+    </button>
+  );
+
   if (loading) return <p className="empty">Opening the correspondence…</p>;
 
   return (
@@ -141,28 +222,23 @@ export default function ThreadView({ threadId, onError, onBack, onWhisperRefresh
         <div>
           <h2 className="thread-title">The correspondence</h2>
           {participation === "out" ? (
-            <div className="thread-left">
-              <p className="empty">You have left this correspondence.</p>
-              <p className="book-hint">
-                The archive keeps the history; you are no longer party to it. The house
-                has stopped whispering about it. You may rejoin at any time — the
-                historical edges stand again.
-              </p>
-              <button className="primary" onClick={rejoin} disabled={acting}>
-                {acting ? "…" : "Rejoin this correspondence"}
-              </button>
-            </div>
+            <ThreadStateSurface
+              state="out"
+              acting={acting}
+              scrubControl={scrubControl}
+              onLeave={leave}
+              onRejoin={rejoin}
+              onBringBack={bringBack}
+            />
           ) : participation === "shelved" ? (
-            <div className="thread-left">
-              <p className="empty">This correspondence is put away.</p>
-              <p className="book-hint">
-                You are still party to it — the edges stand, the letters stay in the archive.
-                The mailbox and the whisper will not offer it until you bring it back.
-              </p>
-              <button className="primary" onClick={bringBack} disabled={acting}>
-                {acting ? "…" : "Bring it back"}
-              </button>
-            </div>
+            <ThreadStateSurface
+              state="shelved"
+              acting={acting}
+              scrubControl={scrubControl}
+              onLeave={leave}
+              onRejoin={rejoin}
+              onBringBack={bringBack}
+            />
           ) : (
             <>
               <div className="letter-list">
@@ -196,21 +272,7 @@ export default function ThreadView({ threadId, onError, onBack, onWhisperRefresh
                 <button className="clause-act" onClick={leave} disabled={acting}>
                   {acting ? "…" : "Leave this correspondence"}
                 </button>
-                {confirmScrub ? (
-                  <span className="scrub-confirm">
-                    <span className="scrub-question">Forget your part of this correspondence?</span>
-                    <button className="clause-act" onClick={scrub} disabled={acting}>
-                      {acting ? "…" : "Yes, forget it"}
-                    </button>
-                    <button className="door-link" onClick={() => setConfirmScrub(false)} disabled={acting}>
-                      Keep it
-                    </button>
-                  </span>
-                ) : (
-                  <button className="door-link" onClick={() => setConfirmScrub(true)} disabled={acting}>
-                    Scrub my part of this thread
-                  </button>
-                )}
+                {scrubControl}
               </div>
             </>
           )}

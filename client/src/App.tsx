@@ -172,6 +172,7 @@ export default function App() {
     <div className="house">
       <WhisperSidebar
         whispers={whispers}
+        title={meta?.whisperName}
         onOpen={open}
         onDismiss={dismiss}
         onUndismiss={undismiss}
@@ -203,31 +204,32 @@ export default function App() {
         </header>
         <nav className="nav">
           <button className={view === "mailbox" ? "active" : ""} onClick={() => navigate("mailbox")}>
-            Mailbox
+            {meta?.mailboxName ?? "the mailbox"}
           </button>
           <button className={view === "archive" ? "active" : ""} onClick={() => navigate("archive")}>
-            Archive
+            {meta?.archiveName ?? "the archive"}
           </button>
           <button className={view === "pub" ? "active" : ""} onClick={() => navigate("pub")}>
-            {meta?.pubName ?? "Pub"}
+            {meta?.pubName ?? "the pub"}
           </button>
           <button className={view === "book" ? "active" : ""} onClick={() => navigate("book")}>
-            {meta?.bookName ?? "Book"}
+            {meta?.bookName ?? "the book"}
           </button>
           <button className={view === "addresses" ? "active" : ""} onClick={() => navigate("addresses")}>
-            Addresses
+            {meta?.addressesName ?? "the address book"}
           </button>
           <button className={view === "profile" ? "active" : ""} onClick={() => navigate("profile")}>
-            Profile
+            {meta?.profileName ?? "your record"}
           </button>
           <button className={view === "compose" ? "active" : ""} onClick={() => navigate("compose")}>
-            Write
+            {meta?.writeName ?? "the writing desk"}
           </button>
         </nav>
         {view === "mailbox" && <Mailbox onError={setError} address={auth.address} />}
         {view === "archive" && <Archive onError={setError} initialFrame={frameId} />}
         {view === "pub" && (
           <Pub
+            name={meta?.pubName}
             onError={setError}
             onReply={(thread) => {
               setComposeTo("pub@house");
@@ -245,9 +247,9 @@ export default function App() {
             }}
           />
         )}
-        {view === "book" && <Book onError={setError} initialClause={bookClause} />}
+        {view === "book" && <Book name={meta?.bookName} onError={setError} initialClause={bookClause} />}
         {view === "addresses" && <AddressBook onError={setError} onCompose={composeToAddress} />}
-        {view === "profile" && <Profile onError={setError} address={auth.address} onRelabeled={relabeled} />}
+        {view === "profile" && <Profile name={meta?.profileName} onError={setError} address={auth.address} onRelabeled={relabeled} />}
         {view === "thread" && threadId && (
           <ThreadView
             threadId={threadId}

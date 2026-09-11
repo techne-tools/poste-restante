@@ -6,6 +6,83 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed — the clause frontmatter stays in the archive, out of the reading surface (2026-09-11)
+
+A support act rendered as a wall of raw protocol in the book's correspondence:
+the act stores a letter whose body begins with the stated-will block
+(`role:` / `continues:` inside a ```clause fence), and the clause thread readers
+returned that raw body. `renderMarkdown` deliberately has no fenced-code
+support, so the client showed the plumbing. Now `toLetter()` strips the
+frontmatter at serve time — one mapper, shared by the HTTP face
+(`GET /v1/book/threads/:id`) and MCP `read_clause` — so letters read as
+letters. The archive keeps the full body; the engine keeps its own strip;
+plain letters untouched. New `toLetter.test.ts` (3): strips, keeps trailing
+text, plain body untouched. Server 251/251 unit, client 65/65, integration
+14/14 (book + citation), typecheck, build.
+
+### Changed — the rooms speak the house's register (2026-09-11)
+
+The five new room names defaulted title-cased against the voice the pub and
+the book set. A room name is a place-word: article + lowercase, like "the
+pub" and "the book". `MAILBOX_NAME`/`ARCHIVE_NAME`/`ADDRESSES_NAME`/
+`PROFILE_NAME`/`WRITE_NAME`/`WHISPER_NAME` now default to "the mailbox",
+"the archive", "the address book", "your record", "the writing desk", "the
+whisper"; the client fallbacks and the ledger aria-labels follow. The IMAP
+folder constant `Archive` is unchanged — that is a protocol namespace beside
+`Inbox`/`Sent`, not a composed label.
+
+### Changed — design adherence: the alpha surfaces held to the bound language (2026-09-11)
+
+A four-pass adherence audit of the alpha surfaces against
+`.impeccable/design.json` and the bound specimen closed eleven findings. Ten
+were fixes; one carried the house's own words to every room.
+
+- **The missing rules are written.** `.thread-state`, `.thread-actions`,
+  `.scrub-confirm`, `.scrub-question`, and `.book-door` now exist in
+  `styles.css`; `ThreadView`'s put-away and left states render `.thread-state`
+  (serif state line, sans hint, one action) instead of the full-page `.empty`,
+  which is kept for true empties.
+- **The primary is decided.** `button.primary` matches the bound specimen —
+  ink at rest, seal on hover — so the seal stays a punctuation mark, never the
+  resting state of every action. A deliberate `:disabled` (no fill, hairline
+  border, faint ink) replaces the browser's half-lit default.
+- **The house's own words reach every room.** `MAILBOX_NAME`, `ARCHIVE_NAME`,
+  `ADDRESSES_NAME`, `PROFILE_NAME`, `WRITE_NAME`, `WHISPER_NAME` join the three
+  room names; `GET /v1/house/meta` carries them and the nav and the whisper
+  sidebar render by them. The nav wraps, so a community's word of any length
+  holds its shape.
+- **The door-knock whisper stops offering an inert `Open`.** The card renders
+  `Open` only when the whisper carries a `targetThread` or a `targetFrame` —
+  the two things `App.open()` can act on. A knock now stands on `Write back`
+  and `Dismiss` alone.
+- **The clause actions leave the metadata line.** A standing clause's
+  `.clause-actions` is a sibling of `.clause-meta`, mirroring the offered
+  clause; the develop affordance and the correspondence toggle sit on their own
+  row.
+- **One ledger, three rooms.** `.pub-ledger` and `.book-ledger` collapse into a
+  single `.ledger`, shared by the pub, the book, and the profile.
+- **The shelf keeps its safety moves.** One `scrubControl` renders in every
+  participation state; the put-away surface offers `Leave` beside it, the left
+  surface keeps `Scrub`. A resident can walk away, or forget, without first
+  bringing the thread back.
+- **The correspondence toggle confirms its state.** Its label reads `close the
+  correspondence` while open, and `.clause-toggle.active` gives it the house's
+  ink treatment.
+- **One shelf glyph.** `shelve` and `unshelve` both render `▽`; the word
+  carries the direction.
+- **The room headings read the house's words too.** The book, the pub, and the
+  profile render their ledger headings from `bookName` / `pubName` /
+  `profileName`, so a renamed room reads by its name in its own header, not only
+  in the nav.
+- **The shelf's safety moves are tested.** New `threadState.test.tsx` (2): the
+  put-away surface keeps `Leave` and `Scrub`, the left surface keeps `Scrub` and
+  offers `Rejoin`. `ThreadStateSurface` is exported so the action set is checked
+  without the live house.
+- **The pass reports are kept.** The four adherence-pass reports live at
+  `docs/design-adherence/`.
+- **Tests** — new `whisperSidebar.test.tsx` (3) and `threadState.test.tsx` (2).
+  Client 65/65; server 248/248 unit (115 skipped); typecheck, build.
+
 ### Added — alpha fixes: the profile, the shelf, named whispers, develop on the book, and the house's own words (2026-09-11)
 
 A five-item alpha pass from the first real users of the house. Three new

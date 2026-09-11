@@ -2,6 +2,9 @@ import type { Whisper } from "./api";
 
 interface Props {
   whispers: Whisper[];
+  /** The community's name for the house's own voice — the serif voice's
+   *  word for the sidebar. Falls back to "the whisper". */
+  title?: string;
   onOpen: (id: string, w: Whisper) => void;
   onDismiss: (id: string) => void;
   onUndismiss: (id: string) => void;
@@ -24,6 +27,7 @@ const KIND_LABEL: Record<Whisper["kind"], string> = {
 
 export default function WhisperSidebar({
   whispers,
+  title,
   onOpen,
   onDismiss,
   onUndismiss,
@@ -34,7 +38,7 @@ export default function WhisperSidebar({
   const unread = whispers.filter((w) => !w.dismissedAt);
   return (
     <aside className="whisper">
-      <h2>Whisper</h2>
+      <h2>{title ?? "the whisper"}</h2>
       {unread.length === 0 && <p className="empty">The house is quiet.</p>}
       {unread.map((w) => (
         <div
@@ -62,7 +66,9 @@ export default function WhisperSidebar({
             <button className="primary" onClick={() => onWriteBack(w)}>
               Write back
             </button>
-            <button onClick={() => onOpen(w.id, w)}>Open</button>
+            {(w.targetThread || w.targetFrame) && (
+              <button onClick={() => onOpen(w.id, w)}>Open</button>
+            )}
             {w.dismissedAt ? (
               <button onClick={() => onUndismiss(w.id)}>Keep</button>
             ) : (

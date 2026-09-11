@@ -47,6 +47,7 @@ BRIEF-*.md
 RECON.md
 TASK.md
 REVIEW-*.md
+docs/design-adherence/
 
 # agent-orchestrator station output captures
 .ao-capture/

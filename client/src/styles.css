@@ -274,6 +274,55 @@ a:hover {
   margin: 0 0 var(--space-3);
 }
 
+/* The put-away / left state — a calm status, not an empty page. The serif
+   speaks the state; the sans carries the hint; the action sits below. */
+.thread-state {
+  border: var(--rule);
+  border-left: 2px solid var(--fg);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  padding: var(--space-3) var(--space-4);
+  max-width: 34em;
+}
+
+.thread-state .state-line {
+  font-family: var(--font-display);
+  font-size: var(--step-2);
+  color: var(--fg);
+  margin: 0 0 var(--space-1);
+}
+
+.thread-state .state-hint {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--muted);
+  margin: 0 0 var(--space-3);
+}
+
+/* The correspondence's actions — grouped, with a quiet top rule. */
+.thread-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: var(--rule);
+}
+
+/* The two-step confirm — the question and its two moves, held together. */
+.scrub-confirm {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.scrub-question {
+  font-size: 13px;
+  color: var(--muted);
+}
+
 .letter-row {
   font: inherit;
   background: var(--surface-raised);
@@ -902,16 +951,31 @@ button:hover {
   color: var(--fg);
 }
 
+/* The primary rests in ink and turns to the seal on hover — the bound
+   specimen's treatment (design-language-specimen.html). The seal stays a
+   punctuation mark, never the resting state of every action. */
 button.primary {
+  background: var(--fg);
+  border-color: var(--fg);
+  color: var(--bg);
+}
+
+button.primary:hover {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--surface);
 }
 
-button.primary:hover {
-  background: var(--fg);
-  border-color: var(--fg);
-  color: var(--bg);
+/* A held button should look held, not half-lit. */
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+button.primary:disabled {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--ink-faint);
 }
 
 .search {
@@ -960,6 +1024,7 @@ button.primary:hover {
 
 .nav {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2);
   margin-bottom: var(--space-4);
 }
@@ -1021,7 +1086,9 @@ button.door-link:hover {
   gap: var(--space-2);
 }
 
-.pub-ledger {
+/* The ledger — a room's header. Shared by the pub, the book, and the
+   profile so the strong-ruled title row lives in one place. */
+.ledger {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -1030,13 +1097,13 @@ button.door-link:hover {
   margin-bottom: var(--space-3);
 }
 
-.pub-ledger h2 {
+.ledger h2 {
   margin: 0;
   font-size: 16px;
   color: var(--fg);
 }
 
-.pub-ledger .address {
+.ledger .address {
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--muted);
@@ -1072,27 +1139,6 @@ button.door-link:hover {
   max-width: 720px;
 }
 
-.book-ledger {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  border-bottom: var(--rule-strong);
-  padding-bottom: var(--space-2);
-  margin-bottom: var(--space-3);
-}
-
-.book-ledger h2 {
-  margin: 0;
-  font-size: 16px;
-  color: var(--fg);
-}
-
-.book-ledger .address {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--muted);
-}
-
 .book-doors {
   border: var(--rule);
   border-left: 2px solid var(--fg);
@@ -1110,6 +1156,14 @@ button.door-link:hover {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--fg);
+}
+
+.book-door {
+  margin: 0 0 var(--space-1);
+}
+
+.book-door:last-child {
+  margin-bottom: 0;
 }
 
 .book-section {
@@ -1212,6 +1266,12 @@ button.door-link:hover {
 
 .clause-toggle {
   font-size: 12px;
+}
+
+/* Open — the toggle confirms the state it opened. */
+.clause-toggle.active {
+  border-color: var(--fg);
+  color: var(--fg);
 }
 
 /* The develop draft — continuing the correspondence with new text. */
