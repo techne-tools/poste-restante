@@ -102,14 +102,15 @@ export default function Profile({ onError, address, onRelabeled, name }: Props) 
         <h3>How the address book knows you</h3>
         <p className="book-hint">
           The house takes corrections at face value. A person is a set of names, not first + last;
-          pronouns are free text.
+          pronouns are free text. Your record can carry the real constellation — a legal name, a
+          pet name, a chosen name, a nickname, a handle — in whatever combination is yours.
         </p>
         <label className="compose-field">
           <span className="compose-label">Names</span>
           <input
             value={namesText}
             onChange={(e) => setNamesText(e.target.value)}
-            placeholder="a set of names, comma-separated"
+            placeholder="whatever you are called — a real name, a pet name, a chosen name, a nickname"
           />
         </label>
         <label className="compose-field">
@@ -139,7 +140,7 @@ export default function Profile({ onError, address, onRelabeled, name }: Props) 
           <input
             value={newHandle}
             onChange={(e) => setNewHandle(e.target.value)}
-            placeholder={`${record.id.split("@")[0]}-again@house`}
+            placeholder={`e.g. ${record.id.split("@")[0]}-again@house`}
             autoComplete="off"
           />
         </label>
@@ -155,8 +156,14 @@ export default function Profile({ onError, address, onRelabeled, name }: Props) 
               </button>
             </span>
           ) : (
+            // A correction, exactly like pronouns — same button, same
+            // register. The weight lives in the copy and the two-step
+            // confirm, never in a warning colour. And because relabelling
+            // needs the new handle typed, it is a gated act: quiet until
+            // the text makes it able, then the sheet's fill — a milder
+            // echo of the writing desk's primary.
             <button
-              className="door-link"
+              className="gated"
               onClick={() => setConfirmRelabel(true)}
               disabled={busy || !newHandle.trim()}
             >

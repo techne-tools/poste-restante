@@ -5,6 +5,7 @@ import type { Letter } from "./api";
 import LetterView from "./LetterView";
 import KindTag from "./KindTag";
 import { snippet } from "./markdown";
+import { ThreadActionRow, useThreadMoves } from "./ThreadActions";
 
 interface Props {
   threadId: string;
@@ -101,7 +102,6 @@ export default function ThreadView({ threadId, onError, onBack, onWhisperRefresh
   const [participation, setParticipation] = useState<"in" | "out" | "shelved">("in");
   const [selected, setSelected] = useState<Letter | null>(null);
   const [loading, setLoading] = useState(true);
-  const [acting, setActing] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -119,123 +119,81 @@ export default function ThreadView({ threadId, onError, onBack, onWhisperRefresh
     load();
   }, [load]);
 
-  const leave = useCallback(async () => {
-    setActing(true);
-    try {
-      await house.leaveThread(threadId);
-      await load();
-    } catch (err) {
-      onError(err instanceof Error ? err.message : "the house could not hold this leave");
-    } finally {
-      setActing(false);
-    }
-  }, [threadId, load, onError]);
+  // The correspondence's moves — shared with the mailbox and the archive so
+  // every surface where a resident reads letters carries the same row.
+  // After a move the participation is re-derived from the letters; a scrub
+  // leaves the correspondence entirely (the caller's onBack).
+  const moves = useThreadMoves(threadId, {
+    onError,
+    onWhisperRefresh,
+    onMutated: (move) => {
+      if (move === "scrub") onBack();
+      else void load();
+    },
+  });
+
+  const [surfaceActing, setSurfaceActing] = useState(false);
 
   const rejoin = useCallback(async () => {
-    setActing(true);
+    setSurfaceActing(true);
     try {
       await house.joinThread(threadId);
       await load();
     } catch (err) {
       onError(err instanceof Error ? err.message : "the house could not hold this rejoin");
     } finally {
-      setActing(false);
+      setSurfaceActing(false);
     }
   }, [threadId, load, onError]);
 
-  const putAway = useCallback(async () => {
-    setActing(true);
-    try {
-      await house.shelveThread(threadId);
-      await load();
-      // The house stopped offering the thread — the sidebar must stop
-      // showing it in the same breath.
-      onWhisperRefresh?.();
-    } catch (err) {
-      onError(err instanceof Error ? err.message : "the house could not put this away");
-    } finally {
-      setActing(false);
-    }
-  }, [threadId, load, onError, onWhisperRefresh]);
-
   const bringBack = useCallback(async () => {
-    setActing(true);
+    setSurfaceActing(true);
     try {
       await house.unshelveThread(threadId);
       await load();
     } catch (err) {
       onError(err instanceof Error ? err.message : "the house could not bring this back");
     } finally {
-      setActing(false);
+      setSurfaceActing(false);
     }
   }, [threadId, load, onError]);
-
-  // Scrub — the safety move (SPEC §19). Deletes every letter the caller
-  // is party to in the thread, plus the thread, payloads, qdrant points,
-  // and whispers pointing at it. Unilateral and immediate. The other
-  // party's letters stay; the caller's view of the thread is gone.
-  // Deliberately a two-step: the resident confirms before the house
-  // forgets. The confirmation is quiet — no red, no alarm — the house
-  // holds the boundary without dramatising it.
-  const [confirmScrub, setConfirmScrub] = useState(false);
-  const scrub = useCallback(async () => {
-    setActing(true);
-    try {
-      await house.scrubThread(threadId);
-      onBack();
-    } catch (err) {
-      onError(err instanceof Error ? err.message : "the house could not hold this scrub");
-      setConfirmScrub(false);
-    } finally {
-      setActing(false);
-    }
-  }, [threadId, onError, onBack]);
-
-  // The safety move — available wherever the resident still stands, including
-  // after they put the thread away. The confirm is quiet: no red, two steps.
-  const scrubControl = confirmScrub ? (
-    <span className="scrub-confirm">
-      <span className="scrub-question">Forget your part of this correspondence?</span>
-      <button className="clause-act" onClick={scrub} disabled={acting}>
-        {acting ? "…" : "Yes, forget it"}
-      </button>
-      <button className="door-link" onClick={() => setConfirmScrub(false)} disabled={acting}>
-        Keep it
-      </button>
-    </span>
-  ) : (
-    <button className="door-link" onClick={() => setConfirmScrub(true)} disabled={acting}>
-      Scrub my part of this thread
-    </button>
-  );
 
   if (loading) return <p className="empty">Opening the correspondence…</p>;
 
   return (
     <div>
-      <button onClick={onBack} style={{ marginBottom: "var(--space-3)" }}>
-        ← Back
-      </button>
+      {/* One back button, one layer: from the correspondence list it returns
+          to the room it was opened from. When a letter is open, the letter's
+          own back returns here — the thread button never stacks on top of it. */}
+      {!selected && (
+        <button onClick={onBack} style={{ marginBottom: "var(--space-3)" }}>
+          ← Back
+        </button>
+      )}
       {selected ? (
-        <LetterView letter={selected} onBack={() => setSelected(null)} />
+        <LetterView
+          letter={selected}
+          onBack={() => setSelected(null)}
+          actions={<ThreadActionRow moves={moves} />}
+        />
       ) : (
         <div>
           <h2 className="thread-title">The correspondence</h2>
           {participation === "out" ? (
             <ThreadStateSurface
               state="out"
-              acting={acting}
-              scrubControl={scrubControl}
-              onLeave={leave}
+              acting={surfaceActing}
+              scrubControl={moves.scrubControl}
+              onLeave={moves.leave}
               onRejoin={rejoin}
               onBringBack={bringBack}
             />
           ) : participation === "shelved" ? (
             <ThreadStateSurface
               state="shelved"
-              acting={acting}
-              scrubControl={scrubControl}
-              onLeave={leave}
+              acting={surfaceActing}
+              scrubControl={moves.scrubControl}
+              onLeave={moves.leave}
               onRejoin={rejoin}
               onBringBack={bringBack}
             />
@@ -265,15 +223,7 @@ export default function ThreadView({ threadId, onError, onBack, onWhisperRefresh
                   </button>
                 ))}
               </div>
-              <div className="thread-actions">
-                <button className="clause-act" onClick={putAway} disabled={acting}>
-                  {acting ? "…" : "Put this correspondence away"}
-                </button>
-                <button className="clause-act" onClick={leave} disabled={acting}>
-                  {acting ? "…" : "Leave this correspondence"}
-                </button>
-                {scrubControl}
-              </div>
+              <ThreadActionRow moves={moves} />
             </>
           )}
         </div>

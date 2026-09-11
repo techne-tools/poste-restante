@@ -323,6 +323,18 @@ a:hover {
   color: var(--muted);
 }
 
+/* The safety move as a bordered button — the same shape as its neighbours
+   (put away, leave), but the seal keeps its own colour: text and border
+   use the accent. The move reads as the household's boundary, held
+   without drama — never the pink of a system warning. The confirm keeps
+   the same treatment. Enabled/disabled states live in the button states
+   block below (clause-act/scrub-act). */
+button.scrub-act {
+  color: var(--accent);
+  border-color: var(--accent);
+  font-size: 12px;
+}
+
 .letter-row {
   font: inherit;
   background: var(--surface-raised);
@@ -969,6 +981,36 @@ button.primary:hover {
 /* A held button should look held, not half-lit. */
 button:disabled {
   opacity: 0.45;
+  cursor: default;
+}
+
+/* The small action buttons — "Look for gaps", "Correct the record",
+   "Put this correspondence away", "Leave this correspondence". Quiet
+   rests: hairline border, no fill — a move needs no text to be on the
+   table. The safety move (scrub) keeps the seal's own colour — accent
+   border and text, still no fill; hover goes to ink like every button. */
+button.scrub-act {
+  color: var(--accent);
+  border-color: var(--accent);
+  font-size: 12px;
+}
+
+/* A gated button — one that needs text before it can act ("Change my
+   handle" until a new handle is typed, "Offer to the book" until a
+   clause is drafted). Empty, it rests at the same quiet weight as every
+   other small act — hairline border, no fill, no fade; the moment the
+   text makes it able, it takes the sheet's fill — a milder version of
+   the primary button's activation: the same move, one step quieter. */
+button.gated:enabled {
+  background: var(--surface-raised);
+  color: var(--fg);
+}
+
+button.gated:disabled {
+  /* The global disabled fade must not touch gated buttons — a gated act
+     that is not ready yet should look like every other quiet button,
+     never a ghost. The field itself says why it is quiet. */
+  opacity: 1;
   cursor: default;
 }
 

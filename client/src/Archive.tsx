@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { house } from "./api";
 import type { Letter } from "./api";
 import LetterView from "./LetterView";
+import { ThreadActionRow, useThreadMoves } from "./ThreadActions";
 import KindTag from "./KindTag";
 import { snippet } from "./markdown";
 import {
@@ -17,6 +18,10 @@ interface Props {
   /** A corner offer to hold open — the archive mounts with this frame's
    *  transit line activated, so the empty room is visible in the legend. */
   initialFrame?: string | null;
+  /** The whisper re-pulls when a letter's correspondence is put away from
+   *  the archive — shelving quiets the house's offers in the same breath,
+   *  wherever the move is made. */
+  onWhisperRefresh?: () => void;
 }
 
 /**
@@ -28,7 +33,7 @@ interface Props {
  * in SOME mid-dim, the rest dim. Nothing is removed — the intersection
  * stays visible. Plural time, made visible.
  */
-export default function Archive({ onError, initialFrame = null }: Props) {
+export default function Archive({ onError, initialFrame = null, onWhisperRefresh }: Props) {
   const [letters, setLetters] = useState<Letter[]>([]);
   const [frames, setFrames] = useState<FrameInfo[]>([]);
   const [query, setQuery] = useState("");
@@ -137,6 +142,16 @@ export default function Archive({ onError, initialFrame = null }: Props) {
     [displayed.length],
   );
 
+  // A letter read from the archive belongs to a correspondence. The moves
+  // travel with the letter: reading is exactly when the thought arrives —
+  // put it aside, leave it, or decide it should not have happened. A move
+  // closes the letter and re-reads the room.
+  const moves = useThreadMoves(selected?.envelope.thread ?? null, {
+    onError,
+    onWhisperRefresh,
+    onMutated: () => setSelected(null),
+  });
+
   if (loading) return <p className="empty">Opening the archive…</p>;
 
   return (
@@ -204,7 +219,11 @@ export default function Archive({ onError, initialFrame = null }: Props) {
         </div>
 
         {selected ? (
-          <LetterView letter={selected} onBack={() => setSelected(null)} />
+          <LetterView
+            letter={selected}
+            onBack={() => setSelected(null)}
+            actions={<ThreadActionRow moves={moves} />}
+          />
         ) : (
           <div className="letter-flow">
             {activeFrames.size > 0 && (

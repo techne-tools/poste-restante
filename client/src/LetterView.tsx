@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import { house } from "./api";
 import type { Letter, PayloadMeta } from "./api";
 import KindTag from "./KindTag";
@@ -7,6 +8,12 @@ import { renderMarkdown } from "./markdown";
 interface Props {
   letter: Letter;
   onBack: () => void;
+  /** The correspondence's actions — put away, leave, scrub. Rendered below
+   *  the letter when it is read inside a correspondence (ThreadView), so
+   *  the same moves are on hand whether the resident is scanning the list
+   *  or reading a single letter. Absent elsewhere: a letter read from the
+   *  mailbox or the archive stays a letter, not a thread. */
+  actions?: ReactNode;
 }
 
 /** Is this payload an image or audio the house can render in place? */
@@ -44,7 +51,7 @@ function formatBytes(n: number): string {
  * auth and handed to the renderer as object URLs (revoked on unmount) —
  * plain <img>/<audio> tags cannot carry the Authorization header.
  */
-export default function LetterView({ letter, onBack }: Props) {
+export default function LetterView({ letter, onBack, actions }: Props) {
   const { envelope, time, body } = letter;
   const to = envelope.to.join(", ");
   const frames = time.frames;
@@ -231,6 +238,7 @@ export default function LetterView({ letter, onBack }: Props) {
           </div>
         </details>
       </article>
+      {actions}
     </div>
   );
 }

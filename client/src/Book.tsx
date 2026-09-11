@@ -237,7 +237,10 @@ export default function Book({ onError, initialClause, name }: Props) {
                     rows={4}
                   />
                   <div className="book-propose-actions">
-                    <button className="clause-act" disabled={acting === c.thread || !developDraft.trim()} onClick={develop}>
+                    {/* A gated act — the develop needs new text before it
+                        can go; quiet until then, the sheet's fill once the
+                        draft makes it able (the same rule as the handle). */}
+                    <button className="gated" disabled={acting === c.thread || !developDraft.trim()} onClick={develop}>
                       {acting === c.thread ? "…" : "Develop the norm"}
                     </button>
                     <button className="door-link" onClick={() => setDeveloping(null)} disabled={acting === c.thread}>
@@ -336,8 +339,11 @@ export default function Book({ onError, initialClause, name }: Props) {
                     rows={4}
                   />
                   <div className="book-propose-actions">
+                    {/* A gated act — the develop needs new text before it
+                        can go; quiet until then, the sheet's fill once the
+                        draft makes it able (the same rule as the handle). */}
                     <button
-                      className="clause-act"
+                      className="gated"
                       disabled={acting === c.thread || !developDraft.trim()}
                       onClick={develop}
                     >
@@ -416,7 +422,12 @@ export default function Book({ onError, initialClause, name }: Props) {
           <span>bind the pub's door closed when this stands</span>
         </label>
         <div className="book-propose-actions">
-          <button className="primary" onClick={propose} disabled={proposing || !draft.trim()}>
+          {/* A gated act — the offer needs the norm drafted before it can
+              go; quiet at the same weight as every other button, the
+              sheet's fill once the draft makes it able (the same rule as
+              the handle). The strongest act in the house is still just a
+              letter — it needs no ink of its own. */}
+          <button className="gated" onClick={propose} disabled={proposing || !draft.trim()}>
             {proposing ? "Writing…" : "Offer to the book"}
           </button>
         </div>

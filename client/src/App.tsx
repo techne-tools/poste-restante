@@ -226,7 +226,7 @@ export default function App() {
           </button>
         </nav>
         {view === "mailbox" && <Mailbox onError={setError} address={auth.address} />}
-        {view === "archive" && <Archive onError={setError} initialFrame={frameId} />}
+        {view === "archive" && <Archive onError={setError} initialFrame={frameId} onWhisperRefresh={refreshWhisper} />}
         {view === "pub" && (
           <Pub
             name={meta?.pubName}
