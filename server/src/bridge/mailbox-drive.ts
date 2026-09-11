@@ -69,6 +69,13 @@ export interface MailboxSyncDriveDeps {
     lettersForMailboxSync(address: string): Promise<MailboxSyncSource[]>;
     activeFrameIds(address: string): Promise<string[]>;
   };
+  /** The read-back record target — the house's own per-resident record of
+   *  what was engaged with (structural: LetterReadsService satisfies). The
+   *  drive upserts observed flags; idempotent first-open-wins holds. */
+  reads: {
+    open(letterId: string, address: string): Promise<void>;
+    replied(letterId: string, address: string): Promise<void>;
+  };
   log: Logger;
   /** DEV-ONLY escape hatch for self-signed dev/homelab sidecars (see
    *  `tlsInsecure`). MUST come from an explicit operator env key
@@ -84,6 +91,15 @@ export interface MailboxPassResult {
   address: string;
   folders: number;
   messages: number;
+  /** Letters whose flags the house read back this pass (0 when the writer
+   *  cannot read, or nothing was observed). */
+  reads: number;
+  /** Letters whose \Seen observation changed this pass — the house
+   *  recorded new opens. Distinct from the total read: a pass may observe
+   *  already-opened letters (idempotent first-open-wins) and change none. */
+  opened: number;
+  /** Letters whose \Answered observation changed this pass. */
+  replied: number;
 }
 
 export class MailboxSyncDrive {
@@ -144,17 +160,60 @@ export class MailboxSyncDrive {
     }
   }
 
-  /** A single resident's pass. Resolves the visibility-scoped rows, builds
-   *  the view with the resident's active frame folders, and mirrors it. */
+  /** One resident's pass. Resolves the visibility-scoped rows, builds the
+   *  view, mirrors it, then reads the flags back into the house's own
+   *  record of what the resident engaged with (the learning loop's other
+   *  half — SPEC §5 #12). */
   async syncResident(account: MailboxAccount): Promise<MailboxPassResult> {
+    const writer = this.writerFor(account);
     const sync = new MailboxSync({
       visibleLetters: (address) => this.deps.repo.lettersForMailboxSync(address),
-      write: this.writerFor(account),
+      write: writer,
       log: this.deps.log,
     });
     const activeFrames = await this.deps.repo.activeFrameIds(account.address);
     const result = await sync.syncResident(account.address, activeFrames);
-    return { address: account.address, ...result };
+
+    // The read-back limb — one writer call after the writes. The house
+    // records what the resident read through IMAP (\Seen → opened) and
+    // what threads they answered (\Answered → replied). Idempotent
+    // first-open-wins on the house side; a failure here is logged and
+    // never stops the residents after this one (the next pass
+    // re-converges). Only letters the house itself mirrored can surface —
+    // the writer sees exactly its own Message-IDs.
+    let reads = 0;
+    let opened = 0;
+    let replied = 0;
+    try {
+      const observations = await writer.readBack();
+      reads = observations.length;
+      for (const obs of observations) {
+        try {
+          if (obs.seen) {
+            await this.deps.reads.open(obs.letterId, account.address);
+            opened += 1;
+          }
+          if (obs.answered) {
+            await this.deps.reads.replied(obs.letterId, account.address);
+            replied += 1;
+          }
+        } catch (err) {
+          this.deps.log.warn("mailbox:read-back-error", {
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+      this.deps.log.info("mailbox:read-back", { reads, opened, replied });
+    } catch (err) {
+      this.deps.log.warn("mailbox:read-back-failed", {
+        error: redactUrl(
+          err instanceof Error ? err.message : String(err),
+          account.url,
+        ),
+      });
+    }
+
+    return { address: account.address, ...result, reads, opened, replied };
   }
 
   /** Delta-sync the residents party to one stored letter. The pipeline's

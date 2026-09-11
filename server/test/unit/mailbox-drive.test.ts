@@ -62,6 +62,8 @@ class FakeWriter implements MailboxWriter {
   folders = new Set<string>();
   messages = new Map<string, Set<string>>();
   failures: Record<string, Error> = {};
+  /** What readBack observes — empty by default (nothing to report). */
+  observes: { letterId: string; seen: boolean; answered: boolean }[] = [];
 
   async ensureFolder(name: string): Promise<void> {
     if (this.failures[name]) throw this.failures[name];
@@ -71,6 +73,10 @@ class FakeWriter implements MailboxWriter {
 
   async upsertByUid(_folder: string, _uid: number, _message: never): Promise<boolean> {
     return true;
+  }
+
+  async readBack() {
+    return this.observes;
   }
 }
 
@@ -85,6 +91,10 @@ function deps(
   }> = {},
 ): MailboxSyncDriveDeps & { writer: FakeWriter } {
   const writer = (over.writer instanceof FakeWriter ? over.writer : new FakeWriter()) as FakeWriter;
+  const reads = {
+    open: vi.fn(async () => undefined),
+    replied: vi.fn(async () => undefined),
+  };
   return {
     accounts: {
       list: vi.fn(async () => over.accounts ?? [mkAccount()]),
@@ -93,6 +103,7 @@ function deps(
       lettersForMailboxSync: vi.fn(async (): Promise<MailboxSyncSource[]> => over.rows ?? []),
       activeFrameIds: vi.fn(async (): Promise<string[]> => over.frames ?? []),
     },
+    reads,
     log: { info, warn } as unknown as import("../../src/pipeline/logger.js").Logger,
     tlsInsecure: over.tlsInsecure,
     writerFor:
@@ -139,6 +150,7 @@ describe("MailboxSyncDrive", () => {
           await gate; // hold the pass open
         },
         upsertByUid: async () => true,
+        readBack: async () => [],
       } as MailboxWriter),
     });
     const drive = new MailboxSyncDrive(d, 60_000);
@@ -165,6 +177,7 @@ describe("MailboxSyncDrive", () => {
                 );
               },
               upsertByUid: async () => true,
+              readBack: async () => [],
             } as MailboxWriter)
           : (goodWriter as MailboxWriter),
     });
@@ -189,6 +202,7 @@ describe("MailboxSyncDrive", () => {
           throw fail;
         },
         upsertByUid: async () => true,
+        readBack: async () => [],
       } as MailboxWriter),
     });
     const drive = new MailboxSyncDrive(d, 60_000);
@@ -203,6 +217,50 @@ describe("MailboxSyncDrive", () => {
     const out = redactUrl(message, "imap://you@house.test:house-dev-sidecar@127.0.0.1:11430/");
     expect(out).toBe("boom ***@127.0.0.1:11430 gone");
     expect(out).not.toContain("house-dev-sidecar");
+  });
+
+  it("records read-back flags into the house's read state", async () => {
+    const writer = new FakeWriter();
+    writer.observes = [
+      { letterId: "a1b2c3d4e5f67890abcdef1234567890abcdef1234567890abcdef1234567890", seen: true, answered: false },
+      { letterId: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", seen: true, answered: true },
+      { letterId: "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210", seen: false, answered: false },
+    ];
+    const d = deps({ writer });
+    const drive = new MailboxSyncDrive(d, 60_000);
+    await drive.runPass();
+    expect(d.reads.open).toHaveBeenCalledWith(
+      "a1b2c3d4e5f67890abcdef1234567890abcdef1234567890abcdef1234567890",
+      "you@house",
+    );
+    expect(d.reads.open).toHaveBeenCalledWith(
+      "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "you@house",
+    );
+    expect(d.reads.replied).toHaveBeenCalledWith(
+      "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "you@house",
+    );
+    // Untouched letter — no open, no reply.
+    expect(d.reads.open).not.toHaveBeenCalledWith(
+      "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+      expect.anything(),
+    );
+  });
+
+  it("read-back failure is isolated — logged, never fatal to the pass", async () => {
+    const failing = {
+      ensureFolder: async () => undefined,
+      upsertByUid: async () => true,
+      readBack: async () => {
+        throw new Error("read-back boom");
+      },
+    };
+    const d = deps({ writerFor: () => failing as unknown as MailboxWriter });
+    const drive = new MailboxSyncDrive(d, 60_000);
+    const attempted = await drive.runPass();
+    expect(attempted).toBe(1);
+    expect(warn).toHaveBeenCalledWith("mailbox:read-back-failed", expect.objectContaining({}));
   });
 
   it("start() arms the interval and stop() clears it", async () => {

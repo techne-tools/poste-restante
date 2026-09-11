@@ -276,11 +276,13 @@ export async function buildHouse(
   const retrieval = new Retrieval(db.pool, semantic, embedder);
   const whisper = new WhisperService(db.pool, log, semantic, embedder);
   participation = new ParticipationService(db.pool, pipeline, log);
+  const reads = new LetterReadsService(db.pool);
   outbound = startOutbound({ config, log });
   mailbox = new MailboxSyncDrive(
     {
       accounts: new MailboxAccountsService(db.pool),
       repo,
+      reads,
       log,
       tlsInsecure: config.mailboxTlsInsecure,
     },
@@ -296,7 +298,6 @@ export async function buildHouse(
   const agents = new AgentService(db.pool, repo, pipeline, log);
   const integrations = new IntegrationService(db.pool, pipeline, log);
   const day = new DayProjectionService(db.pool, whisper, book);
-  const reads = new LetterReadsService(db.pool);
   const relabel = new RelabelService(db.pool, log);
 
   return {

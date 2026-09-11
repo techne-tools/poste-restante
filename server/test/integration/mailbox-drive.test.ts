@@ -289,4 +289,50 @@ describe.skipIf(!INTEGRATION)("the mailbox sync drive (integration)", () => {
     // created a mailbox for her — it never reaches the sidecar at all.
     expect(await appearsAnywhere(`<${IDs.ghost}@house>`)).toBe(false);
   });
+
+  it("reads flags back — marking a letter Seen records it as opened", async () => {
+    // The frame letter is already in the sidecar (synced by the first
+    // test). Mark it \Seen from a real IMAP client — as Spark would when
+    // the resident reads it.
+    const client = new ImapFlow(imap);
+    await client.connect();
+    try {
+      const lock = await client.getMailboxLock("Archive");
+      try {
+        const found = await client.fetchAll("1:*", { headers: ["Message-ID"], uid: true }, { uid: true });
+        const match = found.find((m) => (m.headers?.toString("utf-8") ?? "").includes(`<${IDs.frame}@house>`));
+        expect(match).toBeDefined();
+        if (match) {
+          await client.messageFlagsAdd([match.uid], ["\\Seen"], { uid: true });
+        }
+      } finally {
+        lock.release();
+      }
+    } finally {
+      await client.logout();
+    }
+
+    // A pass now reads the flags back into the house's read state.
+    await house.mailbox!.runPass();
+
+    const { rows } = await house.db.pool.query<{ opened_at: Date | null }>(
+      `SELECT opened_at FROM letter_reads WHERE letter_id = $1 AND address_id = $2`,
+      [IDs.frame, YOU],
+    );
+    expect(rows[0]?.opened_at).not.toBeNull();
+  });
+
+  it("read-back is per-resident — the resident's own open, never anyone's", async () => {
+    // HERMES has no mailbox account — GHOST's letter in her archive was
+    // never mirrored, so nothing about it can be read back under HERMES.
+    await house.mailbox!.runPass();
+    const { rows } = await house.db.pool.query(
+      `SELECT 1 FROM letter_reads WHERE letter_id = $1`,
+      [IDs.ghost],
+    );
+    expect(rows.length).toBe(0);
+    // The house never attempted a read-back for an accountless address.
+    const attempted = await house.mailbox!.runPass();
+    expect(attempted).toBe(1); // just YOU's account
+  });
 });

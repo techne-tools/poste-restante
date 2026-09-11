@@ -58,6 +58,20 @@ export interface MailboxWriter {
   ensureFolder(name: MailboxFolder): Promise<void>;
   /** Upsert a message by uid. Returns true when the message was appended. */
   upsertByUid(folder: MailboxFolder, uid: number, message: Rfc5322Message): Promise<boolean>;
+  /** Read the flags back off the mailbox — the learning loop's other half
+   *  (SPEC §5 #12). Returns per-letter flag observations for every message
+   *  the house has mirrored (identified by the `Message-ID: <id@house>`
+   *  header). `\Seen\` → opened, `\Answered` → replied. May be a no-op for
+   *  writers that cannot read. */
+  readBack(): Promise<FlagReadBack[]>;
+}
+
+/** One letter's observed flags, read back from a mailbox. The letter is
+ *  identified by the house's own Message-ID, never by IMAP uid. */
+export interface FlagReadBack {
+  letterId: string;
+  seen: boolean;
+  answered: boolean;
 }
 
 /** An RFC5322 message the writer can materialise. Built once, from the

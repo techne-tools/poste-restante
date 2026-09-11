@@ -71,6 +71,10 @@ class FakeWriter implements MailboxWriter {
     this.upsertCalls.push(`${folder}:${uid}`);
     return false;
   }
+
+  async readBack() {
+    return [];
+  }
 }
 
 describe("deriveMailFlags", () => {

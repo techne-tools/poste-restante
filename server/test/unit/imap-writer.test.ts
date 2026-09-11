@@ -56,6 +56,25 @@ describe("ImapMailboxWriter.messageIdOf", () => {
   });
 });
 
+describe("ImapMailboxWriter.letterIdFromMessageId", () => {
+  it("extracts the 64-hex letter id from the house Message-ID", () => {
+    const id = "a1b2c3d4e5f67890abcdef1234567890abcdef1234567890abcdef1234567890";
+    expect(ImapMailboxWriter.letterIdFromMessageId(`<${id}@house>`)).toBe(id);
+  });
+
+  it("tolerates surrounding whitespace", () => {
+    expect(ImapMailboxWriter.letterIdFromMessageId("  <a1b2c3d4e5f67890abcdef1234567890abcdef1234567890abcdef1234567890@house> ")).toBe(
+      "a1b2c3d4e5f67890abcdef1234567890abcdef1234567890abcdef1234567890",
+    );
+  });
+
+  it("returns null for anything that is not a house letter id", () => {
+    expect(ImapMailboxWriter.letterIdFromMessageId("<not-a-hash@house>")).toBeNull();
+    expect(ImapMailboxWriter.letterIdFromMessageId("<a1b2c3@elsewhere>")).toBeNull();
+    expect(ImapMailboxWriter.letterIdFromMessageId("")).toBeNull();
+  });
+});
+
 describe("ImapMailboxWriter logger discipline", () => {
   it("logs event names and counts only, never address or body", () => {
     const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };

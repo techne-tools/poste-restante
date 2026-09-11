@@ -29,7 +29,7 @@
 import { ImapFlow, type ImapFlowOptions } from "imapflow";
 import type { Logger } from "../pipeline/logger.js";
 import type { MailboxFolder } from "./mailbox.js";
-import type { MailboxWriter, Rfc5322Message } from "./sync.js";
+import type { FlagReadBack, MailboxWriter, Rfc5322Message } from "./sync.js";
 
 /** Parse an imap:// URL into imapflow options — same pattern as
  *  `parseSmtpUrl` in outbound.ts: credentials ride in the URL from the
@@ -145,5 +145,69 @@ export class ImapMailboxWriter implements MailboxWriter {
     } finally {
       await client.logout();
     }
+  }
+
+  /** Pull the letter id out of a house Message-ID header value
+   *  (`<a1b2c3…@house>` → `a1b2c3…`). The house's own id — the same
+   *  identity B1 bakes into every mirrored message — never an IMAP uid. */
+  static letterIdFromMessageId(header: string): string | null {
+    const m = /^<([0-9a-f]{64})@house>$/.exec(header.trim());
+    return m ? m[1]! : null;
+  }
+
+  /** Read the flags back for every mirror the house has pushed — the
+   *  learning loop's other half. One connection, walk ALL folders once,
+   *  merge by house letter id (the Archive copy and the frame folder copy
+   *  carry the same Message-ID; either may carry the signal). Bounded by
+   *  the resident's own mailbox; no visibility limb — these messages are
+   *  the ones the house itself wrote for this account. */
+  async readBack(): Promise<FlagReadBack[]> {
+    const client = new ImapFlow(this.options);
+    await client.connect();
+    const merged = new Map<string, FlagReadBack>();
+    try {
+      const folders = await client.list();
+      for (const folder of folders) {
+        try {
+          const lock = await client.getMailboxLock(folder.path);
+          try {
+            const messages = await client.fetchAll(
+              "1:*",
+              { headers: ["Message-ID"], flags: true },
+              { uid: true },
+            );
+            for (const m of messages) {
+              const head = m.headers?.toString("utf-8") ?? "";
+              // Message-ID header line: "Message-ID: <a1b2c3…@house>"
+              const line = head
+                .split("\n")
+                .map((l) => l.trim())
+                .find((l) => l.toLowerCase().startsWith("message-id:"));
+              const id = ImapMailboxWriter.letterIdFromMessageId(
+                line ? line.slice("message-id:".length).trim() : "",
+              );
+              if (!id) continue;
+              const flags = new Set<string>(m.flags ?? []);
+              const prev = merged.get(id);
+              merged.set(id, {
+                letterId: id,
+                seen: (prev?.seen ?? false) || flags.has("\\Seen"),
+                answered: (prev?.answered ?? false) || flags.has("\\Answered"),
+              });
+            }
+          } finally {
+            lock.release();
+          }
+        } catch {
+          // A folder may have been created between list and lock on a
+          // busy sidecar — skip it; the next pass re-converges.
+        }
+      }
+    } finally {
+      await client.logout();
+    }
+    const out = [...merged.values()];
+    this.log.info("mailbox:read-back", { letters: out.length });
+    return out;
   }
 }
