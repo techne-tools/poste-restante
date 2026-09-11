@@ -25,11 +25,14 @@ land here as real IMAP mail.
 | Networks | `backend_net` (external) |
 | Volumes | `sidecar-data` (RocksDb store), `sidecar-etc` (config) |
 
-The submission listener (and the PLAIN/LOGIN allowance for non-TLS ports —
-a dev/homelab posture, `MtaStageAuth`) is applied by the operator's plan
-in recovery mode (`plan-smtp.ndjson`), exactly like the domain/listener/
-account plan. The house's own SMTP door stays disabled; the sidecar speaks
-SMTP for residents' mail clients.
+TLS posture (2026-09-12): both listeners run **STARTTLS** (`useTls:
+true`) with a **Tailscale-managed Let's Encrypt certificate** for
+`horza.mermaid-darter.ts.net` (`tailscale cert …` on the host, imported
+as the sidecar's `defaultCertificateId`). Clients talk to the tailnet
+FQDN and get a certificate Spark trusts natively — no "allow insecure"
+needed. The `MtaStageAuth` plan permits PLAIN/LOGIN **after** the STARTTLS
+handshake (the standard submission posture); the house's own imapflow
+accepts the same cert via its explicit `MAILBOX_TLS_INSECURE=1` dev key.
 
 ## Secrets
 
