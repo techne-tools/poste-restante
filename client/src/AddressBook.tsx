@@ -39,6 +39,11 @@ export default function AddressBook({ onError, onCompose }: Props) {
           className="address-row"
           onClick={() => onCompose(a.id)}
           title={a.isAgent ? `${a.id} — an instrument of the house` : `Write to ${a.id}`}
+          aria-label={
+            a.isAgent
+              ? `${a.id} — an instrument of the house; open a letter`
+              : `Write to ${a.id}`
+          }
         >
           <span className="address-who">
             <span className="addr">{a.id}</span>

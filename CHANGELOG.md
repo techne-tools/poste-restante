@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed — adherence pass over the profile and the address book (2026-09-12)
+
+- **The door's own key is typed twice.** The password change was the one
+  irreversible act in the house with no check on what it changed: prove the
+  current key, type a new one, and the house signs you out — permanently, if
+  the new key was a typo, because the house never resets anyone. A second
+  entry now gates the whole act; both fields must agree before the button
+  lights, and the copy says why: *the house keeps no way back from a typo.*
+- **The record's ledger reads the community's word** — its `aria-label` was
+  the fixed "your record" while its heading read `name ?? "your record"`.
+- **An address row announces its action** — the row's only hint of what a tap
+  does was a `title` tooltip, which keyboard and touch never see; it now
+  carries an accessible name.
+
+Also this turn: `Book.test.tsx` locks the clause states and the develop flow.
+The clause states moved to `bookUtils.ts` (`STATE_LABEL`, `daysUntil`,
+`clauseClass`) and the develop block to a pure `ClauseDevelop.tsx`, used by
+both the standing and the offered lists.
+
+Tests: client 126/126 (+6). Typecheck and build clean.
+
 ### Fixed — adherence pass over the day board and the book (2026-09-12)
 
 - **The book's `clause-proposed` class had no rule.** Every clause rendered

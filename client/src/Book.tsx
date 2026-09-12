@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { house } from "./api";
-import type { BookHead, Clause, ClauseRole } from "./api";
+import type { BookHead, ClauseRole } from "./api";
 import { renderMarkdown } from "./markdown";
-import { doorName } from "./bookUtils";
+import { doorName, STATE_LABEL, daysUntil, clauseClass } from "./bookUtils";
+import ClauseDevelop from "./ClauseDevelop";
 
 interface Props {
   onError: (msg: string) => void;
@@ -11,28 +12,6 @@ interface Props {
   initialClause?: string | null;
   /** The community's name for the room — GET /v1/house/meta. */
   name?: string;
-}
-
-/** The state voice — quiet, legible, never a verdict. */
-const STATE_LABEL: Record<Clause["state"], string> = {
-  proposed: "offered",
-  contested: "contested — two voices",
-  standing: "standing",
-  reversed: "reversed",
-};
-
-/** Days until a clause can stand — the settling countdown. */
-function daysUntil(iso: string): number {
-  const ms = new Date(iso).getTime() - Date.now();
-  return Math.max(0, Math.ceil(ms / 86_400_000));
-}
-
-/** Only the states with a rule carry a state class: `standing`, `contested`,
- *  and `reversed` are styled; `proposed` (shown as "offered") rests in the
- *  default treatment, so it must not add a class no rule answers
- *  (adherence rule 4). */
-function clauseClass(state: Clause["state"]): string {
-  return state === "proposed" ? "clause" : `clause clause-${state}`;
 }
 
 export default function Book({ onError, initialClause, name }: Props) {
@@ -232,25 +211,13 @@ export default function Book({ onError, initialClause, name }: Props) {
                 </button>
               </div>
               {developing === c.thread && (
-                <div className="clause-develop">
-                  <textarea
-                    className="book-draft"
-                    value={developDraft}
-                    onChange={(e) => setDevelopDraft(e.target.value)}
-                    rows={4}
-                  />
-                  <div className="book-propose-actions">
-                    {/* A gated act — the develop needs new text before it
-                        can go; quiet until then, the sheet's fill once the
-                        draft makes it able (the same rule as the handle). */}
-                    <button className="gated" disabled={acting === c.thread || !developDraft.trim()} onClick={develop}>
-                      {acting === c.thread ? "…" : "Develop the norm"}
-                    </button>
-                    <button className="door-link" onClick={() => setDeveloping(null)} disabled={acting === c.thread}>
-                      Cancel
-                    </button>
-                  </div>
-                </div>
+                <ClauseDevelop
+                  draft={developDraft}
+                  acting={acting === c.thread}
+                  onDraftChange={setDevelopDraft}
+                  onDevelop={develop}
+                  onCancel={() => setDeveloping(null)}
+                />
               )}
               {openThread === c.thread && threadLetters && (
                 <div className="clause-thread">
@@ -334,33 +301,13 @@ export default function Book({ onError, initialClause, name }: Props) {
                 </button>
               </div>
               {developing === c.thread && (
-                <div className="clause-develop">
-                  <textarea
-                    className="book-draft"
-                    value={developDraft}
-                    onChange={(e) => setDevelopDraft(e.target.value)}
-                    rows={4}
-                  />
-                  <div className="book-propose-actions">
-                    {/* A gated act — the develop needs new text before it
-                        can go; quiet until then, the sheet's fill once the
-                        draft makes it able (the same rule as the handle). */}
-                    <button
-                      className="gated"
-                      disabled={acting === c.thread || !developDraft.trim()}
-                      onClick={develop}
-                    >
-                      {acting === c.thread ? "…" : "Develop the norm"}
-                    </button>
-                    <button
-                      className="door-link"
-                      onClick={() => setDeveloping(null)}
-                      disabled={acting === c.thread}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
+                <ClauseDevelop
+                  draft={developDraft}
+                  acting={acting === c.thread}
+                  onDraftChange={setDevelopDraft}
+                  onDevelop={develop}
+                  onCancel={() => setDeveloping(null)}
+                />
               )}
               {openThread === c.thread && threadLetters && (
                 <div className="clause-thread">

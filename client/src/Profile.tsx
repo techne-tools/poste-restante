@@ -37,6 +37,9 @@ export default function Profile({ onError, address, onRelabeled, onPasswordChang
   const [newHandle, setNewHandle] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  // Typed twice: the house never resets anyone, so a mistyped new password
+  // would be a permanent lockout. The confirm makes the act safe.
+  const [newPasswordAgain, setNewPasswordAgain] = useState("");
   const [confirmPassword, setConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -182,7 +185,8 @@ export default function Profile({ onError, address, onRelabeled, onPasswordChang
   }, [record, newHandle, onError, onRelabeled]);
 
   const changePassword = useCallback(async () => {
-    if (!record || !currentPassword || !newPassword.trim()) return;
+    // Both entries must agree — the confirm is the whole safety of this act.
+    if (!record || !currentPassword || !newPassword.trim() || newPassword !== newPasswordAgain) return;
     setBusy(true);
     try {
       await house.changePassword(record.id, currentPassword, newPassword.trim());
@@ -197,14 +201,14 @@ export default function Profile({ onError, address, onRelabeled, onPasswordChang
     } finally {
       setBusy(false);
     }
-  }, [record, currentPassword, newPassword, onError, onPasswordChanged]);
+  }, [record, currentPassword, newPassword, newPasswordAgain, onError, onPasswordChanged]);
 
   if (loading) return <p className="empty">Looking at your record…</p>;
   if (!record) return <p className="empty">The house has no record of you.</p>;
 
   return (
     <div className="profile">
-      <div className="ledger" aria-label="your record">
+      <div className="ledger" aria-label={name ?? "your record"}>
         <h2>{name ?? "your record"}</h2>
         <span className="address">{record.id}</span>
       </div>
@@ -289,7 +293,8 @@ export default function Profile({ onError, address, onRelabeled, onPasswordChang
         <p className="book-hint">
           The house never resets anyone — it only changes when you prove you hold the
           current key. A wrong current password answers the same silence as the door;
-          the change signs you out, and you return under the new one.
+          the change signs you out, and you return under the new one. Type the new
+          password twice — the house keeps no way back from a typo.
         </p>
         <label className="compose-field">
           <span className="compose-label">Current password</span>
@@ -309,6 +314,15 @@ export default function Profile({ onError, address, onRelabeled, onPasswordChang
             autoComplete="new-password"
           />
         </label>
+        <label className="compose-field">
+          <span className="compose-label">New password again</span>
+          <input
+            type="password"
+            value={newPasswordAgain}
+            onChange={(e) => setNewPasswordAgain(e.target.value)}
+            autoComplete="new-password"
+          />
+        </label>
         <div className="book-propose-actions">
           {confirmPassword ? (
             <span className="scrub-confirm">
@@ -316,7 +330,7 @@ export default function Profile({ onError, address, onRelabeled, onPasswordChang
               <button
                 className="clause-act"
                 onClick={changePassword}
-                disabled={busy || !currentPassword || !newPassword.trim()}
+                disabled={busy || !currentPassword || !newPassword.trim() || newPassword !== newPasswordAgain}
               >
                 {busy ? "…" : "Yes, change it"}
               </button>
@@ -328,7 +342,7 @@ export default function Profile({ onError, address, onRelabeled, onPasswordChang
             <button
               className="gated"
               onClick={() => setConfirmPassword(true)}
-              disabled={busy || !currentPassword || !newPassword.trim()}
+              disabled={busy || !currentPassword || !newPassword.trim() || newPassword !== newPasswordAgain}
             >
               Change my password
             </button>
