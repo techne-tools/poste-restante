@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added — the server's copy, enforced (2026-09-12)
+
+- **`server/test/unit/copy.test.ts`** scans the server's resident- and
+  agent-facing copy — HTTP `message:` fields, MCP `fail(...)` and
+  `.describe(...)` — and fails on shouting, capitalised sentences (but for
+  an acronym), alarm words (`error`, `invalid`, `failed`, …), leaked
+  internals, and trailing full stops. The operator CLI is held to its own
+  looser bar (no shouting, no leaked internals), because its subsystem
+  prefixes and failure lines are the operator's convention.
+- The current copy conforms; the guard keeps it so. It was proven to bite
+  with an injected violation (four rules fired), then passed after removal.
+
+The closing summary of the arc (Open Design workspace) records the guard
+alongside the class contract.
+
+Tests: server 297/297 (+7). Typecheck and build clean.
+
 ### Added — the OIDC return test, the provider's availability, and the closing sweep (2026-09-12)
 
 - **`App`'s OIDC return is a pure plan, and tested.** `planOidcReturn` maps
