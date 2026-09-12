@@ -179,6 +179,13 @@ export interface HouseMeta {
   whisperName: string;
   dayName: string;
   domain: string;
+  /** The house's public halves (SPEC §15, second model) — the composer
+   *  seals *with* the house by including house@house; the house opens
+   *  only the collaborative letters it is party to. Null before the
+   *  house key is provisioned. */
+  houseAgeRecipient: string | null;
+  houseEd25519Public: string | null;
+  houseAddress: string | null;
 }
 
 export interface SearchHit {

@@ -1085,6 +1085,13 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
       whisperName: house.config.whisperName,
       dayName: house.config.dayName,
       domain: house.config.houseDomain,
+      // The house's public halves (SPEC §15, second model) — the
+      // composer seals *with* the house by including house@house in
+      // the recipients; the house opens only the collaborative letters
+      // it is party to. Public keys are public.
+      houseAgeRecipient: (await house.houseKeys.get())?.ageRecipient ?? null,
+      houseEd25519Public: (await house.houseKeys.get())?.ed25519Public ?? null,
+      houseAddress: "house@house",
     });
   });
 

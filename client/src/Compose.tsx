@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { house } from "./api";
 import { sealDraft } from "./crypto";
 import type { Address } from "./api";
@@ -29,6 +29,14 @@ export default function Compose({ onError, onDelivered, initialTo, initialThread
   const [frame, setFrame] = useState("");
   const [kind, setKind] = useState("letter");
   const [sealed, setSealed] = useState(false);
+  /** Seal *with* the house (SPEC §15, second model): collaborative —
+   *  house@house joins the recipients, the house can open it (in
+   *  memory only). Shown only when the house has a provisioned key
+   *  and the resident is sealing. */
+  const [withHouse, setWithHouse] = useState(false);
+  const [houseRecipient, setHouseRecipient] = useState<string | null>(null);
+  const [houseEd25519Public, setHouseEd25519Public] = useState<string | null>(null);
+  const [houseAddress, setHouseAddress] = useState<string | null>(null);
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [sealing, setSealing] = useState(false);
   const [files, setFiles] = useState<PendingFile[]>([]);
@@ -60,6 +68,24 @@ export default function Compose({ onError, onDelivered, initialTo, initialThread
     }
   }, [addresses, onError]);
 
+  // Discover the house's public halves once (SPEC §15, second model) —
+  // the composer's "seal with the house" choice needs the recipient.
+  const loadHouseMeta = useCallback(async () => {
+    try {
+      const meta = await house.houseMeta();
+      setHouseRecipient(meta.houseAgeRecipient);
+      setHouseEd25519Public(meta.houseEd25519Public);
+      setHouseAddress(meta.houseAddress);
+    } catch {
+      // The choice simply won't appear — sealing without the house
+      // remains the default. Absence is a door the house left unopened.
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadHouseMeta();
+  }, [loadHouseMeta]);
+
   const send = async () => {
     if (!canSend) return;
     setSending(true);
@@ -72,9 +98,15 @@ export default function Compose({ onError, onDelivered, initialTo, initialThread
           const [name, value] = s.split(":");
           return { frame: name ?? "season", value: value ?? s };
         });
+      const toRecipients = [to.trim() || "you@house"];
+      // Seal *with* the house (SPEC §15, second model): house@house
+      // joins the participants, so the house is a party to the letter
+      // and its recipient joins the sealing circle. The house opens
+      // collaborative letters in memory only.
+      if (withHouse && houseAddress) toRecipients.push(houseAddress);
       const envelope = {
         from,
-        to: [to.trim() || "you@house"],
+        to: toRecipients,
         cc: [],
         thread: thread.trim() || `th_${Date.now().toString(36)}`,
         kind,
@@ -86,8 +118,23 @@ export default function Compose({ onError, onDelivered, initialTo, initialThread
           ? await (async () => {
               // Seal first, then deliver. The address book is the
               // identity map the letter id resolves through — fetched
-              // once and held for the composer's life.
+              // once and held for the composer's life. When the
+              // resident seals *with* the house, the house's public
+              // halves join the map (its recipient enters the sealing
+              // circle; the house is a participant).
               const book = await loadAddressBook();
+              const withHouseEntry =
+                withHouse && houseRecipient
+                  ? [
+                      {
+                        id: houseAddress ?? "house@house",
+                        ageRecipient: houseRecipient,
+                        ed25519Public: houseEd25519Public ?? "",
+                        recoveryAgeRecipient: null,
+                      },
+                    ]
+                  : [];
+              const sealedBook = [...book, ...withHouseEntry];
               setSealing(true);
               try {
                 const result = await sealDraft(
@@ -96,7 +143,7 @@ export default function Compose({ onError, onDelivered, initialTo, initialThread
                     time: { gregorian: new Date().toISOString(), frames },
                     body: { format: "markdown", content: body },
                   },
-                  book,
+                  sealedBook,
                   {
                     registerKeys: (id, keys) => house.registerKeys(id, keys),
                   },
@@ -201,10 +248,28 @@ export default function Compose({ onError, onDelivered, initialTo, initialThread
           <input
             type="checkbox"
             checked={sealed}
-            onChange={(e) => setSealed(e.target.checked)}
+            onChange={(e) => {
+              setSealed(e.target.checked);
+              if (!e.target.checked) setWithHouse(false);
+            }}
           />
           <span>Seal this letter — only {to.trim() || "the recipient"} and I can read it; the house holds it without reading</span>
         </label>
+        {/* Seal WITH the house (SPEC §15, second model): house@house
+            joins the recipients — a collaborative letter the house
+            holds a key to. The house opens it in memory only, exactly
+            as the design says. Available only when the house has a
+            provisioned key; absent = a door the house left unopened. */}
+        {sealed && houseRecipient && houseAddress && (
+          <label className="seal-toggle">
+            <input
+              type="checkbox"
+              checked={withHouse}
+              onChange={(e) => setWithHouse(e.target.checked)}
+            />
+            <span>Let the house hold a copy — the house can read this one with you</span>
+          </label>
+        )}
         {kind === "audio" && body.trim().length === 0 && (
           <p className="compose-hint">An audio letter — the recording is the letter.</p>
         )}
