@@ -389,6 +389,9 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
 
   // Delete a letter. First-class: gone from postgres, qdrant, and FTS.
   // Only participants may delete (sender or recipient — the CONTRACT).
+  // The archive is a law, and a law that may be asked to forget — the
+  // house's archon is the resident, standing at the door (Foucault:
+  // the archive governs what can be said; it does not own what was).
   app.delete("/v1/letters/:id", async (c) => {
     const who = await caller(c);
     if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);

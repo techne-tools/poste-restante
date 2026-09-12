@@ -47,6 +47,11 @@ const DEFAULT_LIMIT = 20;
  * fused score of a letter is the sum of 1/(k + rank) over every path that
  * returned it. k=60 is the standard constant. Robust, ~50 lines, and a fourth
  * path can be added without re-tuning.
+ *
+ * The with, made method: no single path is the truth — exact, full-text, and
+ * semantic interlace and the fusion is the between, the plural holding the
+ * resident's question (Nancy: being is being-with; the between has no
+ * consistency of its own — it is the interlacing that stays plural).
  */
 export function rrf(
   rankedLists: { path: string; ids: string[] }[],

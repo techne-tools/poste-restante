@@ -21,6 +21,11 @@
  * auth header (the same trust domain — a bearer credential the house
  * never sees either). The house never holds them; this file never
  * sends them.
+ *
+ * This is the in-common that is nothing-in-common, made cryptographic
+ * (Nancy): the house shares the with — the letters circulate through it —
+ * but the sealed body's substance never passes to the house. Sharing is
+ * the circulation, not the pooled content.
  */
 
 import {

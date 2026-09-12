@@ -31,6 +31,12 @@ interface Props {
  * intersection forward: letters in EVERY selected frame stay full, letters
  * in SOME mid-dim, the rest dim. Nothing is removed — the intersection
  * stays visible. Plural time, made visible.
+ *
+ * Dimming is the honest operation here: letters dim but never disappear —
+ * presence is intermittent, and the archive's "now" is layered with
+ * retention and protention (Giannachi: the present is never singular; a
+ * presence that deletes the other frames to gain clarity would be a single
+ * archive, not a plural one).
  */
 export default function Archive({ onError, initialFrame = null, onWhisperRefresh }: Props) {
   const [letters, setLetters] = useState<Letter[]>([]);

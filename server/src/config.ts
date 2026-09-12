@@ -188,6 +188,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): HouseConfig {
     smtpBind: env.SMTP_BIND ?? "127.0.0.1:2525",
     smtpOutboundUrl: env.SMTP_OUTBOUND_URL || undefined,
     houseDomain: env.HOUSE_DOMAIN ?? "house",
+    // The room names are the house's ecstasies — the ways it goes forth
+    // into its space (Böhme): "the pub", "the book", "the writing desk"
+    // tincture the rooms the way a thing radiates into its surroundings.
+    // They are config, never code, so the community names its own house.
     houseName: env.HOUSE_NAME ?? "Poste Restante",
     pubName: env.PUB_NAME ?? "the pub",
     bookName: env.BOOK_NAME ?? "the book",

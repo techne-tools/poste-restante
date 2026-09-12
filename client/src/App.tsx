@@ -151,7 +151,7 @@ export default function App() {
   }, []);
 
   /** The resident relabelled — handle changed, identity stayed. The
-   *  credential died with the old handle; sign in under the new label. */
+   *  credential died with the old handle; enter again under the new label. */
   const relabeled = useCallback(() => {
     setMeta(null);
     setAuth(null);
@@ -162,7 +162,7 @@ export default function App() {
   }, []);
 
   /** The resident changed their password — the credential changed with
-   *  the secret. The saved Basic header is dead; sign in under the new
+   *  the secret. The saved Basic header is dead; enter again under the new
    *  one. Same path as relabel: the house holds the history, the
    *  resident returns by the door they just turned. */
   const passwordChanged = useCallback(() => {

@@ -45,6 +45,9 @@ import type { Embedder } from "../embed/embedder.js";
  * Tuning knobs for the semantic gaps (SPEC §2.4 #1, #4). Cosine thresholds
  * against the house's embedding model (nomic-embed-text by default). These
  * are starting points, not doctrine — the rehearsal will tune them.
+ * The numbers are the house's kairos made explicit: its sense of the right
+ * moment to notice an echo or a connection, written as thresholds (Grant:
+ * performative knowing is kairotic — it exists only in the act of noticing).
  */
 const ECHO_SCORE = 0.82; // the same thing said twice in different words
 const CONNECTION_SCORE = 0.58; // shares ground without citing the other thread
