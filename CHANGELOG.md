@@ -27,13 +27,10 @@ key lost? The off-box recovery key still opens your letters.
   show once (mono, write-it-down) → confirm. Once set: "sealed letters
   already include it."
 
-Suite: client 76/76 (+2 recovery unit), server 273/273 unit, typecheck,
-build. The new integration test (sealed-client recovery arc — mint,
-register, book carries recipient, seal, lose primary, open) is written
-and typechecks but **could not be run**: the dev integration stack
-(postgres:5433 / qdrant:6333) went down mid-session and I have no
-in-repo command to bring it back up — escalation: start the dev stack
-and run `npm run test:integration` to confirm.
+Suite: client 76/76 (+2 recovery unit), server 273/273 unit, sealed-client
+integration 4/4 (the recovery arc — mint → register → book carries the
+recipient → seal → deliver → open with the recovery key — verified
+against live infra postgres:5433 / qdrant:6333), typecheck, build.
 
 ### Added — the review: what the house holds about you (SPEC §19, surfaced 2026-09-12)
 
