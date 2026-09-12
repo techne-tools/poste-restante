@@ -23,3 +23,22 @@ export function readOidcReturn(hash: string): OidcReturn | null {
   if (!token) return null;
   return { token, address: params.get("address") ?? "" };
 }
+
+export type OidcPlan =
+  | { action: "none" }
+  | { action: "error"; message: string }
+  | { action: "signin"; address: string; header: string };
+
+/**
+ * What the door should do with the outcome it read. Pure, so the sign-in
+ * decision is testable without a browser: the caller applies it — persist the
+ * credential, set the session, or show the error.
+ */
+export function planOidcReturn(ret: OidcReturn | null): OidcPlan {
+  if (!ret) return { action: "none" };
+  if (ret.error) return { action: "error", message: ret.error };
+  if (ret.token && ret.address) {
+    return { action: "signin", address: ret.address, header: `Bearer ${ret.token}` };
+  }
+  return { action: "none" };
+}

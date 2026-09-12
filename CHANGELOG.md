@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added — the OIDC return test, the provider's availability, and the closing sweep (2026-09-12)
+
+- **`App`'s OIDC return is a pure plan, and tested.** `planOidcReturn` maps
+  the return fragment to a sign-in (`Bearer …`), an error, or nothing;
+  `App`'s mount effect applies it. `App.test.tsx` locks the three outcomes.
+- **The provider door appears only when the house has one.**
+  `GET /v1/house/meta` now carries `oidcEnabled`; the client's
+  `useHouseMeta` reads it, and the login shows the provider button only when
+  it is true — no door that promises nothing. The integration meta test
+  asserts the field.
+- **Closing sweep.** The full integration run is green (60 passed, 2 skipped,
+  0 failed; 421 tests); the stylesheet carries no raw hex, no red, no
+  `!important`, and no `scrollIntoView`; the class contract passes both ways.
+  The closing summary of the whole arc lives in the Open Design workspace.
+
+Tests: client 138/138 (+3 — the OIDC plan), server 290/290. Typecheck and
+both builds clean.
+
 ### Changed — the identity-provider door opens; the class contract both ways (2026-09-12)
 
 - **The OIDC callback returns to a designed door.** It used to answer a

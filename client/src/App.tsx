@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { house, loadAuth, saveAuth, clearAuth } from "./api";
-import { readOidcReturn } from "./oidcReturn";
+import { readOidcReturn, planOidcReturn } from "./oidcReturn";
 import type { HouseMeta, Whisper } from "./api";
 import Login from "./Login";
 import GuestShell from "./GuestShell";
@@ -51,18 +51,15 @@ export default function App() {
   // once, clear it (a bearer token does not linger in the address bar), and
   // either sign the resident in or show the door's calm error.
   useEffect(() => {
-    const ret = readOidcReturn(window.location.hash);
-    if (!ret) return;
+    const plan = planOidcReturn(readOidcReturn(window.location.hash));
+    if (plan.action === "none") return;
     window.history.replaceState(null, "", window.location.pathname + window.location.search);
-    if (ret.error) {
-      setError(ret.error);
+    if (plan.action === "error") {
+      setError(plan.message);
       return;
     }
-    if (ret.token && ret.address) {
-      const header = `Bearer ${ret.token}`;
-      saveAuth({ address: ret.address, header });
-      setAuth({ address: ret.address, header });
-    }
+    saveAuth({ address: plan.address, header: plan.header });
+    setAuth({ address: plan.address, header: plan.header });
   }, []);
 
   useEffect(() => {

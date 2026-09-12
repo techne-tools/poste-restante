@@ -5,6 +5,8 @@ import { house } from "./api";
 export interface DoorMeta {
   houseName?: string;
   pubName?: string;
+  /** Whether the house offers a provider door. */
+  oidcEnabled?: boolean;
 }
 
 /**
@@ -22,7 +24,9 @@ export function useHouseMeta(): DoorMeta {
     house
       .houseMeta()
       .then((m) => {
-        if (!cancelled) setMeta({ houseName: m.houseName, pubName: m.pubName });
+        if (!cancelled) {
+          setMeta({ houseName: m.houseName, pubName: m.pubName, oidcEnabled: m.oidcEnabled });
+        }
       })
       .catch(() => {
         // The door keeps its founding words — a keyed house stays quiet.

@@ -186,6 +186,9 @@ export interface HouseMeta {
   houseAgeRecipient: string | null;
   houseEd25519Public: string | null;
   houseAddress: string | null;
+  /** Whether the house offers a provider door — the login shows the
+   *  provider button only when it does. */
+  oidcEnabled: boolean;
 }
 
 export interface SearchHit {

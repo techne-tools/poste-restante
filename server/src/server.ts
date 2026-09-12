@@ -1161,6 +1161,9 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
       whisperName: house.config.whisperName,
       dayName: house.config.dayName,
       domain: house.config.houseDomain,
+      // Whether the house offers a provider door — the login shows the
+      // provider button only when it does. No sensitive state.
+      oidcEnabled: Boolean(auth && auth.oidcEnabled),
       // The house's public halves (SPEC §15, second model) — the
       // composer seals *with* the house by including house@house in
       // the recipients; the house opens only the collaborative letters

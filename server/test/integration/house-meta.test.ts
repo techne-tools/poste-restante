@@ -46,9 +46,15 @@ describe.skipIf(!INTEGRATION)("the house's own words at the door (integration)",
   it("serves the meta keylessly by default — the door can introduce the house", async () => {
     const res = await app.request("/v1/house/meta");
     expect(res.status).toBe(200);
-    const meta = (await res.json()) as { houseName: string; pubName: string };
+    const meta = (await res.json()) as {
+      houseName: string;
+      pubName: string;
+      oidcEnabled: boolean;
+    };
     expect(meta.houseName).toBeTruthy();
     expect(meta.pubName).toBeTruthy();
+    // The login shows the provider door only when the house reports one.
+    expect(typeof meta.oidcEnabled).toBe("boolean");
   });
 
   it("keys the meta on request — HOUSE_META_PUBLIC=0 answers the door's silence", async () => {

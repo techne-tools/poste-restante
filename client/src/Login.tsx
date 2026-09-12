@@ -115,9 +115,11 @@ function SignIn({ onAuthed, onRedeem, onGuest }: Props & { onRedeem: () => void 
               <button className="primary" type="submit" disabled={busy || !address.trim() || !password}>
                 {busy ? "Knocking…" : "Enter the house"}
               </button>
-              <button type="button" onClick={oidc} disabled={busy}>
-                Sign in with your identity provider
-              </button>
+              {meta.oidcEnabled && (
+                <button type="button" onClick={oidc} disabled={busy}>
+                  Sign in with your identity provider
+                </button>
+              )}
             </div>
             <p className="door-switch">
               A resident invited you?{" "}

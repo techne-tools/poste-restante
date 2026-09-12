@@ -203,6 +203,7 @@ describe("house client", () => {
       writeName: "the writing desk",
       whisperName: "the whisper",
       domain: "house",
+      oidcEnabled: false,
     });
     const res = await house.houseMeta();
     expect(res.pubName).toBe("the pub");
