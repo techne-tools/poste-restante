@@ -175,4 +175,26 @@ describe.skipIf(!INTEGRATION)("the shelf — put away and bring back (integratio
     const body = (await shelve.json()) as { error: { code: string } };
     expect(body.error.code).toBe("invalid_shelve");
   });
+
+  it("refuses to unshelve the book — the refusal names the move refused", async () => {
+    const res = await app.request("/v1/book", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: basic("you@house", "youyouyou") },
+      body: JSON.stringify({ role: "offer", text: "the house stays a house." }),
+    });
+    expect(res.status).toBe(201);
+    const head = await house.book.head();
+    const clause = head.clauses[0];
+    expect(clause).toBeDefined();
+
+    const unshelve = await app.request(`/v1/threads/${clause.thread}/unshelve`, {
+      method: "POST",
+      headers: { Authorization: basic("you@house", "youyouyou") },
+    });
+    expect(unshelve.status).toBe(400);
+    const body = (await unshelve.json()) as { error: { code: string; message: string } };
+    expect(body.error.code).toBe("invalid_unshelve");
+    // An unshelve is not a shelve — the refusal says what it refused.
+    expect(body.error.message).toContain("it is never put away");
+  });
 });

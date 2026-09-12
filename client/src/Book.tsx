@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { house } from "./api";
 import type { BookHead, Clause, ClauseRole } from "./api";
 import { renderMarkdown } from "./markdown";
+import { doorName } from "./bookUtils";
 
 interface Props {
   onError: (msg: string) => void;
@@ -24,16 +25,6 @@ const STATE_LABEL: Record<Clause["state"], string> = {
 function daysUntil(iso: string): number {
   const ms = new Date(iso).getTime() - Date.now();
   return Math.max(0, Math.ceil(ms / 86_400_000));
-}
-
-/** The door a clause binds, in the house's own words. */
-function doorName(door: string): string {
-  if (door === "pub@house.is_public") return "the pub's door";
-  // The v2 door family (§17): integrations.<id>.enabled. The resident
-  // reads the seam's name, never the database key.
-  const integration = /^integrations\.(.+)\.enabled$/.exec(door);
-  if (integration) return `the ${integration[1]} seam`;
-  return door;
 }
 
 export default function Book({ onError, initialClause, name }: Props) {

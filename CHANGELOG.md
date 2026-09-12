@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed — adherence pass over the pub and the whisper; `doorName` gets its test (2026-09-12)
+
+The two oldest public faces were read against the ten adherence rules.
+
+- **The pub gets its notice-board back.** Every one of the pub's own letter
+  styles keys on `.pub`, and no element carried the class — so the pub rendered
+  as the private mailbox it must be distinct from: rounded cards and hairlines
+  instead of the strong top rule, the open ground, and the mono `posted`
+  marker. The root now carries `.pub`; the notice-board treatment applies.
+- **The whisper's dismissal is no longer a dead end.** The sidebar filtered
+  dismissed offers out before rendering, so the `.dismissed` state and its
+  `Keep` reversal never appeared — a dismissal was one tap and permanent,
+  against the rule that it is calm and reversible-feeling. Every offer now
+  stays; dismissed ones rest quiet with `Keep` on hand.
+- **The closed pub carries a rule.** `.pub-closed` shipped styling nothing; it
+  now holds the letter measure, like the book. The board's ledger `aria-label`
+  reads the community's name rather than a fixed string.
+- **`doorName` is extracted and tested.** The book's door-naming rule moves to
+  `client/src/bookUtils.ts` with `bookUtils.test.ts`, locking the v2
+  integration door family (`integrations.<id>.enabled` → "the `<id>` seam").
+
+Tests: client 85/85 (+4 — `bookUtils`, the whisper dismissal reversal).
+Integration (live postgres 5433 / qdrant 6333 / ollama 11434): 416 passed, 8
+skipped; the two mailbox-sidecar suites still need the dev Stalwart on :11430
+(pre-existing). New integration holds cover the book's join and unshelve
+refusals from the pass-07 fixes.
+
 ### Fixed — adherence pass over the new rooms, and the integration/agent surfaces (2026-09-12)
 
 The six features built after the pass-04 seal — the day board, the resident's

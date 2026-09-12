@@ -86,7 +86,7 @@ export default function Pub({ onError, onReply, onPost, onEnterHouse, name }: Pr
   const openConv = openThread ? conversations.find((c) => c.thread === openThread) : undefined;
 
   return (
-    <div>
+    <div className="pub">
       {selected ? (
         <LetterView letter={selected} onBack={() => setSelected(null)} />
       ) : openConv ? (
@@ -136,7 +136,7 @@ export default function Pub({ onError, onReply, onPost, onEnterHouse, name }: Pr
         </div>
       ) : (
         <div className="pub-board">
-          <div className="ledger" aria-label="the pub — shared public letters">
+          <div className="ledger" aria-label={name ?? "the pub"}>
             <h2>{name ?? "the pub"}</h2>
             <span className="address">pub@house</span>
           </div>

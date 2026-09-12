@@ -72,3 +72,21 @@ describe("WhisperSidebar — Open only when there is a room to land in", () => {
     expect(html).toContain(">Open</button>");
   });
 });
+
+describe("WhisperSidebar — dismissal is reversible", () => {
+  it("keeps a dismissed offer on hand, quieted, with the Keep move", () => {
+    const html = sidebar(
+      whisper({
+        kind: "gap-dormant-thread",
+        targetThread: "th_1",
+        dismissedAt: "2026-09-11T01:00:00.000Z",
+      }),
+    );
+    // The card stays — the .dismissed treatment quiets it, and the
+    // reversal (Keep → undismiss) is reachable. A dismissal is one tap,
+    // but it is never a dead end.
+    expect(html).toContain("whisper-card dismissed");
+    expect(html).toContain(">Keep</button>");
+    expect(html).not.toContain(">Dismiss</button>");
+  });
+});

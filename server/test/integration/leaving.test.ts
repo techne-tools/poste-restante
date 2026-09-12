@@ -218,6 +218,26 @@ describe.skipIf(!INTEGRATION)("leaving as first-class (integration)", () => {
     expect(leave.status).toBe(400);
   });
 
+  it("the book is exempt — the join refusal names the move refused", async () => {
+    const offer = await app.request("/v1/book", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: basic("you@house", "youyouyou") },
+      body: JSON.stringify({ role: "offer", text: "the pub closes at dusk" }),
+    });
+    expect(offer.status).toBe(201);
+    const offerBody = (await offer.json()) as { clause: { thread: string } };
+
+    const join = await app.request(`/v1/threads/${offerBody.clause.thread}/join`, {
+      method: "POST",
+      headers: { Authorization: basic("you@house", "youyouyou") },
+    });
+    expect(join.status).toBe(400);
+    const body = (await join.json()) as { error: { code: string; message: string } };
+    expect(body.error.code).toBe("invalid_join");
+    // A join is not a leave — the refusal says what it refused.
+    expect(body.error.message).toContain("you are always party to it");
+  });
+
   it("a guest cannot leave a thread", async () => {
     const { thread } = await deliver("you@house", ["ben@house"], "the tempest", "the storm is coming");
     const res = await app.request(`/v1/threads/${thread}/leave`, {

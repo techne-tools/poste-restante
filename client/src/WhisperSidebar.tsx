@@ -35,12 +35,15 @@ export default function WhisperSidebar({
   onWriteBack,
   onCite,
 }: Props) {
-  const unread = whispers.filter((w) => !w.dismissedAt);
+  // Every offer the house has made. A dismissed offer stays in the sidebar,
+  // quieted — dismissal is one tap and reversible, so the "Keep" move must
+  // remain on hand (DESIGN.md, whisper rule 4: pick-up, ignore, and
+  // dismissal are all calm, reversible-feeling actions).
   return (
     <aside className="whisper">
       <h2>{title ?? "the whisper"}</h2>
-      {unread.length === 0 && <p className="empty">The house is quiet.</p>}
-      {unread.map((w) => (
+      {whispers.length === 0 && <p className="empty">The house is quiet.</p>}
+      {whispers.map((w) => (
         <div
           key={w.id}
           className={`whisper-card${w.repliedAt ? " replied" : ""}${w.dismissedAt ? " dismissed" : ""}`}
