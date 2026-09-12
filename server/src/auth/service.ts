@@ -170,6 +170,23 @@ export class AuthService {
     return token;
   }
 
+  /**
+   * Issue (or rotate) an OIDC sign-in token for an address, without ever
+   * clobbering a password credential. The credentials table holds one row
+   * per address (address is the primary key), so issuing a token for an
+   * address that keeps a password would destroy their key. Returns null in
+   * that case — OIDC cannot sign in a password resident without taking
+   * their key, and the door says so.
+   */
+  async issueOidcToken(address: string): Promise<string | null> {
+    const { rows } = await this.pool.query<{ kind: string }>(
+      `SELECT kind FROM credentials WHERE address = $1`,
+      [address],
+    );
+    if (rows[0]?.kind === "password") return null;
+    return this.issueToken(address);
+  }
+
   /** Bind an OIDC subject to an address's IDENTITY (the claim step of
    *  first login). The binding is `provider sub → identity_id → current
    *  handle`, never `sub → handle` (SPEC §19: OIDC is a door, not an

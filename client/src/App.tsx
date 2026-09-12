@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { house, loadAuth, clearAuth } from "./api";
+import { house, loadAuth, saveAuth, clearAuth } from "./api";
+import { readOidcReturn } from "./oidcReturn";
 import type { HouseMeta, Whisper } from "./api";
 import Login from "./Login";
 import GuestShell from "./GuestShell";
@@ -43,6 +44,24 @@ export default function App() {
       setWhispers(res.whispers);
     } catch (err) {
       setError(err instanceof Error ? err.message : "the house is quiet");
+    }
+  }, []);
+
+  // The OIDC door returns here with the outcome in the URL fragment. Read it
+  // once, clear it (a bearer token does not linger in the address bar), and
+  // either sign the resident in or show the door's calm error.
+  useEffect(() => {
+    const ret = readOidcReturn(window.location.hash);
+    if (!ret) return;
+    window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    if (ret.error) {
+      setError(ret.error);
+      return;
+    }
+    if (ret.token && ret.address) {
+      const header = `Bearer ${ret.token}`;
+      saveAuth({ address: ret.address, header });
+      setAuth({ address: ret.address, header });
     }
   }, []);
 

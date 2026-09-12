@@ -65,6 +65,31 @@ describe("bearer tokens", () => {
   });
 });
 
+describe("OIDC sign-in tokens", () => {
+  it("issues a token when the address keeps no password", async () => {
+    const pool = fakePool({
+      "SELECT kind FROM credentials WHERE address = $1": [],
+    });
+    const svc = new AuthService(pool, noopLog, cfg("oidc"));
+    expect(await svc.issueOidcToken("you@house")).toMatch(/^pr_/);
+  });
+
+  it("refuses to clobber a password credential — one row per address", async () => {
+    const calls: string[] = [];
+    const pool = {
+      query: async (sql: string) => {
+        calls.push(sql);
+        if (sql.includes("SELECT kind")) return { rows: [{ kind: "password" }] };
+        return { rows: [] };
+      },
+    } as never;
+    const svc = new AuthService(pool, noopLog, cfg("oidc"));
+    expect(await svc.issueOidcToken("you@house")).toBeNull();
+    // The password row was never touched.
+    expect(calls.some((s) => s.includes("INSERT INTO credentials"))).toBe(false);
+  });
+});
+
 describe("AuthService", () => {
   it("authenticates a basic credential", async () => {
     const stored = hashPassword("hunter2hunter2");

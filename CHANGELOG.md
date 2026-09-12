@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed — the identity-provider door opens; the class contract both ways (2026-09-12)
+
+- **The OIDC callback returns to a designed door.** It used to answer a
+  browser with a bare JSON stub (`{ "address": … }`) — no surface, no
+  credential, no way in. It now verifies and `302`s back to the client with
+  the outcome in the URL fragment (`#oidc=<token>&address=…` on success,
+  `#oidc_error=…` on failure); a fragment never reaches a server and the
+  client clears it on arrival. New `client/src/oidcReturn.ts` parses it;
+  `App` reads it once, signs in with `Bearer …`, or shows the door's calm
+  error banner.
+- **A sign-in never clobbers a password.** OIDC has no password, so the
+  callback issues the house's opaque bearer token (the house stores only its
+  hash). But `credentials` holds one row per address, so a naive issue would
+  overwrite a resident's password. `AuthService.issueOidcToken` checks the
+  current kind and refuses to take a password — the door says "sign in with
+  it" instead.
+- **The class contract is enforced both ways.** `classCoverage.test.ts` now
+  also fails on any rule in `styles.css` that no surface renders — dead CSS,
+  the other half of rule 4. A single allowlist names the handful of state
+  classes applied from runtime data.
+
+Tests: client 135/135 (+4 — `oidcReturn`, the backward class check), server
+290/290 (+2 — the token guard). Typecheck and both builds clean.
+
 ### Fixed — the provider door and the error banner; rule 4 enforced (2026-09-12)
 
 - **The error banner is announced.** It is the house's whole failure channel

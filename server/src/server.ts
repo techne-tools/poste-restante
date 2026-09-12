@@ -143,27 +143,50 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
     return c.json({ url, state });
   });
 
-  // The provider redirects here with ?code=&state=. Exchange, verify, resolve.
+  // The provider redirects the BROWSER here with ?code=&state=. Verify, then
+  // hand the browser back to the client door with the outcome in the URL
+  // fragment — the resident returns to a designed surface, never a JSON stub.
+  // A fragment is never sent to a server, and the client clears it on arrival.
+  //
+  // The client origin is derived from the configured redirect URI (the
+  // operator points OIDC_REDIRECT_URI at the client origin's /v1 path).
+  const oidcClientBase = (): string => {
+    const redirect = house.config.auth.oidc?.redirectUri;
+    if (!redirect) return "/";
+    try {
+      return `${new URL(redirect).origin}/`;
+    } catch {
+      return "/";
+    }
+  };
   app.get("/v1/auth/oidc/callback", async (c) => {
+    const base = oidcClientBase();
+    const fail = (message: string) =>
+      c.redirect(`${base}#oidc_error=${encodeURIComponent(message)}`);
     const code = c.req.query("code");
     const state = c.req.query("state");
-    if (!code || !state) {
-      return c.json({ error: { code: "oidc_missing", message: "the provider did not return a code" } }, 400);
-    }
+    if (!code || !state) return fail("the provider did not return a code");
     const pending = oidcPending.get(state);
     if (!pending || pending.expiresAt < Date.now()) {
-      return c.json({ error: { code: "oidc_expired", message: "this sign-in attempt has expired — start again" } }, 400);
+      return fail("this sign-in attempt has expired — start again");
     }
     oidcPending.delete(state);
-    if (!auth) {
-      return c.json({ error: { code: "oidc_disabled", message: "OIDC is not configured" } }, 400);
-    }
+    if (!auth) return fail("OIDC is not configured in this house");
     try {
       const { address } = await auth.oidcCallback(code, pending.verifier);
-      return c.json({ address });
+      // A verified identity gets an opaque bearer token (the house stores
+      // only its hash) — but never at the cost of a password: an address
+      // that keeps a password keeps it, and the door says so.
+      const token = await auth.issueOidcToken(address);
+      if (!token) return fail("this identity already keeps a password — sign in with it");
+      return c.redirect(
+        `${base}#oidc=${encodeURIComponent(token)}&address=${encodeURIComponent(address)}`,
+      );
     } catch (err) {
-      house.log.warn("oidc:callback-failed", { message: err instanceof Error ? err.message : String(err) });
-      return c.json({ error: { code: "oidc_failed", message: "the house could not verify this identity" } }, 401);
+      house.log.warn("oidc:callback-failed", {
+        message: err instanceof Error ? err.message : String(err),
+      });
+      return fail("the house could not verify this identity");
     }
   });
 
