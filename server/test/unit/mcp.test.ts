@@ -256,6 +256,7 @@ describe("mcp house", () => {
     expect(names).toEqual(
       [
         "act_on_book",
+        "bequeath_agent",
         "call_integration",
         "delete_letter",
         "deliver_letter",
@@ -274,6 +275,7 @@ describe("mcp house", () => {
         "read_clause",
         "read_mailbox",
         "read_thread",
+        "renew_agent",
         "search_letters",
         "shelve_thread",
         "undismiss_whisper",

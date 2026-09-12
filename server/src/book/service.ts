@@ -61,6 +61,12 @@ export const BOOK_ADDRESS = "book@house";
 /** The only door a clause may bind in v1. The schema is unchanged if more
  *  doors are bound later — the door is a string, not a special case. */
 export const PUB_DOOR = "pub@house.is_public";
+/** The v2 door family (§17): a standing clause can close the whole
+ *  integration seam — integrations.<id>.enabled. When no binding stands,
+ *  the seam returns to its default (open). The house passes through to
+ *  the same mechanism the pub's door uses; the IntegrationService's own
+ *  `enabled` check is what the book writes. */
+export const INTEGRATION_DOOR_PREFIX = "integrations.";
 
 export type ClauseState = "proposed" | "contested" | "standing" | "reversed";
 
@@ -340,9 +346,16 @@ export class BookService {
    * The bound door — the only mechanics. When a binding clause's state
    * changed in this pass, the door is derived from the book: the latest
    * standing binding wins; when the last binding is reversed the door
-   * returns to its default (open). The book never writes the door while no
-   * binding changed — a manual operator state stands until the household
-   * binds the door.
+   * returns to its default (open). The book never writes the door while
+   * no binding changed — a manual operator state stands until the
+   * household binds the door.
+   *
+   * The door family (§17): v1 is `pub@house.is_public`; the v2 family is
+   * `integrations.<id>.enabled` — a standing clause can retire a tool
+   * house-wide by closing the whole seam. The integration service's own
+   * `enabled` check reads what the book writes. Three powers, none of
+   * them master: the operator registers capacity, the common governs
+   * availability, the creator whitelists their instrument's use.
    */
   private async applyDoor(changedThreads: string[]): Promise<void> {
     if (changedThreads.length === 0) return;
@@ -359,7 +372,9 @@ export class BookService {
     );
     const latest = rows[0];
     if (!latest) {
-      // No standing binding — the door returns to its default (open).
+      // No standing binding anywhere — every door returns to its default.
+      // Pub → open. Integration seam → the operator's registered enable
+      // state (the book never binds it; a manual operator state stands).
       const current = await this.repo.getAddress("pub@house");
       if (current && !current.is_public) {
         await this.repo.setPublic("pub@house", true);
@@ -367,14 +382,32 @@ export class BookService {
       }
       return;
     }
+    const door = latest.binding_door!;
+    const value = latest.binding_value!;
+    if (door.startsWith(INTEGRATION_DOOR_PREFIX)) {
+      // v2 door family: integrations.<id>.enabled. Close (or reopen) the
+      // integration seam for the named integration. A binding that stands
+      // with value false retires the tool house-wide; a later true
+      // reopens it. The integration service refuses disabled integrations.
+      const integrationId = door.slice(INTEGRATION_DOOR_PREFIX.length);
+      const res = await this.pool.query(
+        `UPDATE integrations SET enabled = $2 WHERE id = $1 RETURNING id`,
+        [integrationId, value],
+      );
+      if ((res.rowCount ?? 0) > 0) {
+        this.log.info("book:integration-door", {
+          integrationId,
+          value,
+          boundBy: latest.thread_id,
+        });
+      }
+      return;
+    }
+    // v1: pub@house.is_public.
     const current = await this.repo.getAddress("pub@house");
-    if (current && current.is_public !== latest.binding_value) {
-      await this.repo.setPublic("pub@house", latest.binding_value);
-      this.log.info("book:door", {
-        door: latest.binding_door,
-        value: latest.binding_value,
-        boundBy: latest.thread_id,
-      });
+    if (current && current.is_public !== value) {
+      await this.repo.setPublic("pub@house", value);
+      this.log.info("book:door", { door, value, boundBy: latest.thread_id });
     }
   }
 

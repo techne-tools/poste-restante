@@ -833,6 +833,53 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
     return c.json({ scrubbed: true, thread: threadId, deleted });
   });
 
+  // ── Agents — instruments, not servants (SPEC §16) ──────────────────────
+
+  // Renew an instrument — a develop of the birth thread. A creator (or a
+  // named beneficiary, who is the future creator) extends the lifespan
+  // frame: the agent cannot extend itself (SPEC §16, "scope creep is a
+  // human letter"), and a stranger cannot either. The act IS a letter;
+  // the archive keeps the will; the token is re-minted (the capability
+  // to act as the address is held by whoever holds the newest token).
+  app.post("/v1/agents/:address/renew", async (c) => {
+    const who = await caller(c);
+    if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
+    const address = c.req.param("address");
+    const body = (await c.req.json().catch(() => null)) as { lifespan?: string } | null;
+    if (!body?.lifespan || !body.lifespan.trim()) {
+      return c.json({ error: { code: "invalid_renew", message: "a develop needs a lifespan frame" } }, 400);
+    }
+    const result = await house.agents.develop(address, who.address, body.lifespan.trim());
+    if (!result.success) {
+      // The house refuses without saying which rule — only the creator
+      // or the named beneficiary may renew, and a dead instrument cannot.
+      return c.json({ error: { code: "forged", message: "only the creator or the named beneficiary may renew this instrument" } }, 403);
+    }
+    house.log.info("agent:renewed-over-http", { address, developer: who.address, lifespan: body.lifespan.trim() });
+    // The token is shown once — the plaintext lives only in this response
+    // (the stored value is the hash).
+    return c.json({ renewed: true, address, lifespan: body.lifespan.trim(), token: result.token });
+  });
+
+  // Bequest on creator departure — the beneficiary opts in. Only the
+  // named beneficiary (a resident) may adopt; the address, scope, and
+  // history pass to them; the past stays sealed to the old key, the
+  // instrument's future seals to the new key (SPEC §16, "leaving ends
+  // the relationship, not the history").
+  app.post("/v1/agents/:address/bequeath", async (c) => {
+    const who = await caller(c);
+    if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
+    const address = c.req.param("address");
+    const result = await house.agents.bequeath(address, who.address);
+    if (!result.success) {
+      // This caller is not the named beneficiary (or the instrument is
+      // gone). Absence is silence — the house never says which.
+      return c.json({ error: { code: "forged", message: "only the named beneficiary may adopt this instrument" } }, 403);
+    }
+    house.log.info("agent:bequeathed-over-http", { address, beneficiary: who.address });
+    return c.json({ bequeathed: true, address, beneficiary: who.address, token: result.token });
+  });
+
   // Frames — plural time navigation. Queries work in any frame.
   app.get("/v1/frames", async (c) => {
     const who = await caller(c);

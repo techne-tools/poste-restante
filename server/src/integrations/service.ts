@@ -28,6 +28,7 @@ import type pg from "pg";
 import type { Logger } from "../pipeline/logger.js";
 import type { IngestionPipeline } from "../pipeline/pipeline.js";
 import type { Letter } from "../types.js";
+import { sealToRecipients, unsealWithIdentity } from "../crypto/keys.js";
 
 /** The one boundary an integration call crosses — injected so the unit
  *  tests can fake the wire. The production shape connects the MCP SDK
@@ -48,10 +49,16 @@ export interface IntegrationServiceOptions {
    *  30 calls / 60 s. In-memory — the house holds, it never floods. */
   rateMax?: number;
   rateWindowMs?: number;
+  /** The house's own keys (SPEC §17 credential isolation) — used to
+   *  unseal integration credentials at call time, in memory, never
+   *  stored. When omitted, credentials cannot be unsealed and the house
+   *  refuses calls to credential-bearing integrations (fail closed). */
+  houseKeys?: import("../house/keys.js").HouseKeysService;
   /** Injectable call boundary for tests (defaults to the MCP client
    *  over stdio — npx -y <url>). */
   transportFactory?: (
     url: string,
+    credentials?: Record<string, string>,
   ) => Promise<IntegrationTransport> | IntegrationTransport;
 }
 
@@ -76,6 +83,7 @@ export class IntegrationService {
   private readonly timeoutMs: number;
   private readonly rateMax: number;
   private readonly rateWindowMs: number;
+  private readonly houseKeys: import("../house/keys.js").HouseKeysService | undefined;
   private readonly transportFactory?: IntegrationServiceOptions["transportFactory"];
   /** In-memory sliding window per (agent, integration) — the house holds,
    *  it never floods. */
@@ -90,6 +98,7 @@ export class IntegrationService {
     this.timeoutMs = options.timeoutMs ?? 15_000;
     this.rateMax = options.rateMax ?? 30;
     this.rateWindowMs = options.rateWindowMs ?? 60_000;
+    this.houseKeys = options.houseKeys;
     this.transportFactory = options.transportFactory;
     // Bound the in-memory rate map — a dead agent's history is forgotten
     // with the house's own breath, never leaking across restarts.
@@ -123,13 +132,59 @@ export class IntegrationService {
     tools: { name: string; description: string; verbs: string[] }[],
   ): Promise<void> {
     await this.pool.query(
-      `INSERT INTO integrations (id, url, version, tools, enabled)
-       VALUES ($1, $2, $3, $4, true)
+      `INSERT INTO integrations (id, url, version, tools, enabled, credentials_enc)
+       VALUES ($1, $2, $3, $4, true, $5)
        ON CONFLICT (id) DO UPDATE
-         SET url = $2, version = $3, tools = $4, enabled = true`,
-      [id, url, version, JSON.stringify(tools)],
+         SET url = $2, version = $3, tools = $4, enabled = true, credentials_enc = $5`,
+      [id, url, version, JSON.stringify(tools), null],
     );
     this.log.info("integration:registered", { id, version });
+  }
+
+  /** Set an integration's credentials — the operator's act. The credentials
+   *  are age-encrypted at rest with the house's own key (§17: "age-encrypted
+   *  at rest; the house passes them to the server at call time"). The agent
+   *  never sees a shared credential; the integration never sees the house's
+   *  keys. Overwrites any prior credentials. */
+  async setCredentials(id: string, credentials: Record<string, string>): Promise<void> {
+    const key = await this.houseKeys?.get();
+    if (!key) throw new Error("integration:no-house-keys — the house cannot seal credentials");
+    const enc = await sealToRecipients(JSON.stringify(credentials), [key.ageRecipient]);
+    await this.pool.query(
+      `UPDATE integrations SET credentials_enc = $2 WHERE id = $1`,
+      [id, enc],
+    );
+    this.log.info("integration:credentials-set", { id });
+  }
+
+  /** True when an integration carries credentials (the operator sealed them). */
+  async hasCredentials(id: string): Promise<boolean> {
+    const { rows } = await this.pool.query<{ credentials_enc: string | null }>(
+      `SELECT credentials_enc FROM integrations WHERE id = $1`,
+      [id],
+    );
+    return (rows[0]?.credentials_enc ?? null) != null;
+  }
+
+  /** Unseal an integration's credentials in memory (never stored, never
+   *  logged). Returns null when the integration has none, when the house
+   *  lacks its keys, or when unsealing fails (fail closed). */
+  async unsealCredentials(id: string): Promise<Record<string, string> | null> {
+    const { rows } = await this.pool.query<{ credentials_enc: string | null }>(
+      `SELECT credentials_enc FROM integrations WHERE id = $1`,
+      [id],
+    );
+    const enc = rows[0]?.credentials_enc;
+    if (!enc) return null;
+    const key = await this.houseKeys?.get();
+    if (!key) return null;
+    const plain = await unsealWithIdentity(enc, key.ageIdentity);
+    if (!plain) return null;
+    try {
+      return JSON.parse(plain) as Record<string, string>;
+    } catch {
+      return null;
+    }
   }
 
   /** Whitelist tools for an agent — the creator's grant, per scope. */
@@ -219,13 +274,32 @@ export class IntegrationService {
 
     const eventId = `evt_${randomBytes(8).toString("hex")}`;
     try {
+      // Credential isolation (§17): unseal the integration's credentials
+      // in memory at call time — the house passes them to the server, the
+      // agent never sees a shared credential, the integration never sees
+      // the house's keys. A credential-bearing integration the house
+      // cannot unseal is refused (fail closed); a credential-less call
+      // proceeds with none.
+      let credentials: Record<string, string> | undefined;
+      if (await this.hasCredentials(integrationId)) {
+        credentials = (await this.unsealCredentials(integrationId)) ?? undefined;
+        if (credentials === undefined) {
+          await this.audit(agentAddress, integrationId, tool, eventId, {
+            error: "credentials unsealing failed",
+          });
+          return { ok: false, error: "this integration's credentials could not be opened", eventId };
+        }
+      }
       // v1 remote-only: the house connects to the operator-registered URL
       // over stdio (the MCP client). The house never runs integration
       // code in-process. The transport factory is injectable so unit
       // tests never spawn a process.
       const factory =
         this.transportFactory ??
-        (async (url: string): Promise<IntegrationTransport> => {
+        (async (url: string, creds?: Record<string, string>): Promise<IntegrationTransport> => {
+          void creds; // v1: the stdio transport carries no credential header/
+          // env — the operator's URL is the pinned, trusted seam. See the
+          // credential-isolation note above for the threat model.
           const transport = new StdioClientTransport({
             command: "npx",
             args: ["-y", url],
@@ -240,7 +314,7 @@ export class IntegrationService {
             },
           };
         });
-      const tr = await factory(integration.url);
+      const tr = await factory(integration.url, credentials);
       const result = await tr.callTool({ name: tool, arguments: args }, { timeout: this.timeoutMs });
       await tr.close().catch(() => {});
 

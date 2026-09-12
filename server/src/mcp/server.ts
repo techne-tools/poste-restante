@@ -702,5 +702,53 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
     },
   );
 
+  // ── Instrument lifecycle (SPEC §16) ────────────────────────────────────
+
+  // Renew an instrument — a develop of the birth thread. Only the creator
+  // or the named beneficiary (the future creator) may renew; the agent
+  // cannot extend itself and a stranger cannot either. Extends the
+  // lifespan frame and re-mints the token (shown once).
+  server.registerTool(
+    "renew_agent",
+    {
+      title: "Renew an instrument",
+      description:
+        "Renew an agent (SPEC §16) — a develop of the birth thread. Only the creator or the named beneficiary may renew; the agent cannot extend itself and a stranger cannot either. Extends the lifespan frame and re-mints the token (shown once — the stored value is the hash).",
+      inputSchema: {
+        address: z.string().min(1).describe("the instrument address, e.g. grantwatch@house"),
+        lifespan: z.string().min(1).describe("the new lifespan frame (plural time), e.g. production:grant-season-2027"),
+      },
+    },
+    async ({ address, lifespan }) => {
+      const who = await caller();
+      if (!who) return fail("the house does not know you — set POSTE_RESTANTE_TOKEN");
+      const res = await house.agents.develop(address, who.address, lifespan);
+      if (!res.success) return fail("only the creator or the named beneficiary may renew this instrument");
+      return text({ renewed: true, address, lifespan, token: res.token });
+    },
+  );
+
+  // Bequest on creator departure — the named beneficiary opts in and
+  // inherits the address, scope, and history. New keys are minted; the
+  // past stays sealed to the old key.
+  server.registerTool(
+    "bequeath_agent",
+    {
+      title: "Adopt an instrument",
+      description:
+        "Adopt an agent (SPEC §16 bequest) — the named beneficiary opts in and inherits the address, scope, and history. New keys are minted (the past stays sealed to the old key) and the token is re-minted (shown once). Only the named beneficiary may adopt.",
+      inputSchema: {
+        address: z.string().min(1).describe("the instrument address, e.g. grantwatch@house"),
+      },
+    },
+    async ({ address }) => {
+      const who = await caller();
+      if (!who) return fail("the house does not know you — set POSTE_RESTANTE_TOKEN");
+      const res = await house.agents.bequeath(address, who.address);
+      if (!res.success) return fail("only the named beneficiary may adopt this instrument");
+      return text({ bequeathed: true, address, beneficiary: who.address, token: res.token });
+    },
+  );
+
   return server;
 }

@@ -4,6 +4,7 @@
  *
  *   npm run integration:add -- web-search npx-mcp-server-name --version 1.2.3 --tool search --tool extract
  *   npm run integration:list
+ *   npm run integration:cred -- web-search KEY=VALUE [KEY=VALUE...]
  *   npm run integration:grant -- grantwatch@house web-search search --budget 100
  *   npm run integration:revoke -- grantwatch@house web-search
  *
@@ -15,12 +16,14 @@
  */
 import { connectDbAndMigrate } from "../db/index.js";
 import { IntegrationService } from "./service.js";
+import { HouseKeysService } from "../house/keys.js";
 import { loadConfig } from "../config.js";
 import { createLogger } from "../pipeline/logger.js";
 
 const USAGE = `usage:
   npm run integration:add -- <id> <npx-url> [--version <v>] [--tool <name>]...
   npm run integration:list
+  npm run integration:cred -- <id> <KEY=VALUE> [<KEY=VALUE>...]
   npm run integration:grant -- <agent> <integration> <tool>... [--budget <n>]
   npm run integration:revoke -- <agent> <integration> [<tool>...]`;
 
@@ -67,6 +70,27 @@ async function main(): Promise<void> {
           `${r.id}\t${r.url}\t${r.version}${r.enabled ? "" : "\tdisabled"}\t${r.tools} tools\t${r.grants} grants\n`,
         );
       }
+      return;
+    }
+
+    if (command === "cred") {
+      const id = args[1];
+      const pairs = args.slice(2);
+      if (!id || pairs.length === 0) throw new Error(USAGE);
+      const credentials: Record<string, string> = {};
+      for (const pair of pairs) {
+        const eq = pair.indexOf("=");
+        if (eq <= 0) throw new Error("credentials must be KEY=VALUE");
+        credentials[pair.slice(0, eq)] = pair.slice(eq + 1);
+      }
+      // The CLI is the operator's act — it needs the house's keys to seal.
+      const houseKeys = new HouseKeysService(db.pool, createLogger());
+      await houseKeys.ensure();
+      const svcWithKeys = new IntegrationService(db.pool, {} as never, createLogger(), {
+        houseKeys,
+      });
+      await svcWithKeys.setCredentials(id, credentials);
+      process.stdout.write(`sealed ${Object.keys(credentials).length} credential(s) for ${id}\n`);
       return;
     }
 

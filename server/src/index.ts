@@ -297,15 +297,20 @@ export async function buildHouse(
     config.bookSettlingDays,
   );
   const agents = new AgentService(db.pool, repo, pipeline, log);
-  const integrations = new IntegrationService(db.pool, pipeline, log);
-  const day = new DayProjectionService(db.pool, whisper, book);
-  const relabel = new RelabelService(db.pool, log);
   // The house's own keypair — a participant, never a master (SPEC §15).
   // Provisioned once; the house opens only the collaborative letters it
   // is party to. The public halves mirror into the address book so
   // correspondents can seal *with* the house.
+  // Constructed here, ahead of the integration seam, because §17
+  // credential isolation needs the house keys to unseal integration
+  // credentials at call time.
   const houseKeys = new HouseKeysService(db.pool, log);
   await houseKeys.ensure();
+  const integrations = new IntegrationService(db.pool, pipeline, log, {
+    houseKeys,
+  });
+  const day = new DayProjectionService(db.pool, whisper, book);
+  const relabel = new RelabelService(db.pool, log);
 
   return {
     config,

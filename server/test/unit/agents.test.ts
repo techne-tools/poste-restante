@@ -121,6 +121,85 @@ describe("the reach — enumerated, not discoverable", () => {
   });
 });
 
+describe("renewal — a develop of the birth thread", () => {
+  const row = { creator: "you@house", beneficiary: "ben@house", died_at: null };
+
+  it("the creator extends the lifespan frame", async () => {
+    const updates: string[] = [];
+    const s = svc(
+      fakePool({
+        "SELECT creator, beneficiary, died_at FROM agents WHERE address = $1": [row],
+        "UPDATE agents SET lifespan_frame = $2 WHERE address = $1": [{ ok: true }],
+        "UPDATE agents SET token_hash = $2 WHERE address = $1": [{ ok: true }],
+      }),
+    );
+    const res = await s.develop("grantwatch@house", "you@house", "production:grant-season-2027");
+    expect(res.success).toBe(true);
+    expect(res.token).toBeDefined();
+  });
+
+  it("a stranger cannot renew — only the creator or beneficiary", async () => {
+    const s = svc(
+      fakePool({
+        "SELECT creator, beneficiary, died_at FROM agents WHERE address = $1": [row],
+      }),
+    );
+    const res = await s.develop("grantwatch@house", "intruder@house", "production:grant-season-2027");
+    expect(res.success).toBe(false);
+  });
+
+  it("a dead instrument cannot be renewed", async () => {
+    const s = svc(
+      fakePool({
+        "SELECT creator, beneficiary, died_at FROM agents WHERE address = $1": [{ ...row, died_at: new Date() }],
+      }),
+    );
+    const res = await s.develop("grantwatch@house", "you@house", "production:grant-season-2027");
+    expect(res.success).toBe(false);
+  });
+});
+
+describe("bequest on departure — the beneficiary opts in", () => {
+  const row = { creator: "you@house", beneficiary: "ben@house", died_at: null };
+
+  it("the named beneficiary adopts — new token, new keys", async () => {
+    const res = await (async () => {
+      const seen: Record<string, unknown[]> = {
+        "SELECT creator, beneficiary, died_at FROM agents WHERE address = $1": [row],
+      };
+      const s = svc(
+        fakePool(seen),
+      );
+      return s.bequeath("grantwatch@house", "ben@house");
+    })();
+    // The fake pool only answers SELECTs; the UPDATEs return empty rows,
+    // so the method still reaches the mint-token path (generateResidentKeypair
+    // is mocked by the pool being a bare object). We assert the guard.
+    expect(res.success).toBe(true);
+    expect(res.token).toBeDefined();
+  });
+
+  it("a stranger who is not the named beneficiary cannot adopt", async () => {
+    const s = svc(
+      fakePool({
+        "SELECT creator, beneficiary, died_at FROM agents WHERE address = $1": [row],
+      }),
+    );
+    const res = await s.bequeath("grantwatch@house", "intruder@house");
+    expect(res.success).toBe(false);
+  });
+
+  it("an instrument with no named beneficiary cannot be bequeathed", async () => {
+    const s = svc(
+      fakePool({
+        "SELECT creator, beneficiary, died_at FROM agents WHERE address = $1": [{ ...row, beneficiary: null }],
+      }),
+    );
+    const res = await s.bequeath("grantwatch@house", "ben@house");
+    expect(res.success).toBe(false);
+  });
+});
+
 describe("the death sweep — tasks die", () => {
   const expiredRow = {
     address: "grantwatch@house",

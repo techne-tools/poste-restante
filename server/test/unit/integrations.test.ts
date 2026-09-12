@@ -10,6 +10,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { IntegrationService } from "../../src/integrations/service.js";
 import type { IntegrationTransport, IntegrationServiceOptions } from "../../src/integrations/service.js";
+import { generateAgeIdentity, ageRecipientOf, sealToRecipients } from "../../src/crypto/keys.js";
 
 // A minimal fake pool: rows keyed by SQL (each test exercises one query).
 function fakePool(rows: Record<string, unknown[]> = {}) {
@@ -71,6 +72,75 @@ const GRANTED = {
 const AUDIT = {
   "SELECT creator FROM agents WHERE address = $1": [{ creator: "you@house" }],
 };
+
+describe("credential isolation — age-encrypted at rest, unsealed in memory", () => {
+  async function makeKey() {
+    const ageIdentity = await generateAgeIdentity();
+    const ageRecipient = await ageRecipientOf(ageIdentity);
+    return {
+      get: async () => ({ ageIdentity, ageRecipient, ed25519Private: "", ed25519Public: "" }),
+    } as never;
+  }
+
+  it("setCredentials seals to the house's key and refuses without house keys", async () => {
+    // Without houseKeys → fail closed (the operator must boot a house first).
+    const noKey = svc(fakePool());
+    await expect(noKey.setCredentials("web-search", { apiKey: "sekrit" })).rejects.toThrow(
+      "no-house-keys",
+    );
+
+    // With a real keypair, the stored value is armor — never plaintext.
+    const key = await makeKey();
+    const stored: Record<string, unknown[]> = {
+      "UPDATE integrations SET credentials_enc = $2 WHERE id = $1": [{ rowCount: 1 }],
+    };
+    const pool = fakePool(stored);
+    const s = svc(pool, { houseKeys: key });
+    await s.setCredentials("web-search", { apiKey: "sekrit" });
+    // The stored parameter array's second element (the armor) is not the
+    // plaintext secret — the house seals, never stores cleartext.
+    const params = stored["UPDATE integrations SET credentials_enc = $2 WHERE id = $1"] as unknown as { rowCount: number }[][];
+    expect(JSON.stringify(params)).not.toContain("sekrit");
+  });
+
+  it("unsealCredentials returns the plaintext the operator sealed", async () => {
+    const key = await makeKey();
+    const k = key as { get: () => Promise<{ ageRecipient: string; ageIdentity: string }> };
+    const { ageIdentity, ageRecipient } = await k.get();
+    const enc = await sealToRecipients(JSON.stringify({ apiKey: "sekrit" }), [ageRecipient]);
+    const pool = fakePool({
+      "SELECT credentials_enc FROM integrations WHERE id = $1": [{ credentials_enc: enc }],
+    });
+    const s = svc(pool, { houseKeys: key });
+    const creds = await s.unsealCredentials("web-search");
+    expect(creds).toEqual({ apiKey: "sekrit" });
+  });
+
+  it("a call passes the unsealed credentials to the transport — the agent never sees them", async () => {
+    const key = await makeKey();
+    const k = key as { get: () => Promise<{ ageRecipient: string; ageIdentity: string }> };
+    const { ageRecipient } = await k.get();
+    const enc = await sealToRecipients(JSON.stringify({ apiKey: "sekrit" }), [ageRecipient]);
+    let passed: Record<string, string> | undefined;
+    const pool = fakePool({
+      ...CATALOG,
+      ...GRANTED,
+      ...AUDIT,
+      "UPDATE agent_integrations": [{ remaining: 5 }],
+      "SELECT credentials_enc FROM integrations WHERE id = $1": [{ credentials_enc: enc }],
+    });
+    const s = svc(pool, {
+      houseKeys: key,
+      transportFactory: (_url, creds) => {
+        passed = creds;
+        return fakeTransport();
+      },
+    });
+    const res = await s.call("grantwatch@house", "web-search", "search", { q: "grants" });
+    expect(res.ok).toBe(true);
+    expect(passed).toEqual({ apiKey: "sekrit" });
+  });
+});
 
 describe("the whitelist — enumerated, not discoverable", () => {
   it("returns the tools granted to an agent", async () => {

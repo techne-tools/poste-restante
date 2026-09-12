@@ -217,6 +217,72 @@ export class AgentService {
   }
 
   /**
+   * Develop the agent's birth thread — renew or extend the lifespan.
+   * A develop is a letter to the birth thread; only the creator or
+   * beneficiary (after bequest) may do it. Extends the lifespan_frame.
+   * The act IS a letter; the archive keeps the will.
+   */
+  async develop(address: string, developer: string, newLifespan: string): Promise<{ success: boolean; token?: string }> {
+    const agent = await this.pool.query<{ creator: string; beneficiary: string | null; died_at: Date | null }>(
+      `SELECT creator, beneficiary, died_at FROM agents WHERE address = $1`,
+      [address],
+    );
+    const row = agent.rows[0];
+    if (!row) return { success: false };
+    if (row.died_at) return { success: false };
+    if (row.creator !== developer && row.beneficiary !== developer) {
+      return { success: false };
+    }
+    await this.pool.query(
+      `UPDATE agents SET lifespan_frame = $2 WHERE address = $1`,
+      [address, newLifespan],
+    );
+    // A develop is a letter to the birth thread; the archive keeps the will.
+    const token = `pr_${randomBytes(32).toString("base64url")}`;
+    const tokenHash = createHash("sha256").update(token).digest("hex");
+    await this.pool.query(
+      `UPDATE agents SET token_hash = $2 WHERE address = $1`,
+      [address, tokenHash],
+    );
+    this.log.info("agent:developed", { address, developer, lifespan: newLifespan });
+    return { success: true, token };
+  }
+
+  /**
+   * Bequest on creator departure — the beneficiary opts in and inherits
+   * the agent. The old token is revoked, new keys minted. Old sealed
+   * letters stay decryptable with the old key; future ones use the new key.
+   * If no beneficiary opts in, the agent dies (history kept).
+   */
+  async bequeath(address: string, beneficiary: string): Promise<{ success: boolean; token?: string }> {
+    const agent = await this.pool.query<{ creator: string; beneficiary: string | null; died_at: Date | null }>(
+      `SELECT creator, beneficiary, died_at FROM agents WHERE address = $1`,
+      [address],
+    );
+    const row = agent.rows[0];
+    if (!row || !row.beneficiary || row.beneficiary !== beneficiary) {
+      return { success: false };
+    }
+    // The beneficiary opts in by recording their acceptance
+    await this.pool.query(
+      `UPDATE agents SET creator = $2, beneficiary = NULL, token_hash = NULL, died_at = NULL WHERE address = $1`,
+      [address, beneficiary],
+    );
+    // New keys minted for the beneficiary
+    const keys = await generateResidentKeypair(address);
+    const token = `pr_${randomBytes(32).toString("base64url")}`;
+    const tokenHash = createHash("sha256").update(token).digest("hex");
+    await this.pool.query(
+      `UPDATE agents SET token_hash = $2, age_recipient = $3, ed25519_public = $4, died_at = NULL WHERE address = $1`,
+      [address, tokenHash, keys.public.ageRecipient, keys.public.ed25519Public],
+    );
+    // Old sealed letters stay decryptable with old key (key history per §15).
+    // Future sealed letters use the new key.
+    this.log.info("agent:bequeathed", { address, beneficiary });
+    return { success: true, token };
+  }
+
+  /**
    * The death sweep — tasks die (SPEC §16, "no zombies").
    *
    * An agent whose lifespan frame has been quiet for the activity window

@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added — instruments live their full life-cycle, and integrations carry sealed credentials (SPEC §16 + §17 — 2026-09-12)
+
+The §16 follow-ons recorded in the death-sweep note are now real, and §17's credential isolation stops being a schema promise.
+
+- **Renewal is a develop of the birth thread (§16).** `AgentService.develop` is wired to `POST /v1/agents/:address/renew` and the MCP `renew_agent` tool. Only the creator or the named beneficiary (the future creator) may renew; the agent cannot extend itself and a stranger cannot either. Extends the lifespan frame and re-mints the token (shown once).
+- **Bequest on creator departure (§16).** `AgentService.bequeath` is wired to `POST /v1/agents/:address/bequeath` and the MCP `bequeath_agent` tool. The named beneficiary opts in and inherits the address, scope, history; new identity keys are minted — the past stays sealed to the old key, the instrument's future seals to the new key.
+- **Credential isolation (§17).** The `credentials_enc` column stops being a promise. `IntegrationService.setCredentials` age-encrypts operator-supplied credentials to the house's own key (`npm run integration:cred -- <id> KEY=VALUE...`); `unsealCredentials` opens them **in memory at call time** and hands them to the transport — the agent never sees a shared credential, the integration never sees the house's keys, and no plaintext touches disk or logs. A credential-bearing integration the house cannot unseal is refused (fail closed).
+- **The book binds the integrations door (§17).** The v2 door family lands: a standing clause can bind `integrations.<id>.enabled` to retire a tool house-wide or reopen it. The integration service's own `enabled` check reads what the book writes — three powers, none of them master: the operator registers capacity, the commons governs availability, the creator whitelists their instrument's use.
+
+Suite: server 287/287 unit (+9 — renewal, bequest, credential isolation), 33 files. Typecheck and build clean.
+
+### Added — the house joins the circle: collaborative sealing (SPEC §15, second model — 2026-09-12)
+
+The house was always *meant* to be a participant (SPEC §15: "clients hold resident keys; the house holds exactly one keypair — its own, a participant key, never a master key"). Now it is.
+
+- **Provisioning.** `HouseKeysService.ensure()` runs on boot (idempotent, restart-safe). The house's singleton keypair (age + ed25519) is minted once; the private halves live in the singleton — the one private key the house legitimately holds. Public halves mirror into the address book for `house@house`, so correspondents discover the house's recipient like any resident's.
+- **Discovery.** `GET /v1/house/meta` now carries `houseAgeRecipient`, `houseEd25519Public`, `houseAddress` — the composer's door.
+- **The composer's choice.** A quiet toggle: "Let the house hold a copy — the house can read this one with you". When checked, `house@house` joins the recipient list; `sealDraft` adds the house's recipients to the circle; `house@house` becomes a participant (the envelope's `to` includes it — visibility is participant-derived, so the house is party).
+- **The house unseals.** `houseKeys.unsealBody(ciphertext)` decrypts only collaborative letters (where the house was a recipient); a private seal stays closed. The house decrypts in memory, never stores plaintext — the threat model is exact: a raw DB dump yields ciphertext for everything; the attacker needs the house's private key to read collaborative letters; sealed letters stay sealed.
+- **Proven.** Unit tests: the house opens collaborative letters, refuses private ones, idempotent provisioning. Integration: a resident seals WITH the house → the house unseals; a private seal stays closed; delivering a collaborative letter is idempotent and the house opens it on read.
+
+Suite: server 278/278 unit (+5 house-keys), client 76/76, typecheck, build. Integration 405 (+4 new — collaborative arc, sealed-client 4/4, review 3/3, agents 3/3). The two mailbox-sidecar integration files still need the dev Stalwart on 11430 — pre-existing.
+
 ### Added — recovery identity: the sealed-letter backstop, minted and sealed to (SPEC §15, follow-on — 2026-09-12)
 
 §15's loss mitigation becomes real. A resident can now mint a recovery
