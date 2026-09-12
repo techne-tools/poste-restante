@@ -43,4 +43,29 @@ describe("ThreadStateSurface — the safety move stays", () => {
     expect(html).toContain("Scrub my part of this thread");
     expect(html).not.toContain("Leave this correspondence");
   });
+
+  it("renders the state as a serif panel with exactly one primary", () => {
+    for (const state of ["out", "shelved"] as const) {
+      const html = surface(state);
+      expect(html).toContain('class="thread-state"');
+      expect(html).toContain('class="state-line"');
+      // Each held state offers one decisive act, never two.
+      expect((html.match(/class="primary"/g) ?? []).length).toBe(1);
+    }
+  });
+
+  it("holds the primary while a move is in flight", () => {
+    const html = renderToStaticMarkup(
+      <ThreadStateSurface
+        state="shelved"
+        acting
+        scrubControl={scrub}
+        onLeave={noop}
+        onRejoin={noop}
+        onBringBack={noop}
+      />,
+    );
+    // The door is not half-lit: while a move runs, the primary is held.
+    expect(html).toMatch(/<button class="primary"[^>]*disabled/);
+  });
 });

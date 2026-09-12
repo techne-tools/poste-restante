@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed — adherence pass over the day board and the book (2026-09-12)
+
+- **The book's `clause-proposed` class had no rule.** Every clause rendered
+  `clause clause-{state}`, but only `standing`, `contested`, and `reversed`
+  had rules — `proposed`, the book's most common state, was a class no rule
+  answered (adherence rule 4). Only the states that change treatment carry a
+  class now, matching the archive's rows from pass 13.
+- **One verb for the act: offered.** A reversed clause's meta read "proposed
+  by" while every other clause read "offered by"; the record now uses the
+  house's one word.
+- **The day board is one tested projection.** The board's presentation moved
+  out of the fetching component into a pure `DayBoard`, with tests locking
+  the frames, instruments, offers, cited clauses, and the open empty day. The
+  board keeps its compact callsheet card — the day holds a projection (no
+  letter body) in ~190px columns, so the full reading `LetterRow` is not used
+  there; the pass-14 report records the reasoning.
+
+Also this turn: `threadState.test.tsx` extended to lock the held state as one
+serif panel with exactly one primary, held while a move is in flight.
+
+Tests: client 120/120 (+6). Typecheck and build clean.
+
 ### Fixed — adherence pass over the correspondence and its held states (2026-09-12)
 
 - **The archive's `full` class had no rule.** The Horizon View classes each

@@ -27,6 +27,14 @@ function daysUntil(iso: string): number {
   return Math.max(0, Math.ceil(ms / 86_400_000));
 }
 
+/** Only the states with a rule carry a state class: `standing`, `contested`,
+ *  and `reversed` are styled; `proposed` (shown as "offered") rests in the
+ *  default treatment, so it must not add a class no rule answers
+ *  (adherence rule 4). */
+function clauseClass(state: Clause["state"]): string {
+  return state === "proposed" ? "clause" : `clause clause-${state}`;
+}
+
 export default function Book({ onError, initialClause, name }: Props) {
   const [head, setHead] = useState<BookHead | null>(null);
   const [loading, setLoading] = useState(true);
@@ -192,7 +200,7 @@ export default function Book({ onError, initialClause, name }: Props) {
         <section className="book-section">
           <h3>What the household holds</h3>
           {standing.map((c) => (
-            <article key={c.thread} className={`clause clause-${c.state}`}>
+            <article key={c.thread} className={clauseClass(c.state)}>
               <div className="clause-head">
                 <span className="clause-state">{STATE_LABEL[c.state]}</span>
                 {c.binding && (
@@ -266,7 +274,7 @@ export default function Book({ onError, initialClause, name }: Props) {
         <section className="book-section">
           <h3>Before the household</h3>
           {proposed.map((c) => (
-            <article key={c.thread} className={`clause clause-${c.state}`}>
+            <article key={c.thread} className={clauseClass(c.state)}>
               <div className="clause-head">
                 <span className="clause-state">{STATE_LABEL[c.state]}</span>
                 {c.pendingReversal && <span className="clause-binding">a reversal</span>}
@@ -382,7 +390,7 @@ export default function Book({ onError, initialClause, name }: Props) {
               </div>
               <div className="clause-text">{renderMarkdown(c.text)}</div>
               <div className="clause-meta">
-                <span>proposed by {c.proposedBy}</span>
+                <span>offered by {c.proposedBy}</span>
                 <span>reversed {c.reversedAt ? new Date(c.reversedAt).toLocaleDateString() : ""}</span>
               </div>
             </article>
