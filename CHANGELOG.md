@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed — adherence pass over the login door and the guest shell (2026-09-12)
+
+The threshold, read against the ten rules.
+
+- **The welcome stopped dressing as an empty state.** The door's opening line
+  used `.empty` — faint, italic, centred, with an absence's padding — for a
+  sentence of welcome. It is now `.door-intro`, in the serif voice.
+- **The door's header and card share a measure.** `.login` shipped without a
+  rule: the class styled nothing, so the header ran the full width while the
+  letter-card sat centred. It now holds the letter measure and centres it.
+- **`.signout` shipped without a rule.** The header's leave/enter control now
+  rests as a quiet link — no box, faded ink, darkening on hover.
+- **The guest shell names its room in the house's register** — "the pub",
+  not "Pub".
+
+Alongside: the letter's enclosure row is extracted to
+`client/src/Enclosures.tsx`, and `LetterView.test.tsx` locks the plain letter,
+the sealed letter (title + open affordance, never the ciphertext), and the
+enclosure states including the confirmed removal.
+
+Still open (needs a decision): the door prints a fixed house name because
+`GET /v1/house/meta` requires a credential. The route holds no sensitive
+state, so making that read keyless would let the keyless door speak the
+community's name — an endpoint-visibility decision, left to the operator.
+
+Tests: client 97/97 (+6). Typecheck and build clean.
+
 ### Fixed — adherence pass over the letter and the writing desk (2026-09-12)
 
 The atomic unit and the composer, read against the ten rules.

@@ -36,7 +36,7 @@ export default function GuestShell({ onEnterHouse }: Props) {
         </header>
         <nav className="nav">
           <button className="active" type="button" aria-current="page">
-            Pub
+            the pub
           </button>
         </nav>
         <Pub onError={setError} onEnterHouse={onEnterHouse} />

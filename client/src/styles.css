@@ -114,6 +114,13 @@ a:hover {
   margin: 0 auto;
 }
 
+/* The door's own room — the header and the letter-card share one measure,
+   so "Poste Restante" sits over the card rather than off its left edge. */
+.login {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
 .whisper {
   border-right: var(--rule);
   background: var(--surface-sunken);
@@ -257,6 +264,20 @@ a:hover {
   font-family: var(--font-mono);
   font-size: 12px;
   color: var(--muted);
+}
+
+/* The header's own door — leave (resident) or enter (guest). A quiet link
+   in the top bar, not a filled control: it is presence, not a command. */
+.signout {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.signout:hover {
+  color: var(--fg);
 }
 
 /* The mailbox — a vertical flow of letters. One class serves the mailbox,
@@ -1275,6 +1296,16 @@ button.primary:disabled {
 .nav button.active {
   border-color: var(--accent);
   color: var(--fg);
+}
+
+/* The door's welcome — a sentence, not an empty state (adherence rule 4:
+   `.empty` is for empty pages only). */
+.door-intro {
+  font-family: var(--font-display);
+  font-size: var(--step-2);
+  line-height: 1.5;
+  color: var(--muted);
+  margin: 0 0 var(--space-4);
 }
 
 /* The door's quiet switch — sign in, or accept an invitation. Presence,

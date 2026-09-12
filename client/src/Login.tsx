@@ -77,7 +77,7 @@ function SignIn({ onAuthed, onRedeem, onGuest }: Props & { onRedeem: () => void 
           <span className="address">the house</span>
         </header>
         <div className="letter compose">
-          <p className="empty">
+          <p className="door-intro">
             The house holds your letters until you come for them. It does not
             know you yet — sign in to be let in.
           </p>
