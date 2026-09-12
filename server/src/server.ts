@@ -89,7 +89,7 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
   const oidcLimiter = createRateLimiter({
     windowMs: 60_000,
     max: 20,
-    message: "too many sign-in attempts — please wait a moment",
+    message: "too many attempts at the door — wait a moment",
   });
   const redeemLimiter = createRateLimiter({
     windowMs: 60_000,
@@ -168,7 +168,7 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
     if (!code || !state) return fail("the provider did not return a code");
     const pending = oidcPending.get(state);
     if (!pending || pending.expiresAt < Date.now()) {
-      return fail("this sign-in attempt has expired — start again");
+      return fail("this attempt at the door has expired — start again");
     }
     oidcPending.delete(state);
     if (!auth) return fail("OIDC is not configured in this house");

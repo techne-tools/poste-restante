@@ -250,7 +250,7 @@ export default function Profile({ onError, address, onRelabeled, onPasswordChang
         <p className="book-hint">
           The handle is a label; the identity is the key. Changing your handle never changes who
           you are — the letters, the edges, the trust all stay. The old handle is retired, never
-          reused. You will sign in again under the new one.
+          reused. You will enter the house again under the new one.
         </p>
         <label className="compose-field">
           <span className="compose-label">New handle</span>

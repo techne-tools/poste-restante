@@ -75,7 +75,7 @@ export default function Pub({ onError, onReply, onPost, onEnterHouse, name }: Pr
         <p className="empty">The pub is closed to visitors tonight.</p>
         {onEnterHouse && (
           <button type="button" className="door-link" onClick={onEnterHouse}>
-            Sign in to enter
+            Enter the house
           </button>
         )}
       </div>

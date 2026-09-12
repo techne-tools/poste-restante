@@ -555,7 +555,7 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
     "undismiss_whisper",
     {
       title: "Undismiss a whisper",
-      description: "Undismiss a whisper — the user changed their mind. The house takes corrections at face value.",
+      description: "Undismiss a whisper — the resident changed their mind. The house takes corrections at face value.",
       inputSchema: {
         id: z.string().min(1).describe("the whisper id"),
       },

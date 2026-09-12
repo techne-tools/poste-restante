@@ -82,7 +82,7 @@ function SignIn({ onAuthed, onRedeem, onGuest }: Props & { onRedeem: () => void 
         <div className="letter compose">
           <p className="door-intro">
             The house holds your letters until you come for them. It does not
-            know you yet — sign in to be let in.
+            know you yet — come to the door and enter.
           </p>
           {error && (
             <div className="error-banner" role="alert">
@@ -117,7 +117,7 @@ function SignIn({ onAuthed, onRedeem, onGuest }: Props & { onRedeem: () => void 
               </button>
               {meta.oidcEnabled && (
                 <button type="button" onClick={oidc} disabled={busy}>
-                  Sign in with your identity provider
+                  Enter with your identity provider
                 </button>
               )}
             </div>

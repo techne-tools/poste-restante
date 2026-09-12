@@ -31,7 +31,7 @@ export interface OidcConfig {
   clientId: string;
   /** This house's client secret at the provider. */
   clientSecret: string;
-  /** The redirect URI the provider sends the user back to. */
+  /** The redirect URI the provider sends the resident back to. */
   redirectUri: string;
   /** The address that owns the house (used for the OIDC bootstrap claim). */
   ownerAddress: string;

@@ -347,7 +347,7 @@ export class WhisperService {
     return (res.rowCount ?? 0) > 0;
   }
 
-  /** Undismiss — the user changed their mind. The house takes corrections at face value. Scoped. */
+  /** Undismiss — the resident changed their mind. The house takes corrections at face value. Scoped. */
   async undismiss(id: string, address: string): Promise<boolean> {
     const res = await this.pool.query(
       `UPDATE whispers w SET dismissed_at = NULL

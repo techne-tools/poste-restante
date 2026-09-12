@@ -44,10 +44,10 @@ describe("Login — the door's ways in", () => {
 
   it("offers the provider door only when the house has one", () => {
     state.meta = { oidcEnabled: true };
-    expect(door()).toContain("Sign in with your identity provider");
+    expect(door()).toContain("Enter with your identity provider");
 
     state.meta = { oidcEnabled: false };
-    expect(door()).not.toContain("Sign in with your identity provider");
+    expect(door()).not.toContain("Enter with your identity provider");
   });
 
   it("holds the primary until the form can act", () => {
