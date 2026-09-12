@@ -808,6 +808,21 @@ button.scrub-act {
   border-color: var(--fg);
 }
 
+/* An instrument — an agent, shown flat and marked (SPEC §16).
+   Transparency as regulation: anyone can see who spawned what; the
+   mark is a quiet mono tag, never a ranking, never a warning. */
+.instrument-tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  border: var(--rule);
+  border-radius: 999px;
+  padding: 2px 8px;
+  margin-left: var(--space-2);
+}
+
 .address-row .addr {
   font-family: var(--font-mono);
   font-size: 13px;

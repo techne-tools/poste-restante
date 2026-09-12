@@ -170,6 +170,31 @@ The house cites what it has held. When a gap whisper is created, the house embed
 - **Privacy as schema.** The book is commons by right — every resident reads it — so citing a clause leaks nothing. No new visibility limb is needed.
 - **Derived, like everything else.** Wiping the columns and re-running the gap pass yields the same citations.
 
+### Agents — instruments, and their death (SPEC §16, built 2026-09-12)
+
+An agent is born a letter to `agents@house` (`kind: "agent"`, the will in
+the body: first line the task, optional `lifespan:`, `group:`, `pub:`,
+`beneficiary:`). The house ingests it, mints the address (derived from
+the task slug), the one-time token, the age + ed25519 keypairs (§15), and
+a server-side scope record. The reach is enumerated — exactly three
+doors (`canAddress`, enforced on every write): its creator (always
+party), an opt-in group (a thread), the pub (a grant, default closed).
+
+- **Tasks die.** An agent whose lifespan frame carries no letter for the
+  activity window (30 days) has outlived its task. The house sweep
+  (`AGENT_SWEEP_INTERVAL_MS`, default 6h) writes its **final letter
+  first** — the instrument's own closing word to its creator,
+  deterministic thread + body (idempotent across retries) — then
+  revokes the token and stamps `died_at`. A birth is never swept before
+  living a full window (grace period). If the final letter fails to
+  store, the agent is not killed; the next sweep retries.
+- **No zombies.** A dead agent has no doors: `canAddress` and `isAgent`
+  consult `died_at IS NULL`; the token hash is nulled; the address book
+  no longer marks it as an instrument.
+- **Instruments, visible.** Living agents carry `isAgent` on the address
+  rows, rendered as a quiet "instrument" tag — flat, never ranked.
+  Transparency as regulation: anyone can see who spawned what.
+
 ## Constraints
 
 - **Async by default.** The letter waits. Nothing pushes. *Presence not pressure — hold, never ping; visible not sent.*

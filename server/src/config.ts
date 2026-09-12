@@ -111,6 +111,11 @@ export interface HouseConfig {
    *  plaintext imap:// URLs (MAILBOX_TLS_INSECURE=1). Production configures
    *  the CA via imaps:// and never sets this. Fail closed by default. */
   mailboxTlsInsecure: boolean;
+  /** The agent death sweep rhythm (AGENT_SWEEP_INTERVAL_MS). Agents with
+   *  a lifespan frame close when the frame has been quiet for the
+   *  activity window — the house kills no zombies and revokes their
+   *  tokens on its own breath. Default 6h. 0 disables the sweep. */
+  agentSweepIntervalMs: number;
 }
 
 const AuthConfigSchema = z.object({
@@ -185,5 +190,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): HouseConfig {
     whisperName: env.WHISPER_NAME ?? "the whisper",
     mailboxSyncIntervalMs: intFromEnv(env.MAILBOX_SYNC_INTERVAL_MS, 0),
     mailboxTlsInsecure: boolFromEnv(env.MAILBOX_TLS_INSECURE, false),
+    agentSweepIntervalMs: intFromEnv(env.AGENT_SWEEP_INTERVAL_MS, 6 * 60 * 60 * 1000),
   };
 }

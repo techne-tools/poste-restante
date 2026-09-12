@@ -6,6 +6,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added — agents die: the frame-expiry sweep + instruments visible (SPEC §16, "no zombies" — 2026-09-12)
+
+The agent machinery (birth letter, enumerated doors, keypairs) was built;
+the lifecycle was not — nothing made a `lifespan_frame` ever close. This
+slice closes the loop:
+
+- **The death sweep.** `AgentService.sweepExpired()` — an agent whose
+  lifespan frame has carried no letter for the activity window (30 days,
+  the house's established quiet-frame derivation) has outlived its task.
+  It writes its **final letter first** — the instrument's own closing
+  word to its creator, deterministic thread and body, so a retried
+  sweep is an idempotent no-op — then its token is revoked and it stops
+  waking. The final letter waits in the mailbox like any other finding
+  (findings are labour; labour waits; presence not pressure, no ping).
+  A birth is never swept before living a full window (`created_at <=
+  cutoff` — the grace period, so a fresh instrument cannot die on its
+  first breath). If the final letter fails to store, the agent is not
+  killed; the next sweep retries.
+- **The heartbeat.** `agents/scheduler.ts` — the GapScheduler shape
+  (overlap-guarded, restart-safe, immediate first pass), wired into both
+  `main.ts` and `mcp/main.ts`, gated by `AGENT_SWEEP_INTERVAL_MS`
+  (default 6h; 0 disables).
+- **Instruments visible.** The address book marks living agents with an
+  `isAgent` flag (derived from the agents table — died agents untag
+  themselves); the client renders a quiet "instrument" tag, flat, never
+  ranked. Transparency as regulation: anyone can see who spawned what.
+
+Suite: server 266/266 unit (+8: sweep death/failure, scheduler ticks,
+overlap, idempotence), client 72/72, typecheck, build. Integration
+385 passed: +3 (agents-lifecycle — birth → marked → alive → aged →
+frame quiet → final letter → token revoked → doors closed → book
+unmarked → idempotent re-sweep). The two mailbox-sidecar integration
+files still need the dev Stalwart on 11430 — pre-existing.
+
 ### Added — sealed letters reach the resident's hand (SPEC §15, client movement — 2026-09-12)
 
 The cryptographic horizon becomes a working surface. The server's side

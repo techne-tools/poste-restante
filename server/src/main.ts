@@ -19,6 +19,7 @@ import { AuthService } from "./auth/service.js";
 import { InviteService } from "./invites/service.js";
 import { BookService } from "./book/service.js";
 import { startGapScheduler } from "./whisper/scheduler.js";
+import { startAgentSweepScheduler } from "./agents/scheduler.js";
 import { startSmtpBridge } from "./bridge/smtp.js";
 import { findThreadBySubject } from "./bridge/threads.js";
 
@@ -47,6 +48,12 @@ const app = createLetterServer(house, {
 // on its own rhythm (GAP_PASS_INTERVAL_MS), storing whispers the resident
 // still pulls. Presence not pressure — the house holds, it never pushes.
 const gapScheduler = startGapScheduler(house, auth, house.config.gapPassIntervalMs);
+
+// The agent death sweep (SPEC §16, "no zombies"): agents whose lifespan
+// frame has closed write their final letter and stop waking. The house
+// breathes like the gap pass — a config-gated interval, presence not
+// pressure; the resident finds the final letter in the mailbox.
+const agentSweep = startAgentSweepScheduler(house, house.config.agentSweepIntervalMs);
 
 // The SMTP door (SPEC §5 #10): inbound mail becomes letters through the
 // same pipeline, same idempotency, same privacy. Closed by default —
@@ -86,6 +93,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, async () => {
     house.log.info("server:shutdown", { signal });
     gapScheduler?.stop();
+    agentSweep?.stop();
     smtpBridge?.close();
     await house.close();
     process.exit(0);

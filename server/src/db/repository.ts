@@ -227,13 +227,15 @@ export class PostgresRepository {
    *  address with a key record carries its age recipient and ed25519
    *  public so correspondents can seal to it and verify its letters.
    *  Public keys are public; the absent key record for a legacy
-   *  address is simply null. */
+   *  address is simply null. Agents are marked as instruments (SPEC
+   *  §16) — shown flat, never ranked, flat in the same list. */
   async listAddresses(): Promise<
-    { id: string; names: string[]; pronouns: string | null; ageRecipient: string | null; ed25519Public: string | null }[]
+    { id: string; names: string[]; pronouns: string | null; ageRecipient: string | null; ed25519Public: string | null; isAgent: boolean }[]
   > {
     const { rows } = await this.pool.query(
       `SELECT a.id, a.names, a.pronouns,
-              ak.age_recipient AS "ageRecipient", ak.ed25519_public AS "ed25519Public"
+              ak.age_recipient AS "ageRecipient", ak.ed25519_public AS "ed25519Public",
+              EXISTS (SELECT 1 FROM agents ag WHERE ag.address = a.id AND ag.died_at IS NULL) AS "isAgent"
        FROM addresses a
        LEFT JOIN address_keys ak ON ak.address = a.id AND ak.retired_at IS NULL
        ORDER BY a.id`,
@@ -252,10 +254,12 @@ export class PostgresRepository {
     is_public: boolean;
     ageRecipient: string | null;
     ed25519Public: string | null;
+    isAgent: boolean;
   } | null> {
     const { rows } = await this.pool.query(
       `SELECT a.id, a.names, a.pronouns, a.is_public,
-              ak.age_recipient AS "ageRecipient", ak.ed25519_public AS "ed25519Public"
+              ak.age_recipient AS "ageRecipient", ak.ed25519_public AS "ed25519Public",
+              EXISTS (SELECT 1 FROM agents ag WHERE ag.address = a.id AND ag.died_at IS NULL) AS "isAgent"
        FROM addresses a
        LEFT JOIN address_keys ak ON ak.address = a.id AND ak.retired_at IS NULL
        WHERE a.id = $1`,

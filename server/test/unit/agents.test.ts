@@ -120,3 +120,86 @@ describe("the reach — enumerated, not discoverable", () => {
     expect(await s.canAddress("ghost@house", "you@house")).toBe(false);
   });
 });
+
+describe("the death sweep — tasks die", () => {
+  const expiredRow = {
+    address: "grantwatch@house",
+    creator: "you@house",
+    task: "track calls for international arts grants",
+    lifespan_frame: "production:grant-season-2026",
+  };
+
+  it("kills nothing when the final letter fails — the next sweep retries", async () => {
+    let ingestCalls = 0;
+    let killed = false;
+    const killingPool = {
+      query: async (sql: string) => {
+        if (sql.includes("FROM agents a")) return { rows: [expiredRow] };
+        if (sql.includes("UPDATE agents SET died_at")) {
+          killed = true;
+          return { rowCount: 1 };
+        }
+        return { rows: [] };
+      },
+    };
+    const failingPipeline = {
+      ingest: async () => {
+        ingestCalls += 1;
+        throw new Error("semantic layer unreachable");
+      },
+    };
+    const s = new AgentService(
+      killingPool as never,
+      noopRepo,
+      failingPipeline as never,
+      noopLog,
+    );
+    const killedList = await s.sweepExpired(new Date("2026-09-12T00:00:00Z"), 30 * 24 * 60 * 60 * 1000);
+    expect(killedList).toEqual([]);
+    expect(ingestCalls).toBe(1);
+    expect(killed).toBe(false); // no final letter → no kill → the next sweep retries
+  });
+
+  it("writes the final letter then kills — the full death", async () => {
+    const letters: {
+      envelope: { from: string; to: string[] };
+      body: { content: string };
+    }[] = [];
+    let killed = false;
+    const killingPool = {
+      query: async (sql: string) => {
+        if (sql.includes("FROM agents a")) return { rows: [expiredRow] };
+        if (sql.includes("UPDATE agents SET died_at")) {
+          killed = true;
+          return { rowCount: 1 };
+        }
+        return { rows: [] };
+      },
+    };
+    const pipeline = {
+      ingest: async (letter: unknown) => {
+        letters.push(letter as {
+          envelope: { from: string; to: string[] };
+          body: { content: string };
+        });
+        return { letterId: "final-1", created: true };
+      },
+    };
+    const s = new AgentService(
+      killingPool as never,
+      noopRepo,
+      pipeline as never,
+      noopLog,
+    );
+    const killedList = await s.sweepExpired(new Date("2026-09-12T00:00:00Z"), 30 * 24 * 60 * 60 * 1000);
+    expect(killedList).toEqual(["grantwatch@house"]);
+    expect(killed).toBe(true);
+    // The final letter is the instrument's own closing word, to its
+    // creator only, carrying the task and the sign-off.
+    expect(letters).toHaveLength(1);
+    expect(letters[0].envelope.from).toBe("grantwatch@house");
+    expect(letters[0].envelope.to).toEqual(["you@house"]);
+    expect(letters[0].body.content).toContain("track calls for international arts grants");
+    expect(letters[0].body.content).toContain("my frame closed — this task is done.");
+  });
+});

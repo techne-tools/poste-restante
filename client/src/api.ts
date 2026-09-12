@@ -91,6 +91,9 @@ export interface Address {
    *  to seal to this address and verify its letters. */
   ageRecipient: string | null;
   ed25519Public: string | null;
+  /** True when the address is an agent — an instrument, not a person
+   *  (SPEC §16). Shown flat in the book, marked as such. */
+  isAgent: boolean;
 }
 
 /** The house book — the derived constitution (SPEC §5.8). */

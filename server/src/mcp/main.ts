@@ -21,6 +21,7 @@ import { createStderrLogger } from "../pipeline/logger.js";
 import { createMcpHouse } from "./server.js";
 import { AuthService } from "../auth/service.js";
 import { startGapScheduler } from "../whisper/scheduler.js";
+import { startAgentSweepScheduler } from "../agents/scheduler.js";
 
 // The MCP server speaks JSON-RPC on stdout — every log line must go to
 // stderr or it corrupts the protocol channel.
@@ -44,6 +45,12 @@ house.log.info("mcp:listening", {
 // still pulls. Presence not pressure — the house holds, it never pushes.
 const gapScheduler = startGapScheduler(house, auth, house.config.gapPassIntervalMs);
 
+// The agent death sweep (SPEC §16, "no zombies"): agents whose lifespan
+// frame has closed write their final letter and stop waking. The house
+// breathes like the gap pass — a config-gated interval, presence not
+// pressure; the resident finds the final letter in the mailbox.
+const agentSweep = startAgentSweepScheduler(house, house.config.agentSweepIntervalMs);
+
 // The mailbox sync drive (SPEC §5 #12): provisioned residents' mailboxes
 // converge with the archive — resync on start, delta after every stored
 // letter (the pipeline's onStored hook), optional heartbeat. Dormant with
@@ -58,6 +65,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, async () => {
     house.log.info("mcp:shutdown", { signal });
     gapScheduler?.stop();
+    agentSweep?.stop();
     await server.close();
     await house.close();
     process.exit(0);

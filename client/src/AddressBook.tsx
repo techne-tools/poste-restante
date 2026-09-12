@@ -38,9 +38,10 @@ export default function AddressBook({ onError, onCompose }: Props) {
           key={a.id}
           className="address-row"
           onClick={() => onCompose(a.id)}
-          title={`Write to ${a.id}`}
+          title={a.isAgent ? `${a.id} — an instrument of the house` : `Write to ${a.id}`}
         >
           <span className="addr">{a.id}</span>
+          {a.isAgent && <span className="instrument-tag">instrument</span>}
           <span className="names">
             {a.names.length > 0 ? a.names.join(", ") : a.pronouns ?? ""}
           </span>

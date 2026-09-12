@@ -215,4 +215,91 @@ export class AgentService {
     }
     return false;
   }
+
+  /**
+   * The death sweep — tasks die (SPEC §16, "no zombies").
+   *
+   * An agent whose lifespan frame has been quiet for the activity window
+   * (30 days — the house's established active-frame derivation, the same
+   * cutoff the whisper and the mailbox use) has outlived its task: the
+   * frame closed. The agent writes its final letter first — a letter
+   * from the instrument to its creator, waiting in the mailbox like any
+   * other finding (findings are labour; labour waits; presence not
+   * pressure, no whisper) — then the token is revoked and it stops
+   * waking.
+   *
+   * Restart-safe: the sweep is idempotent per agent. If the final letter
+   * cannot be stored, the agent is not killed — the next sweep retries.
+   * If the kill fails after the letter is stored, the next sweep's final
+   * letter is the same deterministic letter (same envelope+body → same
+   * id), an idempotent no-op, and the kill retries.
+   */
+  async sweepExpired(
+    now = new Date(),
+    activityWindowMs = 30 * 24 * 60 * 60 * 1000,
+  ): Promise<string[]> {
+    const cutoff = new Date(now.getTime() - activityWindowMs);
+    const { rows } = await this.pool.query<{
+      address: string;
+      creator: string;
+      task: string;
+      lifespan_frame: string;
+    }>(
+      `SELECT a.address, a.creator, a.task, a.lifespan_frame
+       FROM agents a
+       WHERE a.died_at IS NULL AND a.lifespan_frame IS NOT NULL
+         AND a.created_at <= $1
+         AND NOT EXISTS (
+           SELECT 1 FROM letter_frames lf
+           JOIN letters l ON l.id = lf.letter_id
+           WHERE lf.frame_id = a.lifespan_frame AND l.received_at > $1
+         )`,
+      [cutoff],
+    );
+
+    const killed: string[] = [];
+    for (const row of rows) {
+      // The final letter — the instrument's own closing word, addressed
+      // to its creator. The house writes it on the agent's behalf (the
+      // pipeline is the single write path; the agent's token is revoked
+      // at the end of this act, so only the house can speak the
+      // instrument's last sentence). The thread is derived from the
+      // instrument address — deterministic, so a retried sweep writes
+      // the same letter (same envelope+body → same id, an idempotent
+      // no-op), and the agent's closing words stay in one place.
+      const finalLetter: Letter = {
+        envelope: {
+          from: row.address,
+          to: [row.creator],
+          cc: [],
+          thread: `th_agent_${row.address.split("@")[0]}`,
+          kind: "letter",
+          lang: "en-AU",
+          subject: "",
+        },
+        time: { gregorian: now.toISOString(), frames: [{ frame: "agent", value: "final" }] },
+        body: {
+          format: "markdown",
+          content: `${row.task.trim()}\n\nmy frame closed — this task is done.`,
+        },
+      };
+      try {
+        await this.pipeline.ingest(finalLetter);
+      } catch (err) {
+        this.log.error("agent:final-letter-failed", {
+          address: row.address,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        continue; // do not kill — the next sweep retries
+      }
+      const died = await this.kill(row.address);
+      if (died) killed.push(row.address);
+    }
+    if (killed.length > 0) {
+      this.log.info("agent:sweep", { checked: rows.length, killed: killed.length });
+    } else if (rows.length > 0) {
+      this.log.info("agent:sweep", { checked: rows.length, killed: 0 });
+    }
+    return killed;
+  }
 }
