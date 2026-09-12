@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed — adherence pass over the correspondence and its held states (2026-09-12)
+
+- **The archive's `full` class had no rule.** The Horizon View classes each
+  row by the frame intersection, but only `partial` and `dim` had rules —
+  `full` was a class no rule answered (adherence rule 4). It rested at full
+  weight anyway, so only the rows that change weight carry a class now.
+- **One letter row, four rooms.** The letter's face in a list was copied
+  into the mailbox, the archive, the pub conversation, and the
+  correspondence. It is now one `client/src/LetterRow.tsx`, referenced
+  everywhere — the pin marker and the intersection state its only options
+  (adherence rule 10).
+- **The correspondence title rejoined the house's headings** — `.thread-title`
+  rested at `font-weight: 600` while every heading is `500`.
+
+Also this turn: `HOUSE_META_PUBLIC` is documented in `README.md` and
+`containers/poste-restante/.env.public`, beside the `*_NAME` room variables;
+and `Redeem.test.tsx` locks the invitation's door layout, its fields, the
+held primary, and the way back.
+
+Tests: client 114/114 (+10 — `LetterRow`, `Redeem`). Typecheck and build
+clean.
+
 ### Changed — the house's own words are keyless at the door; adherence pass over the invitation (2026-09-12)
 
 - **`GET /v1/house/meta` is keyless by default, keyed on request.** The

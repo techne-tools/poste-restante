@@ -71,6 +71,8 @@ npm run serve:mcp --workspace server # the MCP face — agents become residents
 
 The MCP face is registered with Hermes as `poste-restante` (17 tools: deliver, search, mailbox, whisper, gaps). The house is headless — the client is *a* client, not *the* client.
 
+Room names are configuration, not code: `HOUSE_NAME`, `PUB_NAME`, `BOOK_NAME`, and the other `*_NAME` variables rename the house's rooms without renaming the architecture. `GET /v1/house/meta` serves them to the client, and it is **keyless by default** so the login door can greet a community by its own name; set `HOUSE_META_PUBLIC=0` to require a credential — the door then falls back to the founding names.
+
 ## Documents
 
 - `SPEC.md` — the framework spec (v0.1, for Open Design review)

@@ -294,7 +294,9 @@ a:hover {
 .thread-title {
   font-family: var(--font-display);
   font-size: 18px;
-  font-weight: 600;
+  /* The house's headings all rest at 500; the correspondence title joins
+     them rather than standing a weight above every other heading. */
+  font-weight: 500;
   margin: 0 0 var(--space-3);
 }
 

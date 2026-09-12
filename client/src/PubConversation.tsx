@@ -1,5 +1,4 @@
-import KindTag from "./KindTag";
-import { snippetForLetter } from "./markdown";
+import LetterRow from "./LetterRow";
 import type { Letter } from "./api";
 import type { PubConversation as PubConversationData } from "./pubUtils";
 
@@ -31,25 +30,7 @@ export default function PubConversation({ conversation, onBack, onOpenLetter, on
       </div>
       <div className="letter-list">
         {conversation.letters.map((l) => (
-          <button
-            key={l.id}
-            type="button"
-            className="letter-row"
-            onClick={() => onOpenLetter(l)}
-          >
-            <p className="subject">{l.envelope.subject || "(no subject)"}</p>
-            <div className="meta">
-              <KindTag kind={l.envelope.kind} />
-              <span>{l.envelope.from}</span>
-              <span>{new Date(l.receivedAt).toLocaleString("en-AU")}</span>
-              {l.time.frames.map((f) => (
-                <span key={`${f.frame}:${f.value}`} className="frame">
-                  {f.frame}:{f.value}
-                </span>
-              ))}
-            </div>
-            <div className="snippet">{snippetForLetter(l)}</div>
-          </button>
+          <LetterRow key={l.id} letter={l} onClick={() => onOpenLetter(l)} />
         ))}
       </div>
       {onReply && (

@@ -2,9 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { house } from "./api";
 import type { Letter } from "./api";
 import LetterView from "./LetterView";
+import LetterRow from "./LetterRow";
 import { ThreadActionRow, useThreadMoves } from "./ThreadActions";
-import KindTag from "./KindTag";
-import { snippetForLetter } from "./markdown";
 import {
   byTimeAsc,
   classifyLetter,
@@ -269,30 +268,14 @@ export default function Archive({ onError, initialFrame = null, onWhisperRefresh
               </p>
             )}
             {displayed.length === 0 && <p className="empty">Nothing here. The house holds.</p>}
-            {displayed.map((l) => {
-              const cls = classified.get(l.id) ?? "none";
-              return (
-                <button
-                  key={l.id}
-                  type="button"
-                  className={`letter-row${cls !== "none" ? ` ${cls}` : ""}`}
-                  onClick={() => setSelected(l)}
-                >
-                  <p className="subject">{l.envelope.subject || "(no subject)"}</p>
-                  <div className="meta">
-                    <KindTag kind={l.envelope.kind} />
-                    <span>{l.envelope.from}</span>
-                    <span>{new Date(l.receivedAt).toLocaleString("en-AU")}</span>
-                    {l.time.frames.map((f) => (
-                      <span key={`${f.frame}:${f.value}`} className="frame">
-                        {f.frame}:{f.value}
-                      </span>
-                    ))}
-                  </div>
-                  <div className="snippet">{snippetForLetter(l)}</div>
-                </button>
-              );
-            })}
+            {displayed.map((l) => (
+              <LetterRow
+                key={l.id}
+                letter={l}
+                state={classified.get(l.id) ?? "none"}
+                onClick={() => setSelected(l)}
+              />
+            ))}
           </div>
         )}
       </div>
