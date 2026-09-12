@@ -47,16 +47,22 @@ describe("the letter kinds — every one renders its own mark", () => {
     expect(bad).toEqual([]);
   });
 
-  it("shares a glyph only where it is deliberate — the shelf pair", () => {
+  it("no two kinds share a glyph but the deliberate shelf pair", () => {
     const byGlyph = new Map<string, string[]>();
     for (const kind of kinds) {
       const { glyph } = render(kind);
       byGlyph.set(glyph, [...(byGlyph.get(glyph) ?? []), kind]);
     }
-    const shared = [...byGlyph.entries()].filter(([, ks]) => ks.length > 1);
-    for (const [glyph, ks] of shared) {
-      expect(glyph).toBe("▽");
-      expect([...ks].sort()).toEqual(["shelve", "unshelve"]);
-    }
+
+    // The one deliberate collision: shelve and unshelve share the shelf mark
+    // (the word carries the direction). The pair must actually share, so the
+    // exception is real and not a silently broken mark.
+    expect([...(byGlyph.get("▽") ?? [])].sort()).toEqual(["shelve", "unshelve"]);
+
+    // Every other glyph belongs to exactly one kind — no accidental collision.
+    const collisions = [...byGlyph.entries()]
+      .filter(([glyph, ks]) => glyph !== "▽" && ks.length > 1)
+      .map(([glyph, ks]) => `${glyph} → ${[...ks].sort().join(", ")}`);
+    expect(collisions).toEqual([]);
   });
 });

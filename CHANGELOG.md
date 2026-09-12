@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed — the glyph-collision guard made explicit (2026-09-12)
+
+- `client/src/kindTag.test.tsx` now states both halves of the rule in one
+  place: **no two letter kinds share a glyph but the deliberate shelf pair**
+  (`shelve`/`unshelve`), and the shelf pair is asserted to actually share, so
+  the exception cannot be a silently broken mark. Proven to bite by breaking
+  the pair (the test failed), then restored.
+
+Tests: client 151/151. Typecheck and build clean.
+
 ### Changed — three more error codes pinned; the KindTag marks guarded (2026-09-12)
 
 - **Three refusals now assert their code** — `invalid_address` (a malformed
