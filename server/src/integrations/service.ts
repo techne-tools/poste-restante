@@ -29,6 +29,32 @@ import type { Logger } from "../pipeline/logger.js";
 import type { IngestionPipeline } from "../pipeline/pipeline.js";
 import type { Letter } from "../types.js";
 
+/** The one boundary an integration call crosses — injected so the unit
+ *  tests can fake the wire. The production shape connects the MCP SDK
+ *  client to the operator-registered URL over stdio (v1 remote-only),
+ *  calls the whitelisted tool with a hard timeout, and closes cleanly. */
+export interface IntegrationTransport {
+  callTool(
+    params: { name: string; arguments?: Record<string, unknown> },
+    options?: { timeout?: number },
+  ): Promise<unknown>;
+  close(): Promise<void>;
+}
+
+export interface IntegrationServiceOptions {
+  /** Hard timeout per toolcall, ms. Default 15_000. */
+  timeoutMs?: number;
+  /** Rate limit: max calls per (agent, integration) per window. Default
+   *  30 calls / 60 s. In-memory — the house holds, it never floods. */
+  rateMax?: number;
+  rateWindowMs?: number;
+  /** Injectable call boundary for tests (defaults to the MCP client
+   *  over stdio — npx -y <url>). */
+  transportFactory?: (
+    url: string,
+  ) => Promise<IntegrationTransport> | IntegrationTransport;
+}
+
 /** A registered integration — the operator's catalog. */
 export interface Integration {
   id: string;
@@ -47,11 +73,47 @@ export interface AgentIntegration {
 }
 
 export class IntegrationService {
+  private readonly timeoutMs: number;
+  private readonly rateMax: number;
+  private readonly rateWindowMs: number;
+  private readonly transportFactory?: IntegrationServiceOptions["transportFactory"];
+  /** In-memory sliding window per (agent, integration) — the house holds,
+   *  it never floods. */
+  private readonly calls: Map<string, number[]> = new Map();
+
   constructor(
     private readonly pool: pg.Pool,
     private readonly pipeline: IngestionPipeline,
     private readonly log: Logger,
-  ) {}
+    options: IntegrationServiceOptions = {},
+  ) {
+    this.timeoutMs = options.timeoutMs ?? 15_000;
+    this.rateMax = options.rateMax ?? 30;
+    this.rateWindowMs = options.rateWindowMs ?? 60_000;
+    this.transportFactory = options.transportFactory;
+    // Bound the in-memory rate map — a dead agent's history is forgotten
+    // with the house's own breath, never leaking across restarts.
+    setInterval(() => this.sweepRateMap(), Math.max(this.rateWindowMs, 60_000)).unref?.();
+  }
+
+  private sweepRateMap(): void {
+    const now = Date.now();
+    for (const [key, stamps] of this.calls) {
+      const live = stamps.filter((t) => now - t < this.rateWindowMs);
+      if (live.length === 0) this.calls.delete(key);
+      else this.calls.set(key, live);
+    }
+  }
+
+  private rateLimited(agentAddress: string, integrationId: string): boolean {
+    const key = `${agentAddress}\u0000${integrationId}`;
+    const now = Date.now();
+    const live = (this.calls.get(key) ?? []).filter((t) => now - t < this.rateWindowMs);
+    this.calls.set(key, live);
+    if (live.length >= this.rateMax) return true;
+    live.push(now);
+    return false;
+  }
 
   /** Register an integration — an operator act, like installing a sidecar. */
   async register(
@@ -112,9 +174,11 @@ export class IntegrationService {
    * never interrupts. Every call is an audit letter — event id, tool,
    * timestamp — addressed to the creator and the agent, never the pub.
    *
-   * v1 is remote-only: the house connects to the operator-registered URL
-   * over stdio transport (the MCP client), never running integration code
-   * in-process.
+   * Bounded by construction: a hard timeout on every toolcall, an
+   * in-memory rate window per (agent, integration), and the per-frame
+   * budget (frame_budget) decremented atomically — when it hits zero,
+   * the instrument is silent until its creator re-grants. The house
+   * holds; it never floods.
    */
   async call(
     agentAddress: string,
@@ -122,6 +186,12 @@ export class IntegrationService {
     tool: string,
     args: Record<string, unknown>,
   ): Promise<{ ok: boolean; result?: unknown; error?: string; eventId: string }> {
+    if (this.rateLimited(agentAddress, integrationId)) {
+      const eventId = `evt_${randomBytes(8).toString("hex")}`;
+      await this.audit(agentAddress, integrationId, tool, eventId, { error: "rate limited" });
+      return { ok: false, error: "rate limited — the house asks you to wait", eventId };
+    }
+
     const integration = await this.getIntegration(integrationId);
     if (!integration || !integration.enabled) {
       const eventId = `evt_${randomBytes(8).toString("hex")}`;
@@ -135,24 +205,46 @@ export class IntegrationService {
       return { ok: false, error: "tool not granted to this instrument", eventId };
     }
 
+    // The per-frame budget — decremented atomically. When it hits zero,
+    // the instrument is silent until its creator re-grants. The budget
+    // is per (agent, integration) row; the frame is the agent's current
+    // plural-time frame, held in the same column (v1: the frame boundary
+    // is the grant itself — re-granting resets the count).
+    const budget = await this.spendBudget(agentAddress, integrationId);
+    if (budget === null) {
+      const eventId = `evt_${randomBytes(8).toString("hex")}`;
+      await this.audit(agentAddress, integrationId, tool, eventId, { error: "budget exhausted" });
+      return { ok: false, error: "this instrument's frame budget is spent — ask your creator", eventId };
+    }
+
     const eventId = `evt_${randomBytes(8).toString("hex")}`;
     try {
       // v1 remote-only: the house connects to the operator-registered URL
-      // over stdio. The house never runs integration code in-process.
-      const transport = new StdioClientTransport({
-        command: "npx",
-        args: ["-y", integration.url],
-      });
-      const client = new Client({ name: "poste-restante", version: "0.1.0" });
-      await client.connect(transport);
-      const result = await client.callTool({ name: tool, arguments: args });
-      await client.close();
+      // over stdio (the MCP client). The house never runs integration
+      // code in-process. The transport factory is injectable so unit
+      // tests never spawn a process.
+      const factory =
+        this.transportFactory ??
+        (async (url: string): Promise<IntegrationTransport> => {
+          const transport = new StdioClientTransport({
+            command: "npx",
+            args: ["-y", url],
+          });
+          const client = new Client({ name: "poste-restante", version: "0.1.0" });
+          await client.connect(transport);
+          return {
+            callTool: (params, options) =>
+              client.callTool(params, undefined, options) as Promise<unknown>,
+            close: async () => {
+              await client.close();
+            },
+          };
+        });
+      const tr = await factory(integration.url);
+      const result = await tr.callTool({ name: tool, arguments: args }, { timeout: this.timeoutMs });
+      await tr.close().catch(() => {});
 
-      // The audit letter — one per toolcall, addressed to the creator and
-      // the agent itself, never the pub. The args are ephemeral: passed to
-      // the server, never stored.
       await this.audit(agentAddress, integrationId, tool, eventId, result);
-
       return { ok: true, result, eventId };
     } catch (err) {
       this.log.error("integration:call-failed", {
@@ -164,6 +256,25 @@ export class IntegrationService {
       });
       return { ok: false, error: err instanceof Error ? err.message : String(err), eventId };
     }
+  }
+
+  /** Spend one call from the agent's frame budget, atomically. Returns
+   *  the remaining budget, or null when the budget is exhausted (or the
+   *  agent has no grant at all). */
+  private async spendBudget(
+    agentAddress: string,
+    integrationId: string,
+  ): Promise<number | null> {
+    const res = await this.pool.query<{ remaining: number }>(
+      `UPDATE agent_integrations
+       SET frame_budget = frame_budget - 1
+       WHERE agent_address = $1 AND integration_id = $2
+         AND frame_budget > 0
+       RETURNING frame_budget`,
+      [agentAddress, integrationId],
+    );
+    const row = res.rows[0];
+    return row ? row.remaining : null;
   }
 
   /** The audit letter — transparency as regulation. The creator sees what

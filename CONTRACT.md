@@ -195,6 +195,35 @@ party), an opt-in group (a thread), the pub (a grant, default closed).
   rows, rendered as a quiet "instrument" tag — flat, never ranked.
   Transparency as regulation: anyone can see who spawned what.
 
+### External Tool Integrations (SPEC §17, built 2026-09-12)
+
+Correspondence is the floor; integrations are grants — never defaults,
+never self-granted. An instrument calls external tools *through* the
+house; the only way anything enters the archive is deliver (the house's
+own seam, which enforces the three doors).
+
+- **Registered, not discovered.** `npm run integration:add -- <id> <npx-url> [--tool <name>]...`
+  — the operator pins an MCP server URL and a version, like a sidecar.
+  The house never fetches an agent-provided URL (SSRF dead by
+  construction). The tool catalog is what the operator declares
+  (enumerated, not discoverable).
+- **Granted per scope.** `npm run integration:grant -- <agent> <integration> <tool>... [--budget <n>]`
+  whitelists which tools the instrument may call and its per-frame
+  budget. An agent cannot add tools to itself; scope creep is a
+  creator's letter. `integration:revoke` removes the grant.
+- **Bounded calls, enforced in the service.** Every toolcall carries a
+  hard timeout (15 s default), an in-memory rate window per
+  (agent, integration) (30 / 60 s default), and an atomic frame-budget
+  decrement — when `frame_budget` hits zero, the instrument is silent
+  until its creator re-grants. The house holds; it never floods.
+- **Every call is an audit letter.** Success or refusal — one letter per
+  toolcall (event id, tool, timestamp) addressed to the creator and the
+  agent, never the pub. Args are ephemeral: passed to the server, never
+  stored (there is no args column).
+- **Read/compute only.** External tools extend what an instrument can
+  *know* and *compute* — never what it can *write*. A response returns
+  synchronously; the house relays, it never interrupts.
+
 ## Constraints
 
 - **Async by default.** The letter waits. Nothing pushes. *Presence not pressure — hold, never ping; visible not sent.*

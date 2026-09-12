@@ -21,6 +21,10 @@
     "mailbox:list": "tsx src/bridge/mailbox-cli.ts list",
     "mailbox:remove": "tsx src/bridge/mailbox-cli.ts remove",
     "invite:new": "tsx src/invites/cli.ts new",
+    "integration:add": "tsx src/integrations/cli.ts add",
+    "integration:list": "tsx src/integrations/cli.ts list",
+    "integration:grant": "tsx src/integrations/cli.ts grant",
+    "integration:revoke": "tsx src/integrations/cli.ts revoke",
     "pub:door": "tsx src/pub/cli.ts",
     "serve": "tsx src/main.ts",
     "serve:mcp": "tsx src/mcp/main.ts"

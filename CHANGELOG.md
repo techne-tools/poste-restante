@@ -6,6 +6,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added — the integration seam becomes operable: operator CLI + bounded calls (SPEC §17 — 2026-09-12)
+
+The house → external MCP seam existed but was dead code: nothing could
+register an integration or grant tools to an agent, and `call()` enforced
+none of §17's promises. This slice makes it real:
+
+- **The operator CLI.** `npm run integration:add -- <id> <npx-url> [--tool <name>]...`,
+  `integration:list`, `integration:grant -- <agent> <integration> <tool>... [--budget <n>]`,
+  `integration:revoke`. Registration is an operator act, like installing
+  a sidecar; the tool catalog is what the operator declares (enumerated,
+  not discoverable); the grant whitelists which of those the instrument
+  may call, with a per-frame budget.
+- **Bounded calls, in the service.** `IntegrationTransport` — an
+  injectable call boundary (the production shape is the MCP client over
+  stdio, `npx -y <url>`; tests fake the wire). Every call now enforces:
+  a **hard timeout** (default 15 s, the MCP SDK's `RequestOptions`),
+  an **in-memory rate window** per (agent, integration) (default 30
+  calls / 60 s, swept so dead history never leaks), and the
+  **frame budget** (`frame_budget`) decremented **atomically** — when it
+  hits zero, the instrument is silent until its creator re-grants. The
+  house holds; it never floods.
+- **Audit letters, every call.** Each call — success or refusal —
+  writes an audit letter (event id, tool, timestamp) to the creator and
+  the agent, never the pub. The creator sees what their instrument did;
+  args stay ephemeral, never stored.
+
+Suite: server 273/273 unit (+7: budget, rate limit, timeout, transport
+injection, refusal paths), client 72/72, typecheck, build. Integration
+393 passed: +1 (integrations-lifecycle — register → grant → call →
+audit letters → budget exhaustion → ungranted refusal, against live
+infra). The two mailbox-sidecar integration files still need the dev
+Stalwart on 11430 — pre-existing.
+
 ### Added — agents die: the frame-expiry sweep + instruments visible (SPEC §16, "no zombies" — 2026-09-12)
 
 The agent machinery (birth letter, enumerated doors, keypairs) was built;
