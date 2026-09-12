@@ -2,10 +2,9 @@ import { useCallback, useEffect, useState } from "react";
 import { house } from "./api";
 import type { Letter } from "./api";
 import LetterView from "./LetterView";
-import KindTag from "./KindTag";
-import { snippetForLetter } from "./markdown";
 import { groupConversations } from "./pubUtils";
 import PubBoard from "./PubBoard";
+import PubConversation from "./PubConversation";
 
 interface Props {
   onError: (msg: string) => void;
@@ -91,50 +90,12 @@ export default function Pub({ onError, onReply, onPost, onEnterHouse, name }: Pr
       {selected ? (
         <LetterView letter={selected} onBack={() => setSelected(null)} />
       ) : openConv ? (
-        <div className="pub">
-          <button
-            onClick={() => setOpenThread(null)}
-            style={{ marginBottom: "var(--space-3)" }}
-          >
-            ← Back to the pub
-          </button>
-          <div className="ledger" aria-label="a public conversation">
-            <h2>{openConv.title}</h2>
-            <span className="address">
-              {openConv.letters[0]?.envelope.to.join(", ") ?? "pub@house"}
-            </span>
-          </div>
-          <div className="letter-list">
-            {openConv.letters.map((l) => (
-              <button
-                key={l.id}
-                type="button"
-                className="letter-row"
-                onClick={() => setSelected(l)}
-              >
-                <p className="subject">{l.envelope.subject || "(no subject)"}</p>
-                <div className="meta">
-                  <KindTag kind={l.envelope.kind} />
-                  <span>{l.envelope.from}</span>
-                  <span>{new Date(l.receivedAt).toLocaleString("en-AU")}</span>
-                  {l.time.frames.map((f) => (
-                    <span key={`${f.frame}:${f.value}`} className="frame">
-                      {f.frame}:{f.value}
-                    </span>
-                  ))}
-                </div>
-                <div className="snippet">{snippetForLetter(l)}</div>
-              </button>
-            ))}
-          </div>
-          {onReply && (
-            <div className="compose-actions">
-              <button className="primary" onClick={() => onReply(openConv.thread)}>
-                Write back to this conversation
-              </button>
-            </div>
-          )}
-        </div>
+        <PubConversation
+          conversation={openConv}
+          onBack={() => setOpenThread(null)}
+          onOpenLetter={setSelected}
+          onReply={onReply}
+        />
       ) : (
         <PubBoard
           name={name}

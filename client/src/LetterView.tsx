@@ -61,6 +61,10 @@ export default function LetterView({ letter, onBack, actions }: Props) {
   const [payloads, setPayloads] = useState<PayloadMeta[]>([]);
   const [blobs, setBlobs] = useState<Record<string, string>>({});
   const [failed, setFailed] = useState<Record<string, string>>({});
+  // Removing a delivered enclosure deletes its bytes for everyone the letter
+  // was addressed to — irreversible, so it is confirmed. The composer's `×`
+  // only drops a pending file; this one deletes from the house.
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
   // A sealed body's plaintext — unsealed on demand with the resident's
   // own key, held in memory for the life of the view. The envelope is
   // always visible; the body waits for the reader.
@@ -128,6 +132,7 @@ export default function LetterView({ letter, onBack, actions }: Props) {
       try {
         await house.deletePayload(letter.id, name);
         setPayloads((prev) => prev.filter((p) => p.name !== name));
+        setConfirmRemove(null);
       } catch (err) {
         setFailed((prev) => ({
           ...prev,
@@ -223,7 +228,7 @@ export default function LetterView({ letter, onBack, actions }: Props) {
 
   return (
     <div>
-      <button onClick={onBack} style={{ marginBottom: "var(--space-3)" }}>
+      <button className="back" onClick={onBack}>
         ← Back
       </button>
       <article className="letter">
@@ -277,14 +282,34 @@ export default function LetterView({ letter, onBack, actions }: Props) {
                 <div className="enclosure-meta">
                   <span className="enclosure-name">{p.name}</span>
                   <span className="enclosure-size">{formatBytes(p.size)}</span>
-                  <button
-                    type="button"
-                    className="enclosure-remove"
-                    aria-label={`remove ${p.name}`}
-                    onClick={() => void removePayload(p.name)}
-                  >
-                    ×
-                  </button>
+                  {confirmRemove === p.name ? (
+                    <span className="scrub-confirm">
+                      <span className="scrub-question">Remove {p.name}? It goes for everyone addressed.</span>
+                      <button
+                        type="button"
+                        className="clause-act"
+                        onClick={() => void removePayload(p.name)}
+                      >
+                        Yes, remove it
+                      </button>
+                      <button
+                        type="button"
+                        className="door-link"
+                        onClick={() => setConfirmRemove(null)}
+                      >
+                        Keep it
+                      </button>
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="enclosure-remove"
+                      aria-label={`remove ${p.name} — this deletes it for everyone`}
+                      onClick={() => setConfirmRemove(p.name)}
+                    >
+                      ×
+                    </button>
+                  )}
                 </div>
                 {renderEnclosure(p)}
               </div>

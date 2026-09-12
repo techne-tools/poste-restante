@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed — adherence pass over the letter and the writing desk (2026-09-12)
+
+The atomic unit and the composer, read against the ten rules.
+
+- **Removing a delivered enclosure is confirmed.** The letter view's `×`
+  deleted the stored bytes on one tap — irreversibly, and for every
+  recipient — under the same bare `×` as the composer's chip, which only
+  drops a pending file. The delivered removal now takes the house's two
+  steps (a question, a confirmation, the neutral *Keep it*); the row wraps
+  so the question has room.
+- **Long content wraps inside the letter.** The subject and body carried no
+  `overflow-wrap`, so a pasted URL or a machine string ran past the measure.
+  Both now `break-word`, inherited by the rendered inline code and links.
+- **One back control, one class.** The way back was styled inline in three
+  views (the letter, the correspondence, a pub conversation); a shared
+  `.back` now holds it (adherence rule 10).
+
+Alongside: the pub's open conversation is extracted to
+`client/src/PubConversation.tsx`, with `Pub.test.tsx` covering the view and
+its back control.
+
+Tests: client 91/91 (+3). Typecheck and build clean.
+
 ### Fixed — adherence pass over the archive and the mailbox (2026-09-12)
 
 The two reading surfaces, read against the ten rules.

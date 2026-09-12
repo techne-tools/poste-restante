@@ -371,6 +371,12 @@ a:hover {
   white-space: nowrap;
 }
 
+/* The way back — one class, every reading view (the letter, the thread, a
+   pub conversation). The control is the same shape in all three. */
+.back {
+  margin-bottom: var(--space-3);
+}
+
 /* The letter — the whole protocol. A letter reads as a letter, not a chat
    bubble, not a feed card (design.json → surfaces.letter). The envelope is
    a single mono address line with the kind as the seal; the subject is the
@@ -429,6 +435,7 @@ a:hover {
   letter-spacing: -0.01em;
   line-height: 1.2;
   margin: 0 0 var(--space-2);
+  overflow-wrap: break-word;
 }
 
 /* The frames — quiet, legible, mono. The human's way in. */
@@ -446,12 +453,16 @@ a:hover {
   color: var(--muted);
 }
 
-/* The body — the reading, the reader's voice. Sans, at a letter measure. */
+/* The body — the reading, the reader's voice. Sans, at a letter measure.
+   `overflow-wrap` is inherited by the rendered inline code and links, so a
+   long unbroken token (a URL, a hash, a machine string) wraps inside the
+   measure instead of overflowing the sheet. */
 .letter .body {
   font-family: var(--font-body);
   font-size: 16px;
   line-height: 1.7;
   max-width: 34em;
+  overflow-wrap: break-word;
 }
 
 /* A sealed body — the house never renders ciphertext; the reader
@@ -544,7 +555,8 @@ a:hover {
 .enclosure-meta {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
 }
 
 .enclosure-name {

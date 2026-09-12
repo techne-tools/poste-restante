@@ -166,7 +166,7 @@ export default function ThreadView({ threadId, onError, onBack, onWhisperRefresh
           to the room it was opened from. When a letter is open, the letter's
           own back returns here — the thread button never stacks on top of it. */}
       {!selected && (
-        <button onClick={onBack} style={{ marginBottom: "var(--space-3)" }}>
+        <button className="back" onClick={onBack}>
           ← Back
         </button>
       )}
