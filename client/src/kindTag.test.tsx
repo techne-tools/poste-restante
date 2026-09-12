@@ -65,4 +65,12 @@ describe("the letter kinds — every one renders its own mark", () => {
       .map(([glyph, ks]) => `${glyph} → ${[...ks].sort().join(", ")}`);
     expect(collisions).toEqual([]);
   });
+
+  it("uses a single character per glyph — the mono column holds one", () => {
+    const wide = kinds
+      .map((kind) => ({ kind, glyph: render(kind).glyph }))
+      .filter(({ glyph }) => Array.from(glyph).length !== 1)
+      .map(({ kind, glyph }) => `${kind} → "${glyph}"`);
+    expect(wide).toEqual([]);
+  });
 });

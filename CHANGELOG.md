@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed — every KindTag glyph fits the mono column (2026-09-12)
+
+- `client/src/kindTag.test.tsx` asserts every letter kind's glyph is a
+  single character (`Array.from(glyph).length === 1`), so the mark cannot
+  overflow the mono column. Proven to bite by widening a glyph to two
+  characters (the test failed), then restored.
+
+Tests: client 152/152 (+1). Typecheck and build clean.
+
 ### Changed — the glyph-collision guard made explicit (2026-09-12)
 
 - `client/src/kindTag.test.tsx` now states both halves of the rule in one
