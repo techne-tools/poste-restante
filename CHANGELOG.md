@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed — three more error codes pinned; the KindTag marks guarded (2026-09-12)
+
+- **Three refusals now assert their code** — `invalid_address` (a malformed
+  address correction), `invalid_clause` (a malformed book act), and
+  `invalid_handle` (a malformed relabel) — shrinking the `TRACKED` ledger in
+  `errorCodes.test.ts` to twelve: **seventeen of twenty-nine** emitted codes
+  are now asserted.
+- **`client/src/kindTag.test.tsx`** renders `KindTag` once per server letter
+  kind and asserts each shows its own word and a real glyph — never the
+  fallback dot — and that the only glyph two kinds share is the deliberate
+  shelf pair (`shelve`/`unshelve`).
+
+Tests: client 151/151 (+3), server 305/305. Integration (live): 63 files
+passed, 2 skipped, 0 failed — 438 tests. Typecheck and both builds clean.
+
 ### Changed — three error codes pinned; the whisper kind labels guarded (2026-09-12)
 
 - **Three refusals now assert their code** — `invalid_leave` (leaving),

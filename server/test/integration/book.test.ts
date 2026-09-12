@@ -222,6 +222,8 @@ describe.skipIf(!INTEGRATION)("house book (integration)", () => {
       body: JSON.stringify({ role: "stop" }),
     });
     expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("invalid_clause");
   });
 
   it("an offer without text is refused", async () => {
@@ -231,6 +233,8 @@ describe.skipIf(!INTEGRATION)("house book (integration)", () => {
       body: JSON.stringify({ role: "offer" }),
     });
     expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("invalid_clause");
   });
 
   it("a guest cannot act on the book", async () => {

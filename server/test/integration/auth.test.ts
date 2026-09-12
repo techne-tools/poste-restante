@@ -495,4 +495,18 @@ describe.skipIf(!INTEGRATION)("auth (integration)", () => {
     });
     expect(res.status).toBe(403);
   });
+
+  it("refuses a malformed correction — names must be a list", async () => {
+    const res = await app.request("/v1/addresses/ben@house", {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: basic("ben@house", "benbenben"),
+      },
+      body: JSON.stringify({ names: "not-a-list" }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("invalid_address");
+  });
 });

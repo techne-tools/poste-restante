@@ -150,4 +150,17 @@ describe.skipIf(!INTEGRATION)("relabel (integration)", () => {
     });
     expect(res.status).toBe(403);
   });
+
+  it("refuses a handle that is not a valid address", async () => {
+    // By now ben@house has been relabelled to sam@house (the credential
+    // cascaded); sam is the live handle to try a malformed one against.
+    const res = await app.request("/v1/addresses/sam@house/relabel", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: basic("sam@house", "benbenben") },
+      body: JSON.stringify({ handle: "not an address" }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("invalid_handle");
+  });
 });
