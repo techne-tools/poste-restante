@@ -14,19 +14,19 @@ Every thing in your life gets an address, every address receives letters, every 
 
 ## The design constraint (the floppy disk)
 
-Pre-IRC, two 14-year-olds exchanged floppy disks with text files on them as letters. The principle still holds: **technology enables users to communicate on their own terms — or it should.** The house's constraint isn't 1.44MB, it's **asynchrony**: the letter waits. Nothing pushes. *Presence not pressure — hold, never ping; visible not sent.*
+Pre-IRC, two 14-year-olds exchanged floppy disks with text files on them as letters. The principle still holds: **technology enables users to communicate on their own terms — or it should.** The 1.44MB constraint forced a *choice*; the house's constraint isn't 1.44MB, it's **asynchrony**: the letter waits. Nothing pushes. *Presence not pressure — hold, never ping; visible not sent.* The floppy is a constraint-vehicle, not an origin-myth: what survives from it is the waiting, not the nostalgia.
 
 ## The house
 
 - **The address space is the spine.** Everything has an address (`you@house`, `hermes@house`, `feed:lurker@house`, `archive@house`). The address book is the social graph.
 - **The mailbox protocol is the whole protocol.** Envelope + markdown body. Async by default. Threads are correspondences. Bridges to IMAP/SMTP, Matrix, ActivityPub.
-- **The archive is the memory.** postgres (letters + FTS) + qdrant (semantics) + minio (raw payloads). **Plural time**: Gregorian is the index, frames are the addresses. Retrieval: exact + FTS + semantic, merged by RRF. Redis (queue/pubsub) and faster-whisper (audio letters) complete the stack; the house's home is **the Docker homelab host** (docker; shared-postgres 15-alpine, qdrant 21022, ollama 21023 — the `containers/` stack is the deployment shape), with a native-processes dev house on a Mac (verified 2026-09-04).
-- **The resident is the collaborator.** The whisper surfaces the gap — six gap types, convergent by construction, derived from the active frame. Offer not audition, gap not surprise, reassessment not apology. The address is the meaning (Nancy).
-- **The house is headless; the UI is composed.** The house has no UI of its own — it exposes primitives as a protocol. The user composes the space (cmux, shell, obsidian, neomutt); the house generates the letters. Composable, not generative.
+- **The archive is the remains, and the residents are the memory.** postgres (letters + FTS) + qdrant (semantics) + minio (raw payloads). **Plural time**: Gregorian is the index, frames are the addresses. Retrieval: exact + FTS + semantic, merged by RRF. Redis (queue/pubsub) and faster-whisper (audio letters) complete the stack; the house's home is **the Docker homelab host** (docker; shared-postgres 15-alpine, qdrant 21022, ollama 21023 — the `containers/` stack is the deployment shape), with a native-processes dev house on a Mac (verified 2026-09-04).
+- **The resident is the collaborator.** The whisper surfaces the gap — six gap types, convergent by construction: converging on *the work*, never on the house's judgment of the work, derived from the active frame. Offer not audition, gap not surprise, reassessment not apology. The address is the meaning (Nancy).
+- **The house is headless; the UI is composed.** The house has no UI of its own — it exposes primitives as a protocol. The resident composes the space (cmux, shell, obsidian, neomutt); the house generates the letters. Composable, not generative.
 
-## The constitution
+## The commons
 
-Privacy as schema, anti-hierarchy as capability, queer/indigenous/global-majority empowerment as positive design, mutual aid as funding. Every value has a schema consequence. If the schema doesn't have it, the value isn't real.
+Privacy as schema, anti-hierarchy as capability, queer/indigenous/global-majority empowerment as positive design, mutual aid as funding. Every value has a schema consequence. If the schema doesn't have it, the value isn't real. The commons is derived, never declared: the book is a thread, not a table.
 
 ## The stack
 
@@ -48,7 +48,7 @@ Privacy as schema, anti-hierarchy as capability, queer/indigenous/global-majorit
 ## What this is not
 
 - **Not a product with a price list.** No wallet, no x402, no USDC, no "100+ tools." Postage is free.
-- **Not a platform.** A house. Small, domestic, self-hosted, yours.
+- **Not a platform.** A house. Small, domestic, self-hosted, yours. The house itself never scales — the *protocol* does: the letter format, the contract, the address space travel anywhere a client is written, while the house stays particular — the household, the atmosphere, the calm. Composable, not generative: generation is for what's said; composition is for where it's seen.
 - **Not a recommendation engine.** The house answers the question you asked and offers what's missing from the work you're doing. It does not try to keep you in the room.
 - **Not a servant.** A resident. It offers, it reassesses, it can be wrong and says so.
 

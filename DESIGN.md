@@ -4,13 +4,13 @@
 
 ## North Star
 
-The house is calm. It holds, it never pings. *Presence not pressure — hold, never ping; visible not sent.* This is the callsheet lineage extended from a day-board to a whole house: the same quiet, the same restraint, the same trust in the user to come when they're ready.
+The house is calm. It holds, it never pings. *Presence not pressure — hold, never ping; visible not sent.* This is the callsheet lineage extended from a day-board to a whole house: the same quiet, the same restraint, the same trust in the resident to come when they're ready. The care is political, not nice: holding without pinging refuses the attention economy — no retention tactics, no enticement to stay, consent ongoing.
 
 ## Design Principles
 
-1. **The house is headless; the UI is composed.** The house has no UI of its own — it exposes primitives (letters, threads, addresses, frames, whispers) as a protocol. The Tauri app is the *reference client* (where the whisper lives by default), not THE UI. The user composes their own space from clients: cmux, shell, obsidian, neomutt, a web client. Google+ was overwhelm because the platform composed the space; a cmux setup is freedom because the user composes the space. Same threads, same columns — different composer.
+1. **The house is headless; the UI is composed.** The house has no UI of its own — it exposes primitives (letters, threads, addresses, frames, whispers) as a protocol. The Tauri app is the *reference client* (where the whisper lives by default), not THE UI. The resident composes their own space from clients: cmux, shell, obsidian, neomutt, a web client. Google+ was overwhelm because the platform composed the space; a cmux setup is freedom because the resident composes the space. Same threads, same columns — different composer.
 
-2. **Composable, not generative.** The user composes the space (composable UI); the house generates the *letters* (generative content — the whisper, the gap offers, the frame navigation). Generation is for what's said; composition is for where it's seen. The house must never compose the space — not with a product team, and not with a model. Generative *layout* is the platform composing for you again, with extra latency.
+2. **Composable, not generative.** The resident composes the space (composable UI); the house generates the *letters* (generative content — the whisper, the gap offers, the frame navigation). Generation is for what's said; composition is for where it's seen. The house must never compose the space — not with a product team, and not with a model. Generative *layout* is the platform composing for you again, with extra latency.
 
 3. **The letter is the unit.** Envelope + markdown body. Everything is a letter: human-to-human, human-to-agent, agent-to-agent, feed-to-human, system-to-human. Threads are correspondences. The letter is the unit in all three archive tiers (postgres row, qdrant vector, minio file).
 
@@ -18,9 +18,9 @@ The house is calm. It holds, it never pings. *Presence not pressure — hold, ne
 
 5. **The offer, not the audition.** The house offers with confidence and visible reasoning — "here's what I have, what do you make of it?" — never hedges, never grovels. The response grammar is improv: "yes, and..." / "no, but what about...". Wrongness is reassessment, not apology: "That offer missed. Here's what I was seeing. Let me look again."
 
-6. **The gap, not the surprise.** The house finds what's *missing* from the current work — convergent by construction, derived from the active frame. Six gap types: uncited connection, unanswered question, unvisited corner, echo, contradiction, dormant thread. A recommendation engine would never surface a contradiction; the house does — that's the dramaturg's move.
+6. **The gap, not the surprise.** The house finds what's *missing* from the current work — convergent by construction, derived from the active frame. Six gap types: uncited connection, unanswered question, unvisited corner, echo, contradiction, dormant thread. A recommendation engine would never surface a contradiction; the house does — that's the stage manager's move, showing both voices at full weight without resolving them.
 
-7. **The address is the meaning (Nancy).** Thinking addresses itself to "me" and "us" at the same time. Offers are addressed — to the specific person, in the specific room, in the specific work. An unaddressed whisper isn't thinking, it's discourse.
+7. **The address is the meaning (Nancy).** Thinking addresses itself to "me" and "us" at the same time: the singular plural — a self is only a self by virtue of a with, and the between is the interlacing of strands that stay separate at the centre of the knot. An address is a singular cut in the plural circulation: no address without the possibility of being addressed. Offers are addressed — to the specific person, in the specific room, in the specific work. An unaddressed whisper isn't thinking, it's discourse. Privacy as schema is this made structural: the sharing is the with, never a pooling of substance.
 
 ## Design Language
 

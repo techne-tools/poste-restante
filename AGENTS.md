@@ -2,14 +2,14 @@
 
 ## What this repo is
 
-**Poste Restante** — "a house where everything is mail." A self-hosted correspondence layer for the agentic stack: every entity (human, agent, feed, archive) has an address; every interaction is a letter; the archive is the memory; the resident is a collaborator, not a servant.
+**Poste Restante** — "a house where everything is mail." A self-hosted correspondence layer for the agentic stack: every entity (human, agent, feed, archive) has an address; every interaction is a letter; the archive is the remains, the residents are the memory; the resident is a collaborator, not a servant.
 
 This is a **design-first** repo. The two-month Open Design window (granted 2026-08-29) is for the house itself — the reference client, the whisper, the letter format, plural time, the design language. Plumbing (bridges, federation, the full gap engine) is explicitly out of scope.
 
 ## House invariants (non-negotiable)
 
 1. **Headless.** The house has no UI. It exposes primitives (letters, threads, addresses, frames, whispers) as a protocol. The Tauri app is *a* reference client, not *the* UI.
-2. **Composable, not generative.** The house generates *what* is said (letters); the user composes *where* it is seen (the space). Never build a platform that decides the space for the user.
+2. **Composable, not generative.** The house generates *what* is said (letters); the resident composes *where* it is seen (the space). Never build a platform that decides the space for the resident.
 3. **Presence, not pressure.** No push notifications, no read receipts, no pings. The house holds; it never interrupts. Visible, not sent.
 4. **Privacy as schema.** Data minimization is a schema property, not a policy. If a field doesn't need to exist, it doesn't.
 5. **Anti-hierarchy.** Capabilities, not admin roles. No one is the master; the house is a resident, not a servant.
@@ -43,7 +43,7 @@ Invariant 4 is the principle; this is the practice. Privacy is built from the fi
 4. **Is this scoped per address?** Every read and mutation path takes an owner identity. No global reads, no "admin" bypass — there is no admin in this house.
 5. **Does this push?** No push notifications, no read receipts, no pings. If a feature needs to interrupt, it doesn't get built; it becomes a letter or a whisper.
 6. **What does this log?** Logs are data. No bodies, no addresses, no thread ids in logs unless the log itself is private. Prefer event names and ids that are meaningless without access.
-7. **What does this send out of the house?** No telemetry, no analytics, no external calls. If a dependency phones home, it doesn't come in.
+7. **What does this send out of the house?** No telemetry, no analytics, no external calls. If a dependency phones home, it doesn't come in. This is the house's extraction-test and its care-claim in one line: nothing leaves the house that the house did not choose to send.
 8. **Does the test prove the negative?** For every visibility rule, a test asserts that a non-participant *cannot* see, open, or mutate the thing. "Works for the owner" is not a privacy test.
 
 If any answer is "I don't know", the work is not done.

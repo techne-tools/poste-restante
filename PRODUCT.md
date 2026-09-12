@@ -12,11 +12,11 @@ TypeScript + Hono letter server; postgres 15 (letters/addresses/threads/frames �
 
 ## Users
 
-A single primary user (the resident) — a maker/researcher/teacher who runs a distributed agentic stack (Hermes, Noema, iai-pme, LCM, Obsidian, Zotero) across three machines. The house is the correspondence layer that holds it all: every thing gets an address, every address receives letters, every letter is kept, and nothing arrives unless you come for it. The user composes their own space from clients (cmux, shell, obsidian, neomutt, the reference client); the house never composes the space for them.
+A single primary resident — a maker/researcher/teacher who runs a distributed agentic stack (Hermes, Noema, iai-pme, LCM, Obsidian, Zotero) across three machines. The house is the correspondence layer that holds it all: every thing gets an address, every address receives letters, every letter is kept, and nothing arrives unless you come for it. The resident composes their own space from clients (cmux, shell, obsidian, neomutt, the reference client); the house never composes the space for them.
 
 ## Product Purpose
 
-Poste Restante is a house where everything is mail. It replaces the platform/service model with a house/correspondence model: async by default, presence not pressure, the archive as the memory, the resident as a collaborator who offers rather than serves. Success means the user's whole life — letters, feeds, agents, archives, audio — lives in one addressable, searchable, plural-time house that holds rather than pings.
+Poste Restante is a house where everything is mail. It replaces the platform/service model with a house/correspondence model: async by default, presence not pressure, the archive as remains (the residents are the memory), the resident as a collaborator who offers rather than serves. Success means the resident's whole life — letters, feeds, agents, archives, audio — lives in one addressable, searchable, plural-time house that holds rather than pings.
 
 ## Positioning
 
@@ -26,9 +26,9 @@ A house, not a product. No wallet, no pricing, no "100+ tools" — correspondent
 
 - **The address space is the spine.** Everything has an address (`you@house`, `hermes@house`, `feed:lurker@house`, `archive@house`). The address book is the social graph.
 - **The mailbox protocol is the whole protocol.** Envelope + markdown body. Async by default. Threads are correspondences. Bridges to IMAP/SMTP, Matrix, ActivityPub.
-- **The archive is the memory.** postgres (letters) + qdrant (semantics) + minio (payloads). Plural time: Gregorian is the index, frames are the addresses. Retrieval: exact + FTS + semantic, merged by RRF.
-- **The resident is the collaborator.** The whisper surfaces the gap — six gap types, convergent by construction, derived from the active frame. The learning loop is the collaboration: replying is the strongest signal; the relevance tables are visible and correctable.
-- **The constitution is the architecture.** Privacy as schema, anti-hierarchy as capability, queer/indigenous/global-majority empowerment as positive design, mutual aid as funding. Every value has a schema consequence.
+- **The archive is the remains; the residents are the memory.** postgres (letters) + qdrant (semantics) + minio (payloads). Plural time: Gregorian is the index, frames are the addresses. Retrieval: exact + FTS + semantic, merged by RRF.
+- **The resident is the collaborator.** The whisper surfaces the gap — six gap types, convergent by construction (converging on the work, never on the house's judgment of it), derived from the active frame. The learning loop is the collaboration: replying is the strongest signal; the relevance tables are visible and correctable — the house watches, and the watching is legible, so the watched can read the watching and correct it.
+- **The commons is the architecture.** Privacy as schema, anti-hierarchy as capability, queer/indigenous/global-majority empowerment as positive design, mutual aid as funding. Every value has a schema consequence. The commons is derived, never declared — the book is a thread, not a table.
 
 ## What this is not
 
