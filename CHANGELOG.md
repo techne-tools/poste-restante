@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed — the provider door and the error banner; rule 4 enforced (2026-09-12)
+
+- **The error banner is announced.** It is the house's whole failure channel
+  and carried no `role` or live region — a screen reader was never told the
+  house had stumbled. Every instance (App, Login, Redeem, GuestShell) is now
+  `role="alert"`: the calm is visual, not semantic.
+- **The dismiss is a target, not a speck.** The `×` was a 14px glyph with
+  `padding: 0`; it now carries a 28px minimum hit area at the banner's edge.
+- **Rule 4 is enforced.** `client/src/classCoverage.test.ts` scans every
+  `className` in the client's source — literals and the static parts of
+  templates — and fails if any token has no rule in `styles.css`. The drift
+  found twice by eye (the archive's `letter-row full`, the book's
+  `clause clause-proposed`) now cannot return unnoticed.
+- **`Profile.test.tsx` + `GatedAction`.** The handle and password changes
+  share one gated two-step shape; `profileUtils.passwordReady` pins the rule
+  that both password tellings must agree.
+
+Still open (needs a decision): the identity-provider door redirects the
+resident to `GET /v1/auth/oidc/callback`, which answers a browser with a bare
+JSON stub (`{ "address": … }`) carrying no credential and no client surface —
+a resident who chooses it is stranded. The fix is a small feature (a callback
+surface plus a credential for the verified identity); the stopgap is to hide
+the provider button until then. Left to the operator.
+
+Tests: client 131/131 (+5). Typecheck and build clean.
+
 ### Fixed — adherence pass over the profile and the address book (2026-09-12)
 
 - **The door's own key is typed twice.** The password change was the one

@@ -62,7 +62,7 @@ export default function Redeem({ onAuthed, onBack }: Props) {
             password you will keep. The house holds only its hash.
           </p>
           {error && (
-            <div className="error-banner">
+            <div className="error-banner" role="alert">
               <span>{error}</span>
               <button onClick={() => setError(null)} aria-label="dismiss">×</button>
             </div>

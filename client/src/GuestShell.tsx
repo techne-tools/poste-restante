@@ -25,7 +25,7 @@ export default function GuestShell({ onEnterHouse }: Props) {
     <div className="house door">
       <main className="space">
         {error && (
-          <div className="error-banner">
+          <div className="error-banner" role="alert">
             <span>{error}</span>
             <button onClick={() => setError(null)} aria-label="dismiss">×</button>
           </div>

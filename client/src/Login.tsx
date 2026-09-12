@@ -85,7 +85,7 @@ function SignIn({ onAuthed, onRedeem, onGuest }: Props & { onRedeem: () => void 
             know you yet — sign in to be let in.
           </p>
           {error && (
-            <div className="error-banner">
+            <div className="error-banner" role="alert">
               <span>{error}</span>
               <button onClick={() => setError(null)} aria-label="dismiss">×</button>
             </div>

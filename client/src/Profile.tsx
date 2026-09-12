@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { house, clearAuth } from "./api";
 import { mintRecoveryIdentity } from "./crypto";
+import GatedAction from "./GatedAction";
+import { passwordReady } from "./profileUtils";
 import type { Address, Letter } from "./api";
 
 interface Props {
@@ -260,31 +262,22 @@ export default function Profile({ onError, address, onRelabeled, onPasswordChang
           />
         </label>
         <div className="book-propose-actions">
-          {confirmRelabel ? (
-            <span className="scrub-confirm">
-              <span className="scrub-question">Change your handle to {newHandle.trim() || "…"}?</span>
-              <button className="clause-act" onClick={relabel} disabled={busy || !newHandle.trim()}>
-                {busy ? "…" : "Yes, change it"}
-              </button>
-              <button className="door-link" onClick={() => setConfirmRelabel(false)} disabled={busy}>
-                Keep it
-              </button>
-            </span>
-          ) : (
-            // A correction, exactly like pronouns — same button, same
-            // register. The weight lives in the copy and the two-step
-            // confirm, never in a warning colour. And because relabelling
-            // needs the new handle typed, it is a gated act: quiet until
-            // the text makes it able, then the sheet's fill — a milder
-            // echo of the writing desk's primary.
-            <button
-              className="gated"
-              onClick={() => setConfirmRelabel(true)}
-              disabled={busy || !newHandle.trim()}
-            >
-              Change my handle
-            </button>
-          )}
+          {/* A correction, exactly like pronouns — same button, same
+              register. The weight lives in the copy and the two-step
+              confirm, never in a warning colour. Because relabelling needs
+              the new handle typed, it is a gated act: quiet until the text
+              makes it able, then the sheet's fill. */}
+          <GatedAction
+            label="Change my handle"
+            question={`Change your handle to ${newHandle.trim() || "…"}?`}
+            confirmLabel="Yes, change it"
+            ready={Boolean(newHandle.trim())}
+            busy={busy}
+            confirming={confirmRelabel}
+            onAsk={() => setConfirmRelabel(true)}
+            onConfirm={relabel}
+            onCancel={() => setConfirmRelabel(false)}
+          />
         </div>
       </section>
 
@@ -324,29 +317,17 @@ export default function Profile({ onError, address, onRelabeled, onPasswordChang
           />
         </label>
         <div className="book-propose-actions">
-          {confirmPassword ? (
-            <span className="scrub-confirm">
-              <span className="scrub-question">Change your password?</span>
-              <button
-                className="clause-act"
-                onClick={changePassword}
-                disabled={busy || !currentPassword || !newPassword.trim() || newPassword !== newPasswordAgain}
-              >
-                {busy ? "…" : "Yes, change it"}
-              </button>
-              <button className="door-link" onClick={() => setConfirmPassword(false)} disabled={busy}>
-                Keep it
-              </button>
-            </span>
-          ) : (
-            <button
-              className="gated"
-              onClick={() => setConfirmPassword(true)}
-              disabled={busy || !currentPassword || !newPassword.trim() || newPassword !== newPasswordAgain}
-            >
-              Change my password
-            </button>
-          )}
+          <GatedAction
+            label="Change my password"
+            question="Change your password?"
+            confirmLabel="Yes, change it"
+            ready={passwordReady(currentPassword, newPassword, newPasswordAgain)}
+            busy={busy}
+            confirming={confirmPassword}
+            onAsk={() => setConfirmPassword(true)}
+            onConfirm={changePassword}
+            onCancel={() => setConfirmPassword(false)}
+          />
         </div>
       </section>
 
