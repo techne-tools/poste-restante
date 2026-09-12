@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { house } from "./api";
 import { sealDraft } from "./crypto";
 import type { Address } from "./api";
+import WhyNote from "./WhyNote";
 
 interface Props {
   onError: (msg: string) => void;
@@ -286,6 +287,15 @@ export default function Compose({ onError, onDelivered, initialTo, initialThread
             <span>Let the house hold a copy — the house can read this one with you</span>
           </label>
         )}
+        <WhyNote summary="what the seal does">
+          A sealed letter is the in-common kept nothing-in-common: the
+          house holds the letter, carries it, delivers it — and never
+          reads it. The seal makes the sharing the circulation, not the
+          content (Nancy). It is also the quiet room: sealed letters are
+          not indexed, not searched, not whispered — the house holds them
+          shut and the archive remembers them without knowing them. The
+          trade is stated plainly, and the resident decides.
+        </WhyNote>
         {kind === "audio" && body.trim().length === 0 && (
           <p className="compose-hint">An audio letter — the recording is the letter.</p>
         )}

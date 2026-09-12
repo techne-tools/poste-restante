@@ -4,6 +4,7 @@ import type { Letter } from "./api";
 import LetterView from "./LetterView";
 import LetterRow from "./LetterRow";
 import { ThreadActionRow, useThreadMoves } from "./ThreadActions";
+import WhyNote from "./WhyNote";
 import {
   byTimeAsc,
   classifyLetter,
@@ -199,6 +200,14 @@ export default function Archive({ onError, initialFrame = null, onWhisperRefresh
               );
             })
           )}
+          <WhyNote summary="why the frames">
+            Gregorian is the machine's spine — one total order for syncing
+            and sorting. The frames are the human's way in: seasons,
+            productions, tech weeks, the year the rains came. The house
+            holds both as real, because the residents' time is plural — the
+            archive lives in every frame at once, and dimming, never
+            deleting, is how they intersect.
+          </WhyNote>
         </div>
 
         {/* The transit lines — flanking the flow, sharing its height. */}

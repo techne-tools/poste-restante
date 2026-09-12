@@ -4,6 +4,7 @@ import type { BookHead, ClauseRole } from "./api";
 import { renderMarkdown } from "./markdown";
 import { doorName, STATE_LABEL, daysUntil, clauseClass } from "./bookUtils";
 import ClauseDevelop from "./ClauseDevelop";
+import WhyNote from "./WhyNote";
 
 interface Props {
   onError: (msg: string) => void;
@@ -300,6 +301,15 @@ export default function Book({ onError, initialClause, name }: Props) {
                   {openThread === c.thread ? "close the correspondence" : "the correspondence"}
                 </button>
               </div>
+              <WhyNote summary="how the household decides">
+                The book is a thread, not a table — every act is a letter to
+                the household, and the archive keeps the history. Support
+                says there is no objection; stop is a safe word that holds
+                the clause contested; develop rewrites it and starts the
+                clock again. Nothing stands until it has been held, quiet,
+                for the settling days — the commons is derived, never
+                declared (no one is master; everyone can be inscribed).
+              </WhyNote>
               {developing === c.thread && (
                 <ClauseDevelop
                   draft={developDraft}

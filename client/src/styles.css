@@ -182,6 +182,41 @@ a:hover {
   margin: var(--space-2) 0;
 }
 
+/* The quiet explanation — the house's reasoning on a surface. Same shape
+   as the whisper's "here's what I was seeing": a details block, opened
+   when the reader wants the thinking. Never a popup, never a hover —
+   presence not pressure, the explanation waits. The door-word is the
+   machine's (mono, faded ink); the body is the reader's sans in the
+   muted hand, at the whisper's measure. */
+.why-note {
+  font-size: 12px;
+  color: var(--muted);
+  border-left: 2px solid var(--border);
+  padding-left: var(--space-2);
+  margin: var(--space-2) 0;
+}
+
+.why-note-summary {
+  font-family: var(--font-mono);
+  cursor: pointer;
+  color: var(--muted);
+  list-style: none;
+}
+
+.why-note-summary::-webkit-details-marker {
+  display: none;
+}
+
+.why-note-summary::before {
+  content: "— ";
+  color: var(--muted);
+}
+
+.why-note .details-body {
+  margin-top: var(--space-1);
+  line-height: 1.5;
+}
+
 /* The citation of the book — "the household has held this; want to
    look?" A pointer, not a verdict. Quiet: the serif voice, the book's
    own register, never a banner. */
