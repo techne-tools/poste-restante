@@ -91,6 +91,10 @@ export interface Address {
    *  to seal to this address and verify its letters. */
   ageRecipient: string | null;
   ed25519Public: string | null;
+  /** The recovery age recipient (SPEC §15 backstop). Sealed to whenever
+   *  present, so a correspondent whose primary key is lost can still
+   *  open letters with the off-box recovery key. Null until minted. */
+  recoveryAgeRecipient: string | null;
   /** True when the address is an agent — an instrument, not a person
    *  (SPEC §16). Shown flat in the book, marked as such. */
   isAgent: boolean;

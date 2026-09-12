@@ -6,6 +6,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added — recovery identity: the sealed-letter backstop, minted and sealed to (SPEC §15, follow-on — 2026-09-12)
+
+§15's loss mitigation becomes real. A resident can now mint a recovery
+age identity — shown once, held off-box — whose public recipient rides
+the address record and is sealed into **every** sealed letter. Primary
+key lost? The off-box recovery key still opens your letters.
+
+- **`mintRecoveryIdentity`** (client crypto): a deliberate act — not
+  minted on first use, but on request from the record. Idempotent: the
+  same identity comes back every time.
+- **The house carries the recipient.** Address rows (list + get) now
+  return `recoveryAgeRecipient`; `sealDraft` seals to every
+  participant's recovery recipient when present — a correspondent whose
+  primary key is lost can still be reached.
+- **The fallback unseal.** `unsealLetterBody` tries the primary
+  identity first, then the recovery identity — a lost session still
+  opens its own sealed letters.
+- **The surface.** Profile's Recovery section: quiet, no red. Mint →
+  show once (mono, write-it-down) → confirm. Once set: "sealed letters
+  already include it."
+
+Suite: client 76/76 (+2 recovery unit), server 273/273 unit, typecheck,
+build. The new integration test (sealed-client recovery arc — mint,
+register, book carries recipient, seal, lose primary, open) is written
+and typechecks but **could not be run**: the dev integration stack
+(postgres:5433 / qdrant:6333) went down mid-session and I have no
+in-repo command to bring it back up — escalation: start the dev stack
+and run `npm run test:integration` to confirm.
+
 ### Added — the review: what the house holds about you (SPEC §19, surfaced 2026-09-12)
 
 Deletion was first-class but had no door. The review surface lands:

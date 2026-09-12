@@ -41,6 +41,14 @@ export interface ResidentKeys {
   ed25519Private: string;
   /** The ed25519 public key (base64url spki DER) — the identity. */
   ed25519Public: string;
+  /** The recovery age identity (X25519 private key) — the §15 backstop.
+   *  Minted once, shown once, held off-box by the resident; the house
+   *  holds only the public recipient and seal to it on every sealed
+   *  letter. Kept here so the same browser can recover a lost primary
+   *  session without the house holding anything. Null until minted. */
+  recoveryAgeIdentity: string | null;
+  /** The recovery age recipient — public, registered with the house. */
+  recoveryAgeRecipient: string | null;
 }
 
 const KEYS_KEY = "poste-restante.keys";
@@ -89,16 +97,56 @@ function toBase64url(bytes: Uint8Array): string {
   return btoa(bin).replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_");
 }
 
-/** Mint a resident's keypair (age + ed25519) entirely in the browser. */
-export async function generateKeys(): Promise<
-  Omit<ResidentKeys, "ageRecipient"> & { ageRecipient: string; ed25519Public: string }
-> {
+/** Mint a resident's keypair (age + ed25519) entirely in the browser.
+ *  The recovery age identity is not minted here — it is a deliberate
+ *  act (mint on demand, show once, hold off-box), so a fresh keystore
+ *  starts with neither recovery identity nor recipient. */
+export async function generateKeys(): Promise<ResidentKeys> {
   const ageIdentity = await generateX25519Identity();
   const ageRecipient = await identityToRecipient(ageIdentity);
   const ed = await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"]);
   const ed25519Private = await exportBase64url("pkcs8", ed.privateKey);
   const ed25519Public = await exportBase64url("spki", ed.publicKey);
-  return { ageIdentity, ageRecipient, ed25519Private, ed25519Public };
+  return {
+    ageIdentity,
+    ageRecipient,
+    ed25519Private,
+    ed25519Public,
+    recoveryAgeIdentity: null,
+    recoveryAgeRecipient: null,
+  };
+}
+
+/** Mint the recovery age identity — the §15 backstop. The private
+ *  half is shown once and held off-box by the resident; the public
+ *  recipient is registered with the house and returns here so the
+ *  keystore can recover a lost session. Returns the updated keystore
+ *  and the plain private identity, for the one-time reveal. */
+export async function mintRecoveryIdentity(address: string): Promise<{
+  keys: ResidentKeys;
+  recoveryIdentity: string;
+}> {
+  const existing = loadKeys(address);
+  const base = existing ?? (await generateKeys());
+  if (base.recoveryAgeIdentity) {
+    // Idempotent — a recovery identity already exists; re-show it.
+    return { keys: base, recoveryIdentity: base.recoveryAgeIdentity };
+  }
+  const recoveryAgeIdentity = await generateX25519Identity();
+  const recoveryAgeRecipient = await identityToRecipient(recoveryAgeIdentity);
+  const next: ResidentKeys = {
+    ...base,
+    recoveryAgeIdentity,
+    recoveryAgeRecipient,
+  };
+  storeKeys(address, next);
+  return { keys: next, recoveryIdentity: recoveryAgeIdentity };
+}
+
+/** The recovery recipient for an address's key record — used when
+ *  registering keys, so the house can serve it to correspondents. */
+export function recoveryRecipientOf(keys: ResidentKeys): string | null {
+  return keys.recoveryAgeRecipient;
 }
 
 /** Ensure the resident has keys — auto-minting on first use. The house
@@ -235,6 +283,10 @@ export interface ParticipantKeys {
   id: string;
   ageRecipient: string | null;
   ed25519Public: string | null;
+  /** The recovery age recipient — the §15 backstop. Sealed to whenever
+   *  present, so a correspondent whose primary key is lost can still
+   *  open with the off-box recovery key. */
+  recoveryAgeRecipient: string | null;
 }
 
 /**
@@ -295,12 +347,15 @@ export async function sealDraft(
     await opts.registerKeys(draft.envelope.from, {
       ageRecipient: keys.ageRecipient,
       ed25519Public: keys.ed25519Public,
-      recoveryAgeRecipient: null,
+      recoveryAgeRecipient: keys.recoveryAgeRecipient,
     });
   }
 
   // Every participant must be resolvable to a recipient. The writer is
-  // always a participant (their own key exists by construction).
+  // always a participant (their own key exists by construction). Each
+  // participant's recovery recipient is sealed to as well, when present
+  // — the §15 backstop: a correspondent whose primary key is lost can
+  // still open the letter with the off-box recovery key.
   const participants = new Set([
     draft.envelope.from,
     ...draft.envelope.to,
@@ -315,6 +370,7 @@ export async function sealDraft(
     if (handle === draft.envelope.from) {
       identities.set(handle, keys.ed25519Public);
       recipients.push(keys.ageRecipient);
+      if (keys.recoveryAgeRecipient) recipients.push(keys.recoveryAgeRecipient);
       continue;
     }
     if (!rec || !rec.ed25519Public || !rec.ageRecipient) {
@@ -324,6 +380,7 @@ export async function sealDraft(
     }
     identities.set(handle, rec.ed25519Public);
     recipients.push(rec.ageRecipient);
+    if (rec.recoveryAgeRecipient) recipients.push(rec.recoveryAgeRecipient);
   }
 
   // The subject moves into the body for sealed letters (SPEC §15: the
@@ -364,6 +421,11 @@ export async function sealDraft(
  * Decrypt a sealed letter's body with the resident's own keys. Returns
  * null when the resident is not a recipient (wrong key) or the armor is
  * malformed. The envelope is always visible; the body waits.
+ *
+ * Fallback: when the primary age identity fails (lost — the §15 case),
+ * the resident's recovery identity is tried. The house never holds the
+ * recovery private half; it lives with the resident, off-box, and in
+ * this keystore so a lost session can be recovered.
  */
 export async function unsealLetterBody(
   address: string,
@@ -371,5 +433,11 @@ export async function unsealLetterBody(
 ): Promise<string | null> {
   const keys = loadKeys(address);
   if (!keys) return null;
-  return unsealWithIdentity(ciphertext, keys.ageIdentity);
+  const primary = await unsealWithIdentity(ciphertext, keys.ageIdentity);
+  if (primary !== null) return primary;
+  if (keys.recoveryAgeIdentity) {
+    const recovered = await unsealWithIdentity(ciphertext, keys.recoveryAgeIdentity);
+    if (recovered !== null) return recovered;
+  }
+  return null;
 }

@@ -226,15 +226,27 @@ export class PostgresRepository {
    *  public halves of any registered keys ride along (SPEC §15): an
    *  address with a key record carries its age recipient and ed25519
    *  public so correspondents can seal to it and verify its letters.
-   *  Public keys are public; the absent key record for a legacy
-   *  address is simply null. Agents are marked as instruments (SPEC
-   *  §16) — shown flat, never ranked, flat in the same list. */
+   *  The recovery age recipient rides too — a resident whose primary
+   *  key is lost must still be reached by the off-box recovery key
+   *  (the §15 backstop). Public keys are public; the absent key record
+   *  for a legacy address is simply null. Agents are marked as
+   *  instruments (SPEC §16) — shown flat, never ranked, flat in the
+   *  same list. */
   async listAddresses(): Promise<
-    { id: string; names: string[]; pronouns: string | null; ageRecipient: string | null; ed25519Public: string | null; isAgent: boolean }[]
+    {
+      id: string;
+      names: string[];
+      pronouns: string | null;
+      ageRecipient: string | null;
+      ed25519Public: string | null;
+      recoveryAgeRecipient: string | null;
+      isAgent: boolean;
+    }[]
   > {
     const { rows } = await this.pool.query(
       `SELECT a.id, a.names, a.pronouns,
               ak.age_recipient AS "ageRecipient", ak.ed25519_public AS "ed25519Public",
+              ak.recovery_age_recipient AS "recoveryAgeRecipient",
               EXISTS (SELECT 1 FROM agents ag WHERE ag.address = a.id AND ag.died_at IS NULL) AS "isAgent"
        FROM addresses a
        LEFT JOIN address_keys ak ON ak.address = a.id AND ak.retired_at IS NULL
@@ -254,11 +266,13 @@ export class PostgresRepository {
     is_public: boolean;
     ageRecipient: string | null;
     ed25519Public: string | null;
+    recoveryAgeRecipient: string | null;
     isAgent: boolean;
   } | null> {
     const { rows } = await this.pool.query(
       `SELECT a.id, a.names, a.pronouns, a.is_public,
               ak.age_recipient AS "ageRecipient", ak.ed25519_public AS "ed25519Public",
+              ak.recovery_age_recipient AS "recoveryAgeRecipient",
               EXISTS (SELECT 1 FROM agents ag WHERE ag.address = a.id AND ag.died_at IS NULL) AS "isAgent"
        FROM addresses a
        LEFT JOIN address_keys ak ON ak.address = a.id AND ak.retired_at IS NULL

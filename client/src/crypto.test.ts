@@ -13,8 +13,10 @@ import {
   letterIdFromCanonical,
   generateKeys,
   ensureKeys,
+  mintRecoveryIdentity,
   sealToRecipients,
   unsealWithIdentity,
+  unsealLetterBody,
   sealDraft,
 } from "./crypto";
 
@@ -173,7 +175,7 @@ describe("sealDraft — the resident's half of the flow", () => {
     const writer = await ensureKeys("chris@house");
     const recipient = await generateKeys();
     const addressBook = [
-      { id: "sam@house", ageRecipient: recipient.ageRecipient, ed25519Public: recipient.ed25519Public },
+      { id: "sam@house", ageRecipient: recipient.ageRecipient, ed25519Public: recipient.ed25519Public, recoveryAgeRecipient: null },
     ];
     const registered: unknown[] = [];
     const result = await sealDraft(
@@ -233,7 +235,7 @@ describe("sealDraft — the resident's half of the flow", () => {
 
   it("refuses to seal to a participant without keys", async () => {
     const writer = await generateKeys();
-    const addressBook = [{ id: "chris@house", ageRecipient: writer.ageRecipient, ed25519Public: writer.ed25519Public }];
+    const addressBook = [{ id: "chris@house", ageRecipient: writer.ageRecipient, ed25519Public: writer.ed25519Public, recoveryAgeRecipient: null }];
     await expect(
       sealDraft(
         {
@@ -253,6 +255,72 @@ describe("sealDraft — the resident's half of the flow", () => {
         { registerKeys: async () => ({ ok: true }) },
       ),
     ).rejects.toThrow(/no keys registered/);
+  });
+});
+
+describe("recovery identity — the §15 backstop", () => {
+  let saved: Storage | undefined;
+
+  beforeEach(() => {
+    saved = KEYSTORE ?? undefined;
+    Object.defineProperty(globalThis, "localStorage", {
+      value: fakeLocalStorage(),
+      configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    if (saved !== undefined) {
+      Object.defineProperty(globalThis, "localStorage", {
+        value: saved,
+        configurable: true,
+      });
+    } else {
+      delete (globalThis as Record<string, unknown>).localStorage;
+    }
+  });
+
+  it("mints a recovery identity idempotently — the same one comes back", async () => {
+    const first = await mintRecoveryIdentity("you@house");
+    expect(first.keys.recoveryAgeIdentity).toBeTruthy();
+    expect(first.keys.recoveryAgeRecipient).toBeTruthy();
+    const second = await mintRecoveryIdentity("you@house");
+    // Idempotent — the same recovery identity, never a second.
+    expect(second.recoveryIdentity).toBe(first.recoveryIdentity);
+  });
+
+  it("seals to the recovery recipient — a lost primary still opens (the fallback)", async () => {
+    // Mint the writer's recovery identity (shows once, held client-side).
+    const recovered = await mintRecoveryIdentity("chris@house");
+    const recipient = await generateKeys();
+    const addressBook = [
+      { id: "sam@house", ageRecipient: recipient.ageRecipient, ed25519Public: recipient.ed25519Public, recoveryAgeRecipient: null },
+    ];
+    const result = await sealDraft(
+      {
+        envelope: {
+          from: "chris@house",
+          to: ["sam@house"],
+          cc: [],
+          thread: "th_recover_1",
+          kind: "letter",
+          lang: "en-AU",
+          subject: "lost key drill",
+        },
+        time: { gregorian: "2026-08-29T14:00:00+04:00", frames: [] },
+        body: { format: "markdown", content: "recover me" },
+      },
+      addressBook,
+      { registerKeys: async () => ({ ok: true }) },
+    );
+
+    // The recipient set includes the recovery recipient (the backstop).
+    expect(result.letter.body.recipients).toContain(recovered.keys.recoveryAgeRecipient);
+
+    // Primary key is lost: unsealLetterBody must fall back to the
+    // recovery identity and still open the letter.
+    const opened = await unsealLetterBody("chris@house", result.letter.body.content);
+    expect(opened).toBe("lost key drill\n\nrecover me");
   });
 });
 

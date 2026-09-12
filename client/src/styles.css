@@ -1650,3 +1650,28 @@ button.door-link:hover {
   color: var(--fg);
   border-color: var(--border);
 }
+
+/* Recovery (SPEC §15) — the one-time reveal. The key is shown once,
+   mono, and the resident confirms it is written down. No red: this is
+   the household's backstop, held without drama. */
+.recovery-reveal {
+  margin-top: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.recovery-key {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--fg);
+  background: var(--surface-sunken);
+  border: var(--rule);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 0;
+}

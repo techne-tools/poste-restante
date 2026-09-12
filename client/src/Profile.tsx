@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { house, clearAuth } from "./api";
+import { mintRecoveryIdentity } from "./crypto";
 import type { Address, Letter } from "./api";
 
 interface Props {
@@ -45,6 +46,10 @@ export default function Profile({ onError, address, onRelabeled, onPasswordChang
   const [held, setHeld] = useState<Letter[]>([]);
   const [heldLoading, setHeldLoading] = useState(false);
   const [forgetting, setForgetting] = useState<string | null>(null);
+  // Recovery (SPEC §15) — whether a recovery identity exists.
+  const [hasRecovery, setHasRecovery] = useState(false);
+  const [recoveryRevealed, setRecoveryRevealed] = useState<string | null>(null);
+  const [recoveryBusy, setRecoveryBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -96,6 +101,42 @@ export default function Profile({ onError, address, onRelabeled, onPasswordChang
     },
     [onError],
   );
+
+  /** Recovery (SPEC §15) — the resident's own backstop. The record says
+   *  whether a recovery recipient is already registered; the private
+   *  half is only ever revealed at mint time (shown once, held off-box).
+   */
+  const checkRecovery = useCallback(() => {
+    const rec = record;
+    if (!rec) return;
+    setHasRecovery(Boolean(rec.recoveryAgeRecipient));
+  }, [record]);
+
+  useEffect(() => {
+    if (record) checkRecovery();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [record]);
+
+  /** Mint the recovery identity — a deliberate act, shown once, held
+   *  off-box. The public recipient is registered with the house; the
+   *  private half stays in the keystore and in the resident's hands. */
+  const mintRecovery = useCallback(async () => {
+    setRecoveryBusy(true);
+    try {
+      const { keys, recoveryIdentity } = await mintRecoveryIdentity(address);
+      await house.registerKeys(address, {
+        ageRecipient: keys.ageRecipient,
+        ed25519Public: keys.ed25519Public,
+        recoveryAgeRecipient: keys.recoveryAgeRecipient,
+      });
+      setHasRecovery(true);
+      setRecoveryRevealed(recoveryIdentity);
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "the house could not hold the recovery key");
+    } finally {
+      setRecoveryBusy(false);
+    }
+  }, [address, onError]);
 
   const correct = useCallback(async () => {
     if (!record) return;
@@ -334,6 +375,38 @@ export default function Profile({ onError, address, onRelabeled, onPasswordChang
               </li>
             )}
           </ul>
+        )}
+      </section>
+
+      <section className="book-section">
+        <h3>Recovery</h3>
+        <p className="book-hint">
+          If your encryption key is ever lost, a recovery identity can still open your sealed
+          letters. The house holds only the public half; the private half is yours to keep
+          somewhere safe — written down once, off this browser, and never asked for again.
+        </p>
+        {recoveryRevealed ? (
+          <div className="recovery-reveal">
+            <p className="compose-hint">
+              Write this down somewhere safe — it will not be shown again.
+            </p>
+            <pre className="recovery-key">{recoveryRevealed}</pre>
+            <div className="book-propose-actions">
+              <button className="clause-act" onClick={() => setRecoveryRevealed(null)}>
+                I have written it down
+              </button>
+            </div>
+          </div>
+        ) : hasRecovery ? (
+          <div className="book-propose-actions">
+            <span className="compose-hint">Recovery is set — sealed letters already include it.</span>
+          </div>
+        ) : (
+          <div className="book-propose-actions">
+            <button className="clause-act" onClick={mintRecovery} disabled={recoveryBusy}>
+              {recoveryBusy ? "…" : "Mint a recovery identity"}
+            </button>
+          </div>
         )}
       </section>
     </div>

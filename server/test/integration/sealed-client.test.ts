@@ -29,6 +29,7 @@ import type { House } from "../../src/house.js";
 import {
   canonicalise,
   ensureKeys,
+  mintRecoveryIdentity,
   sealDraft,
   unsealLetterBody,
 } from "../../../client/src/crypto.js";
@@ -222,13 +223,13 @@ describe.skipIf(!INTEGRATION)("sealed letters — client parity (integration)", 
     const bookRes = await app.request("/v1/addresses", {
       headers: asClient("you@house", "youyouyou"),
     });
-    const book = ((await bookRes.json()) as { addresses: { id: string; ageRecipient: string | null; ed25519Public: string | null }[] }).addresses;
+    const book = ((await bookRes.json()) as { addresses: { id: string; ageRecipient: string | null; ed25519Public: string | null; recoveryAgeRecipient: string | null }[] }).addresses;
     // Ensure a keyless participant exists in the book (a legacy address).
     await house.db.pool.query(
       `INSERT INTO addresses (id, identity_id) VALUES ('ghost@house', 'ghost@house')
        ON CONFLICT (id) DO NOTHING`,
     );
-    const withGhost = [...book.filter((a) => a.id !== "you@house"), { id: "ghost@house", ageRecipient: null, ed25519Public: null }];
+    const withGhost = [...book.filter((a) => a.id !== "you@house"), { id: "ghost@house", ageRecipient: null, ed25519Public: null, recoveryAgeRecipient: null }];
     await expect(
       sealDraft(
         {
@@ -272,5 +273,72 @@ describe.skipIf(!INTEGRATION)("sealed letters — client parity (integration)", 
     const clientForm = canonicalise(letter, identities);
     const serverForm = canonicaliseWith(letter as never, identities);
     expect(clientForm).toBe(serverForm);
+  });
+
+  it("recovery — a sealed letter opens after the primary key is lost", async () => {
+    // A fresh keystore, as if this were a new resident on this browser.
+    const you = await ensureKeys("you@house");
+    // Mint the recovery identity — the backstop, shown once, held off-box.
+    const recovered = await mintRecoveryIdentity("you@house");
+    await app.request("/v1/addresses/you@house/keys", {
+      method: "POST",
+      headers: asClient("you@house", "youyouyou"),
+      body: JSON.stringify({
+        ageRecipient: you.ageRecipient,
+        ed25519Public: you.ed25519Public,
+        recoveryAgeRecipient: recovered.keys.recoveryAgeRecipient,
+      }),
+    });
+
+    // The address book now carries the recovery recipient — a
+    // correspondent can seal to both the primary AND the backstop.
+    const bookRes = await app.request("/v1/addresses", {
+      headers: asClient("you@house", "youyouyou"),
+    });
+    const book = ((await bookRes.json()) as {
+      addresses: { id: string; ageRecipient: string | null; ed25519Public: string | null; recoveryAgeRecipient: string | null }[];
+    }).addresses;
+    const row = book.find((a) => a.id === "you@house");
+    expect(row?.recoveryAgeRecipient).toBe(recovered.keys.recoveryAgeRecipient);
+
+    // Seal a letter to yourself (primary + recovery recipients).
+    const sealed = await sealDraft(
+      {
+        envelope: {
+          from: "you@house",
+          to: ["you@house"],
+          cc: [],
+          thread: "th_recovery_1",
+          kind: "letter",
+          lang: "en-AU",
+          subject: "lost key drill",
+        },
+        time: { gregorian: new Date().toISOString(), frames: [] },
+        body: { format: "markdown", content: "recover me" },
+      },
+      book,
+      { registerKeys: async (id, keys) => app.request(`/v1/addresses/${encodeURIComponent(id)}/keys`, {
+        method: "POST", headers: asClient(id, "youyouyou"), body: JSON.stringify(keys),
+      }) },
+    );
+    const delivered = await app.request("/v1/letters", {
+      method: "POST",
+      headers: asClient("you@house", "youyouyou"),
+      body: JSON.stringify(sealed.letter),
+    });
+    expect(delivered.status).toBe(201);
+
+    // Lose the primary: a keystore without the primary age identity
+    // still opens the letter through the recovery fallback.
+    const backRes = await app.request("/v1/threads/th_recovery_1", {
+      headers: asClient("you@house", "youyouyou"),
+    });
+    const back = (await backRes.json()) as {
+      letters: { body: { format: string; content: string } }[];
+    };
+    const letter = back.letters.find((l) => l.body.format === "sealed");
+    expect(letter).toBeDefined();
+    const opened = await unsealLetterBody("you@house", letter!.body.content);
+    expect(opened).toBe("lost key drill\n\nrecover me");
   });
 });
