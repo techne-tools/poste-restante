@@ -106,6 +106,8 @@ describe.skipIf(!INTEGRATION)("password change (integration)", () => {
     // sign the resident out — the resident stays seated and can try
     // again.
     expect(wrong.status).toBe(409);
+    const wrongBody = (await wrong.json()) as { error: { code: string } };
+    expect(wrongBody.error.code).toBe("wrong_current");
     expect(knocks).toBe(1);
 
     // The door did not turn — the old password still works.

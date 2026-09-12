@@ -216,6 +216,8 @@ describe.skipIf(!INTEGRATION)("leaving as first-class (integration)", () => {
       headers: { Authorization: basic("you@house", "youyouyou") },
     });
     expect(leave.status).toBe(400);
+    const body = (await leave.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("invalid_leave");
   });
 
   it("the book is exempt — the join refusal names the move refused", async () => {

@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed — three error codes pinned; the whisper kind labels guarded (2026-09-12)
+
+- **Three refusals now assert their code** — `invalid_leave` (leaving),
+  `handle_taken` (relabel), and `wrong_current` (password change) — so the
+  `TRACKED` ledger in `errorCodes.test.ts` shrinks to fifteen: fourteen of
+  the twenty-nine emitted codes are now asserted.
+- **`client/src/whisperKinds.test.tsx`** renders the whisper sidebar once per
+  kind and asserts every kind produces a distinct, non-empty label, so a new
+  kind cannot ship blank or as a copy of another.
+
+Tests: client 148/148 (+2), server 305/305. Typecheck and both builds clean.
+
 ### Added — the kind vocabulary and the error-code ledger (2026-09-12)
 
 - **`client/src/kinds.test.ts`** holds the client's kind identity to the

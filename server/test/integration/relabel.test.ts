@@ -137,6 +137,8 @@ describe.skipIf(!INTEGRATION)("relabel (integration)", () => {
       body: JSON.stringify({ handle: "ben@house" }),
     });
     expect(reclaim.status).toBe(409);
+    const body = (await reclaim.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("handle_taken");
   });
 
   it("only the resident themselves may relabel", async () => {

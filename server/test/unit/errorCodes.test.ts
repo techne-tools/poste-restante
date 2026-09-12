@@ -46,19 +46,17 @@ for (const file of files(testRoot)) {
 
 /**
  * Codes whose route is exercised by status, but whose code string no test
- * asserts yet. Untested refusals worth pinning: validation paths
- * (`invalid_*`), the ubiquitous machine answers (`not_found`, `unauthorized`),
- * and the credential/identity refusals (`wrong_current`, `handle_taken`,
- * `oidc_disabled`, `out_of_reach`). Shrink this list by adding assertions.
+ * asserts yet. Untested refusals worth pinning: the validation paths
+ * (`invalid_*`), the ubiquitous machine answers (`not_found`,
+ * `unauthorized`), and the two not-configurable refusals (`oidc_disabled`,
+ * `out_of_reach`). Shrink this list by adding assertions.
  */
 const TRACKED = new Set([
   "empty_payload",
-  "handle_taken",
   "invalid_address",
   "invalid_clause",
   "invalid_handle",
   "invalid_keys",
-  "invalid_leave",
   "invalid_limit",
   "invalid_payload",
   "invalid_redeem",
@@ -69,7 +67,6 @@ const TRACKED = new Set([
   "oidc_disabled",
   "out_of_reach",
   "payload_too_large",
-  "wrong_current",
 ]);
 
 describe("every error code has a matching test", () => {
