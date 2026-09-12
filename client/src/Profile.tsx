@@ -45,7 +45,11 @@ export default function Profile({ onError, address, onRelabeled, onPasswordChang
   // surface. Loaded lazily with the record; deletion is in place.
   const [held, setHeld] = useState<Letter[]>([]);
   const [heldLoading, setHeldLoading] = useState(false);
+  const [heldLoaded, setHeldLoaded] = useState(false);
   const [forgetting, setForgetting] = useState<string | null>(null);
+  // Deletion is irreversible, so it is confirmed — the same two steps as
+  // the correspondence's scrub, one letter at a time.
+  const [confirmForget, setConfirmForget] = useState<string | null>(null);
   // Recovery (SPEC §15) — whether a recovery identity exists.
   const [hasRecovery, setHasRecovery] = useState(false);
   const [recoveryRevealed, setRecoveryRevealed] = useState<string | null>(null);
@@ -80,6 +84,7 @@ export default function Profile({ onError, address, onRelabeled, onPasswordChang
       onError(err instanceof Error ? err.message : "the house could not show what it holds");
     } finally {
       setHeldLoading(false);
+      setHeldLoaded(true);
     }
   }, [address, onError]);
 
@@ -97,6 +102,7 @@ export default function Profile({ onError, address, onRelabeled, onPasswordChang
         onError(err instanceof Error ? err.message : "the house could not forget this");
       } finally {
         setForgetting(null);
+        setConfirmForget(null);
       }
     },
     [onError],
@@ -340,6 +346,13 @@ export default function Profile({ onError, address, onRelabeled, onPasswordChang
         <div className="book-propose-actions">
           {heldLoading ? (
             <span className="compose-hint">reading the record…</span>
+          ) : heldLoaded && held.length === 0 ? (
+            <span className="compose-hint">
+              The house holds nothing of yours just now.{" "}
+              <button className="door-link" onClick={loadHeld}>
+                look again
+              </button>
+            </span>
           ) : held.length === 0 ? (
             <button className="clause-act" onClick={loadHeld}>
               See what the house holds
@@ -360,13 +373,29 @@ export default function Profile({ onError, address, onRelabeled, onPasswordChang
                     {l.envelope.from} · {new Date(l.receivedAt).toLocaleString("en-AU")}
                   </span>
                 </div>
-                <button
-                  className="forget-link"
-                  disabled={forgetting === l.id}
-                  onClick={() => void forget(l.id)}
-                >
-                  {forgetting === l.id ? "…" : "Forget this letter"}
-                </button>
+                {confirmForget === l.id ? (
+                  <span className="scrub-confirm">
+                    <span className="scrub-question">Forget this letter?</span>
+                    <button
+                      className="forget-link"
+                      disabled={forgetting === l.id}
+                      onClick={() => void forget(l.id)}
+                    >
+                      {forgetting === l.id ? "…" : "Yes, forget it"}
+                    </button>
+                    <button
+                      className="door-link"
+                      disabled={forgetting === l.id}
+                      onClick={() => setConfirmForget(null)}
+                    >
+                      Keep it
+                    </button>
+                  </span>
+                ) : (
+                  <button className="forget-link" onClick={() => setConfirmForget(l.id)}>
+                    Forget this letter
+                  </button>
+                )}
               </li>
             ))}
             {held.length > 50 && (

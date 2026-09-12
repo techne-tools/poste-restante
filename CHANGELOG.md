@@ -6,6 +6,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed — adherence pass over the new rooms, and the integration/agent surfaces (2026-09-12)
+
+The six features built after the pass-04 seal — the day board, the resident's
+door, the review, recovery, the sealed letter, and the moves that travel with
+the letter — were audited against DESIGN.md's ten adherence rules and the
+bound tokens. Seven findings held; the operator and instrument surfaces were
+read in the same pass.
+
+- **The safety move answers the hand.** `button.scrub-act` was declared twice,
+  and the later rule out-ranked `button:hover` at equal specificity, so the
+  seal never yielded to ink. One rule remains, with an explicit
+  `button.scrub-act:hover`.
+- **The sealed letter states its terms.** The Subject field empties and
+  disables when the seal is chosen (its first line becomes the title); the
+  Enclosures field disables and the chips rest hidden — each with a line of
+  the house's register. Nothing is typed into a field that will not carry it,
+  and the house cannot serve what it cannot open.
+- **Forgetting a letter is confirmed.** Deletion takes the same two steps as
+  the correspondence's scrub. The review's empty answer now speaks, with a
+  quiet *look again*.
+- **The instrument tag sits where it belongs.** The tag's own margin is gone;
+  `.address-who` binds the address and its mark. The day's ledger label reads
+  the community's name (`name ?? "the day"`).
+- **The integration and agent surfaces speak the house's register.** The
+  book's integration door now reads *the `<id>` seam* rather than
+  `integrations.<id>.enabled`; the exempt-thread refusals name the move
+  actually refused (join says "always party", unshelve says "never put away",
+  in both the MCP face and the HTTP face); a failed `call_integration` returns
+  its audit letter's event id on the failure path, exactly as the success path
+  does.
+
+Tests: client 81/81 (+5 — the sealed subject's wire form in `crypto.test.ts`,
+`snippetForLetter` in `markdown.test.tsx`, the sealed deliver form in
+`api.test.ts`), server 287/287 unit. Typecheck, server build, and client build
+all clean.
+
 ### Added — instruments live their full life-cycle, and integrations carry sealed credentials (SPEC §16 + §17 — 2026-09-12)
 
 The §16 follow-ons recorded in the death-sweep note are now real, and §17's credential isolation stops being a schema promise.

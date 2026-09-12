@@ -732,7 +732,7 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
     }
     if (letters.some((l) => l.kind === "clause")) {
       return c.json(
-        { error: { code: "invalid_join", message: "the book is commons by right — you cannot leave it" } },
+        { error: { code: "invalid_join", message: "the book is commons by right — you are always party to it" } },
         400,
       );
     }
@@ -776,7 +776,7 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
     }
     if (letters.some((l) => l.kind === "clause")) {
       return c.json(
-        { error: { code: "invalid_unshelve", message: "the book is commons by right — you cannot put it away" } },
+        { error: { code: "invalid_unshelve", message: "the book is commons by right — it is never put away" } },
         400,
       );
     }

@@ -60,7 +60,7 @@ export default function Day({ onError, onOpenThread, onOpenWhisper, name }: Prop
 
   return (
     <div className="day">
-      <div className="ledger" aria-label="the day">
+      <div className="ledger" aria-label={name ?? "the day"}>
         <h2>{name ?? "the day"}</h2>
         <span className="day-hint">
           the frame is the call · a letter is a card · an instrument is a task line

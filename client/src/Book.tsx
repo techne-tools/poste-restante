@@ -29,6 +29,10 @@ function daysUntil(iso: string): number {
 /** The door a clause binds, in the house's own words. */
 function doorName(door: string): string {
   if (door === "pub@house.is_public") return "the pub's door";
+  // The v2 door family (§17): integrations.<id>.enabled. The resident
+  // reads the seam's name, never the database key.
+  const integration = /^integrations\.(.+)\.enabled$/.exec(door);
+  if (integration) return `the ${integration[1]} seam`;
   return door;
 }
 

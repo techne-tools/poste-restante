@@ -200,8 +200,18 @@ export default function Compose({ onError, onDelivered, initialTo, initialThread
         </label>
         <label className="compose-field">
           <span className="compose-label">Subject</span>
-          <input value={subject} onChange={(e) => setSubject(e.target.value)} />
+          <input
+            value={sealed ? "" : subject}
+            onChange={(e) => setSubject(e.target.value)}
+            disabled={sealed}
+            placeholder={sealed ? "taken from the letter's first line" : ""}
+          />
         </label>
+        {sealed && (
+          <p className="compose-hint">
+            A sealed letter carries no envelope subject — its first line becomes the title.
+          </p>
+        )}
         <div className="compose-row">
           <label className="compose-field">
             <span className="compose-label">Thread</span>
@@ -236,10 +246,16 @@ export default function Compose({ onError, onDelivered, initialTo, initialThread
               ref={fileInput}
               type="file"
               multiple
+              disabled={sealed}
               onChange={(e) => addFiles(e.target.files)}
             />
           </label>
         </div>
+        {sealed && (
+          <p className="compose-hint">
+            A sealed letter carries the text alone — the house cannot serve what it cannot open.
+          </p>
+        )}
         {/* The seal — a per-letter choice, not a default (SPEC §15).
             Quiet, factual, no red: the tradeoff is stated, the resident
             decides. Sealed = not indexed, not whispered, not
@@ -273,7 +289,7 @@ export default function Compose({ onError, onDelivered, initialTo, initialThread
         {kind === "audio" && body.trim().length === 0 && (
           <p className="compose-hint">An audio letter — the recording is the letter.</p>
         )}
-        {files.length > 0 && (
+        {files.length > 0 && !sealed && (
           <div className="attach-list">
             {files.map((f) => (
               <span key={f.name} className="attach-chip">

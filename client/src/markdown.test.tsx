@@ -7,7 +7,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { renderMarkdown, snippet } from "./markdown";
+import { renderMarkdown, snippet, snippetForLetter } from "./markdown";
 
 function html(content: string): string {
   return renderToStaticMarkup(<>{renderMarkdown(content)}</>);
@@ -131,5 +131,19 @@ describe("snippet — the row's plain-text first line", () => {
   it("falls back to a hard cut when the window has no sentence end", () => {
     expect(snippet("x".repeat(200))).toHaveLength(120);
     expect(snippet("no stops here " + "y".repeat(200))).toHaveLength(120);
+  });
+});
+
+describe("snippetForLetter — the list surface never renders ciphertext", () => {
+  it("shows a sealed letter as 'sealed letter', never the armor", () => {
+    expect(
+      snippetForLetter({ body: { format: "sealed", content: "age1ciphertext-armored" } }),
+    ).toBe("sealed letter");
+  });
+
+  it("snippets an open letter's body as usual", () => {
+    expect(
+      snippetForLetter({ body: { format: "markdown", content: "## The gap\n\n> held" } }),
+    ).toBe("The gap held");
   });
 });

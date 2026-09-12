@@ -324,6 +324,93 @@ describe("recovery identity — the §15 backstop", () => {
   });
 });
 
+/** The sealed subject — SPEC §15: the subject is the one envelope field
+ *  that is pure content, so it moves into the body. The composer states
+ *  the contract at the field; these tests lock the wire form beneath it. */
+describe("the sealed subject — the title moves into the body", () => {
+  let saved: Storage | undefined;
+
+  beforeEach(() => {
+    saved = KEYSTORE ?? undefined;
+    Object.defineProperty(globalThis, "localStorage", {
+      value: fakeLocalStorage(),
+      configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    if (saved !== undefined) {
+      Object.defineProperty(globalThis, "localStorage", {
+        value: saved,
+        configurable: true,
+      });
+    } else {
+      delete (globalThis as Record<string, unknown>).localStorage;
+    }
+  });
+
+  it("empties the envelope subject and carries the title as the plaintext's first line", async () => {
+    const recipient = await generateKeys();
+    const addressBook = [
+      { id: "sam@house", ageRecipient: recipient.ageRecipient, ed25519Public: recipient.ed25519Public, recoveryAgeRecipient: null },
+    ];
+    const result = await sealDraft(
+      {
+        envelope: {
+          from: "chris@house",
+          to: ["sam@house"],
+          cc: [],
+          thread: "th_subject_1",
+          kind: "letter",
+          lang: "en-AU",
+          subject: "  the winter of the show  ",
+        },
+        time: { gregorian: "2026-08-29T14:00:00+04:00", frames: [] },
+        body: { format: "markdown", content: "first line of the letter" },
+      },
+      addressBook,
+      { registerKeys: async () => ({ ok: true }) },
+    );
+
+    // The stored form hashes an empty envelope subject — the house shows
+    // "sealed letter", and the server re-derives the same id.
+    expect(result.letter.envelope.subject).toBe("");
+
+    const opened = await unsealWithIdentity(result.letter.body.content, recipient.ageIdentity);
+    expect(opened).not.toBeNull();
+    // The reader lifts the trimmed first line back out as the subject.
+    const nl = opened!.indexOf("\n");
+    expect(opened!.slice(0, nl)).toBe("the winter of the show");
+    expect(opened!.slice(nl).replace(/^\n+/, "")).toBe("first line of the letter");
+  });
+
+  it("seals body-only when the subject is blank — no stray title line", async () => {
+    const recipient = await generateKeys();
+    const addressBook = [
+      { id: "sam@house", ageRecipient: recipient.ageRecipient, ed25519Public: recipient.ed25519Public, recoveryAgeRecipient: null },
+    ];
+    const result = await sealDraft(
+      {
+        envelope: {
+          from: "chris@house",
+          to: ["sam@house"],
+          cc: [],
+          thread: "th_subject_2",
+          kind: "letter",
+          lang: "en-AU",
+          subject: "   ",
+        },
+        time: { gregorian: "2026-08-29T14:00:00+04:00", frames: [] },
+        body: { format: "markdown", content: "the letter's own first line" },
+      },
+      addressBook,
+      { registerKeys: async () => ({ ok: true }) },
+    );
+    const opened = await unsealWithIdentity(result.letter.body.content, recipient.ageIdentity);
+    expect(opened).toBe("the letter's own first line");
+  });
+});
+
 // tiny base64url helper for the test (kept local to avoid exposing a
 // private function import path in the test surface).
 function fromBase64url(s: string): Uint8Array {

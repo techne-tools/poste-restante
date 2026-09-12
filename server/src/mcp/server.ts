@@ -411,7 +411,7 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
       const letters = await house.repo.listThread(thread);
       if (letters.length === 0) return fail("no such thread");
       if (letters.some((l) => l.kind === "clause")) {
-        return fail("the book is commons by right — you cannot leave it");
+        return fail("the book is commons by right — you are always party to it");
       }
       const { letterId, state: newState } = await house.participation.act(who.address, thread, "join");
       return text({ id: letterId, thread, participation: newState });
@@ -460,7 +460,7 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
       const letters = await house.repo.listThread(thread);
       if (letters.length === 0) return fail("no such thread");
       if (letters.some((l) => l.kind === "clause")) {
-        return fail("the book is commons by right — you cannot put it away");
+        return fail("the book is commons by right — it is never put away");
       }
       const { letterId, state: newState } = await house.participation.act(who.address, thread, "unshelve");
       return text({ id: letterId, thread, participation: newState });
@@ -697,7 +697,29 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
       const isAgent = await house.agents.isAgent(who.address);
       if (!isAgent) return fail("only instruments may call external tools");
       const res = await house.integrations.call(who.address, integration, tool, args);
-      if (!res.ok) return fail(res.error ?? "the integration could not answer");
+      // A failed call still writes its audit letter. Return the event id
+      // exactly as the success path does, so the creator can find the
+      // letter the instrument's attempt produced.
+      if (!res.ok) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: JSON.stringify(
+                {
+                  error: {
+                    message: res.error ?? "the integration could not answer",
+                    eventId: res.eventId,
+                  },
+                },
+                null,
+                2,
+              ),
+            },
+          ],
+          isError: true,
+        };
+      }
       return text({ eventId: res.eventId, result: res.result });
     },
   );

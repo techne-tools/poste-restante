@@ -79,6 +79,31 @@ describe("house client", () => {
     expect(JSON.parse(init.body).envelope.from).toBe("hermes@house");
   });
 
+  it("delivers a sealed letter's stored form — the envelope subject stays empty on the wire", async () => {
+    globalThis.fetch = mockFetch(201, { id: "sealed_1", created: true });
+    const res = await house.deliver({
+      envelope: {
+        from: "chris@house",
+        to: ["sam@house"],
+        cc: [],
+        thread: "th_sealed_1",
+        kind: "letter",
+        lang: "en-AU",
+        subject: "",
+      },
+      time: { gregorian: new Date().toISOString(), frames: [] },
+      body: { format: "sealed", content: "age1ciphertext-armored", recipients: [], signature: "sig" },
+    });
+    expect(res).toEqual({ id: "sealed_1", created: true });
+    const [url, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe("/v1/letters");
+    // The subject was moved into the sealed body by sealDraft; the client
+    // must not re-add it — the server re-derives the id from this form.
+    const sent = JSON.parse(init.body);
+    expect(sent.envelope.subject).toBe("");
+    expect(sent.body.format).toBe("sealed");
+  });
+
   it("searches with query params — exact + FTS + semantic merged by RRF", async () => {
     globalThis.fetch = mockFetch(200, { hits: [], letters: [] });
     await house.search({ q: "tempest", frame: "production:tempest-2026" });
