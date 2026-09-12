@@ -74,7 +74,7 @@ export default function Archive({ onError, initialFrame = null, onWhisperRefresh
       setLetters(res.letters);
       setMode("search");
     } catch (err) {
-      onError(err instanceof Error ? err.message : "the search failed");
+      onError(err instanceof Error ? err.message : "the archive could not answer");
     }
   }, [query, onError]);
 

@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added — the client's copy guard, and the machine's vocabulary (2026-09-12)
+
+- **`client/src/copy.test.ts`** holds the client's own messages (`setError`,
+  `err.message` fallbacks, thrown errors) to the same register as the
+  server's copy. It caught a real drift on its first run: the archive's
+  search reported "the search failed" — an alarm word the house avoids — and
+  now says "the archive could not answer".
+- **`server/test/unit/vocabulary.test.ts`** locks the machine's dialect:
+  error codes are lowercase snake_case, log events are `namespace:event`
+  with kebab-case segments, whisper kinds are kebab-case. Every current
+  value conforms; the guard keeps them so.
+
+Tests: client 144/144 (+6), server 301/301 (+4). Typecheck and both builds
+clean.
+
 ### Added — the server's copy, enforced (2026-09-12)
 
 - **`server/test/unit/copy.test.ts`** scans the server's resident- and
