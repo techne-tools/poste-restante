@@ -123,6 +123,44 @@ export interface BookHead {
 
 export type ClauseRole = "offer" | "develop" | "stop" | "support" | "set aside";
 
+/** The day's projection — the callsheet whiteboard (SPEC §18). Derived,
+ *  never stored: letters in the resident's visible frames, their
+ *  instruments alive in those frames, the whisper's current offers, the
+ *  book's standing clauses. The board shows only what the resident is
+ *  party to; presence not pressure. */
+export interface DayProjection {
+  /** The resident's active frames, with their letters in order. */
+  frames: {
+    frame: string;
+    letters: {
+      letterId: string;
+      thread: string;
+      subject: string;
+      kind: string;
+      from: string;
+      receivedAt: string;
+      frames: Frame[];
+    }[];
+  }[];
+  /** The resident's instruments alive in those frames. */
+  agents: {
+    address: string;
+    task: string;
+    creator: string;
+    lifespanFrame: string | null;
+  }[];
+  /** The whisper's current offers — what the house is offering right now. */
+  whispers: {
+    id: string;
+    kind: string;
+    summary: string;
+    targetThread: string | null;
+    targetFrame: string | null;
+  }[];
+  /** The book's standing clauses that bear on the day. */
+  clauses: { thread: string; text: string; state: string }[];
+}
+
 /** The house's own words (SPEC §5 #14) — the serif voice on the page.
  *  The addresses are protocol-stable; the names are the community's. */
 export interface HouseMeta {
@@ -135,6 +173,7 @@ export interface HouseMeta {
   profileName: string;
   writeName: string;
   whisperName: string;
+  dayName: string;
   domain: string;
 }
 
@@ -438,6 +477,15 @@ export const house = {
   /** Frames — plural time navigation. */
   frames() {
     return request<{ frames: { id: string; name: string; value: string }[] }>("/frames");
+  },
+
+  /** The day — the callsheet whiteboard (SPEC §18). A thin derived view:
+   *  letters in the resident's visible frames, their instruments alive in
+   *  those frames, the whisper's current offers, the book's standing
+   *  clauses. Derived, never stored. The board shows only what the
+   *  resident is party to. Presence not pressure. */
+  day() {
+    return request<DayProjection>("/day");
   },
 
   /** The whisper — the house's own letters. Pull-only. */

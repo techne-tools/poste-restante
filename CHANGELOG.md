@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added — the day, in the reference client: the callsheet whiteboard becomes a room (SPEC §18 — 2026-09-12)
+
+The server's thin day projection (`GET /v1/day`, built with the §18
+sketch) gains its surface. The board is not a new data model — it is a
+projection of what the house already knows, arranged by time:
+
+- **A room in the register.** `DAY_NAME` config (default "the day"),
+  carried in `GET /v1/house/meta` and rendered in the client's nav —
+  the house's own words reach the board like every other room.
+- **The board, composed.** `client/src/Day.tsx` — one column per active
+  frame (the frame is the call), a letter is a card (opens its thread),
+  an instrument is a task line (marked with the quiet mono tag), the
+  whisper's current offers (pick one up → lands on its correspondence),
+  the book's standing clauses. Derived, never stored; shows only what
+  the resident is party to.
+- **Presence not pressure.** No badges, no red, no "N unseen" anywhere
+  on the board. The board holds; it never pings.
+
+Suite: server 273/273 unit (unchanged — the projection itself was
+already tested), client 73/73 (+1 api), typecheck, build. Integration
+393 passed (the day projection's 3 tests were already green); the two
+mailbox-sidecar integration files still need the dev Stalwart on 11430 —
+pre-existing.
+
 ### Added — the integration seam becomes operable: operator CLI + bounded calls (SPEC §17 — 2026-09-12)
 
 The house → external MCP seam existed but was dead code: nothing could

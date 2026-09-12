@@ -833,6 +833,135 @@ button.scrub-act {
   font-size: 13px;
 }
 
+/* The day — the callsheet whiteboard (SPEC §18). The frame is the call,
+   a letter is a card, an instrument is a task line. Presence not
+   pressure: no badges, no red. Not a dashboard — the board shows the
+   resident their day, it never measures them. */
+.day {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.day-hint {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+
+.day-board {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-3);
+  align-items: start;
+}
+
+.day-frame {
+  border: var(--rule);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  background: var(--surface-raised);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.day-frame-name {
+  font-family: var(--font-display);
+  font-size: 14px;
+  color: var(--fg);
+  margin: 0 0 var(--space-1);
+}
+
+.day-frame-empty {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+  margin: 0;
+}
+
+.day-letter {
+  text-align: left;
+  border: var(--rule);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.day-letter:hover {
+  border-color: var(--fg);
+}
+
+.day-letter-subject {
+  font-size: 14px;
+  color: var(--fg);
+}
+
+.day-letter-meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.day-agent {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  border-top: var(--rule);
+  padding: var(--space-2) 0;
+}
+
+.day-agent-task {
+  font-size: 14px;
+  color: var(--fg);
+  flex: 1;
+}
+
+.day-agent-meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.day-whisper {
+  text-align: left;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: var(--space-2) 0;
+  cursor: pointer;
+  border-top: var(--rule);
+}
+
+.day-whisper-summary {
+  font-size: 14px;
+  color: var(--fg);
+  font-family: var(--font-body);
+}
+
+.day-clause {
+  font-family: var(--font-display);
+  font-size: 14px;
+  color: var(--muted);
+  margin: 0;
+  padding: var(--space-2) 0;
+  border-top: var(--rule);
+}
+
+.day-agents h3,
+.day-whispers h3,
+.day-clauses h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-faint);
+  margin: var(--space-3) 0 var(--space-1);
+}
+
 /* The Horizon View — plural time as a transit diagram. */
 .horizon {
   display: flex;

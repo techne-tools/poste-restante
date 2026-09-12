@@ -101,6 +101,19 @@ describe("house client", () => {
     expect(url).toBe("/v1/whisper?unread=1");
   });
 
+  it("reads the day — the callsheet whiteboard, derived and never stored", async () => {
+    globalThis.fetch = mockFetch(200, {
+      frames: [{ frame: "production:tempest-tech-week", letters: [] }],
+      agents: [],
+      whispers: [],
+      clauses: [],
+    });
+    const res = await house.day();
+    expect(res.frames[0].frame).toBe("production:tempest-tech-week");
+    const [url] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe("/v1/day");
+  });
+
   it("reads a thread — the correspondence, oldest first", async () => {
     globalThis.fetch = mockFetch(200, { thread: "th_gap_dormant", letters: [] });
     const res = await house.thread("th_gap_dormant");

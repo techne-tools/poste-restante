@@ -1066,6 +1066,7 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
       profileName: house.config.profileName,
       writeName: house.config.writeName,
       whisperName: house.config.whisperName,
+      dayName: house.config.dayName,
       domain: house.config.houseDomain,
     });
   });

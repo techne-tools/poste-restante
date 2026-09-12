@@ -224,6 +224,26 @@ own seam, which enforces the three doors).
   *know* and *compute* — never what it can *write*. A response returns
   synchronously; the house relays, it never interrupts.
 
+### The Day — the callsheet whiteboard (SPEC §18, built 2026-09-12)
+
+`GET /v1/day` — a thin derived projection of what the house already
+knows, arranged by time. Not a new data model, not a table: the board is
+a query over letters, frames, agents, whisper, and book. Wipe it and
+re-derive, and the same board returns.
+
+- **Visibility is the same line as everywhere.** The board shows only
+  what the resident is party to — derived participation, never a new
+  limb. The book appears because it is commons by right. A board row
+  that would name a thread the resident cannot see does not exist.
+- **The frame is the call.** One frame per active frame the resident has
+  letters in; a letter is a card in its frame's column.
+- **An instrument is a task line.** The resident's own agents (creator =
+  caller) alive in those frames, with task text and lifespan, marked
+  flat with the "instrument" tag.
+- **Presence not pressure.** The board holds; it never pings. No
+  badges, no red, no "N unseen". Not a dashboard — the board shows the
+  resident their day, it never measures them.
+
 ## Constraints
 
 - **Async by default.** The letter waits. Nothing pushes. *Presence not pressure — hold, never ping; visible not sent.*

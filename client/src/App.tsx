@@ -12,8 +12,9 @@ import Pub from "./Pub";
 import ThreadView from "./ThreadView";
 import Book from "./Book";
 import Profile from "./Profile";
+import Day from "./Day";
 
-type View = "mailbox" | "archive" | "addresses" | "compose" | "pub" | "thread" | "book" | "profile";
+type View = "mailbox" | "archive" | "addresses" | "compose" | "pub" | "thread" | "book" | "profile" | "day";
 
 export default function App() {
   const [auth, setAuth] = useState(() => loadAuth());
@@ -219,6 +220,9 @@ export default function App() {
           <button className={view === "mailbox" ? "active" : ""} onClick={() => navigate("mailbox")}>
             {meta?.mailboxName ?? "the mailbox"}
           </button>
+          <button className={view === "day" ? "active" : ""} onClick={() => navigate("day")}>
+            {meta?.dayName ?? "the day"}
+          </button>
           <button className={view === "archive" ? "active" : ""} onClick={() => navigate("archive")}>
             {meta?.archiveName ?? "the archive"}
           </button>
@@ -239,6 +243,35 @@ export default function App() {
           </button>
         </nav>
         {view === "mailbox" && <Mailbox onError={setError} address={auth.address} />}
+        {view === "day" && (
+          <Day
+            name={meta?.dayName}
+            onError={setError}
+            onOpenThread={(thread) => {
+              setThreadId(thread);
+              setError(null);
+              setView("thread");
+            }}
+            onOpenWhisper={(id, targetThread) => {
+              // Picking up an offer: mark it opened, land on the
+              // correspondence it points at (the whisper stays where the
+              // house's voice is heard; the board shows where the work is).
+              void (async () => {
+                try {
+                  await house.openWhisper(id);
+                  refreshWhisper();
+                } catch {
+                  // The offer is still visible; opening it is a quiet act.
+                }
+              })();
+              if (targetThread) {
+                setThreadId(targetThread);
+                setError(null);
+                setView("thread");
+              }
+            }}
+          />
+        )}
         {view === "archive" && <Archive onError={setError} initialFrame={frameId} onWhisperRefresh={refreshWhisper} />}
         {view === "pub" && (
           <Pub
