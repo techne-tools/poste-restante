@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { house, clearAuth } from "./api";
-import type { Address } from "./api";
+import type { Address, Letter } from "./api";
 
 interface Props {
   onError: (msg: string) => void;
@@ -40,6 +40,11 @@ export default function Profile({ onError, address, onRelabeled, onPasswordChang
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [confirmRelabel, setConfirmRelabel] = useState(false);
+  // What the house holds about the resident (SPEC §19) — the review
+  // surface. Loaded lazily with the record; deletion is in place.
+  const [held, setHeld] = useState<Letter[]>([]);
+  const [heldLoading, setHeldLoading] = useState(false);
+  const [forgetting, setForgetting] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -57,6 +62,40 @@ export default function Profile({ onError, address, onRelabeled, onPasswordChang
   useEffect(() => {
     load();
   }, [load]);
+
+  /** Pull the review — everything the house holds about the resident,
+   *  including what is on the shelf (a letter put away is still held).
+   *  Pulled on demand — a place to look, never a prompt. */
+  const loadHeld = useCallback(async () => {
+    setHeldLoading(true);
+    try {
+      const res = await house.review(address);
+      setHeld(res.letters);
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "the house could not show what it holds");
+    } finally {
+      setHeldLoading(false);
+    }
+  }, [address, onError]);
+
+  /** Forget a letter — first-class deletion, no soft delete. The house
+   *  forgets on request; deletion is the resident's own act, quiet and
+   *  in place (the same register as the correspondence's scrub, one
+   *  letter at a time). */
+  const forget = useCallback(
+    async (id: string) => {
+      setForgetting(id);
+      try {
+        await house.deleteLetter(id);
+        setHeld((prev) => prev.filter((l) => l.id !== id));
+      } catch (err) {
+        onError(err instanceof Error ? err.message : "the house could not forget this");
+      } finally {
+        setForgetting(null);
+      }
+    },
+    [onError],
+  );
 
   const correct = useCallback(async () => {
     if (!record) return;
@@ -248,6 +287,54 @@ export default function Profile({ onError, address, onRelabeled, onPasswordChang
             </button>
           )}
         </div>
+      </section>
+
+      <section className="book-section">
+        <h3>What the house holds about you</h3>
+        <p className="book-hint">
+          Deletion is first-class: the archive forgets on request. This is a place to look,
+          never a prompt — every letter you are party to, including the ones on the shelf
+          (a letter put away is still held by the house, until you ask it to forget).
+        </p>
+        <div className="book-propose-actions">
+          {heldLoading ? (
+            <span className="compose-hint">reading the record…</span>
+          ) : held.length === 0 ? (
+            <button className="clause-act" onClick={loadHeld}>
+              See what the house holds
+            </button>
+          ) : (
+            <button className="clause-act" onClick={loadHeld}>
+              Refresh
+            </button>
+          )}
+        </div>
+        {held.length > 0 && (
+          <ul className="review-list">
+            {held.slice(0, 50).map((l) => (
+              <li className="review-item" key={l.id}>
+                <div className="review-meta">
+                  <span className="review-subject">{l.envelope.subject || "(no subject)"}</span>
+                  <span className="review-from">
+                    {l.envelope.from} · {new Date(l.receivedAt).toLocaleString("en-AU")}
+                  </span>
+                </div>
+                <button
+                  className="forget-link"
+                  disabled={forgetting === l.id}
+                  onClick={() => void forget(l.id)}
+                >
+                  {forgetting === l.id ? "…" : "Forget this letter"}
+                </button>
+              </li>
+            ))}
+            {held.length > 50 && (
+              <li className="review-item review-more">
+                …and {held.length - 50} more — the full record stays beyond this window.
+              </li>
+            )}
+          </ul>
+        )}
       </section>
     </div>
   );

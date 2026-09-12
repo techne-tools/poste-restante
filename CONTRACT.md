@@ -244,6 +244,23 @@ re-derive, and the same board returns.
   badges, no red, no "N unseen". Not a dashboard — the board shows the
   resident their day, it never measures them.
 
+### The Review — what the house holds about you (SPEC §19, built 2026-09-12)
+
+`GET /v1/addresses/:address/review` — the resident's look at the record
+the house keeps of them. Self-only (403 for another's record): this is
+self-regard, never administration.
+
+- **Every letter you are party to**, newest first, capped high enough to
+  be a record (500). Same derived-participation limb as every face —
+  but deliberately NOT filtered by the shelf: a letter put away is
+  still held by the house, and the resident must be able to see it
+  here.
+- **Deletion is first-class, in place.** The client's Profile room
+  renders each held letter with a quiet one-step "Forget this letter" —
+  the house forgets on request; no soft delete, no red, no drama.
+- **Presence not pressure.** The review is a place to look, never a
+  prompt: pulling the record is an act, not a notification.
+
 ## Constraints
 
 - **Async by default.** The letter waits. Nothing pushes. *Presence not pressure — hold, never ping; visible not sent.*

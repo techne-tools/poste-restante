@@ -656,6 +656,23 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
     return c.json({ address, letters: letters.map(toLetter) });
   });
 
+  // The review — what the house holds about you (SPEC §19). Deletion is
+  // first-class and already built; this is the quiet "look at your
+  // record" surface: every letter the caller is party to, including the
+  // ones on the shelf (a letter put away is still held by the house),
+  // newest first, capped high enough to be a record. Only the resident
+  // themselves may look — this is self-regard, not administration.
+  app.get("/v1/addresses/:address/review", async (c) => {
+    const who = await caller(c);
+    if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
+    const address = c.req.param("address");
+    if (address !== who.address) {
+      return c.json({ error: { code: "forged", message: "you can only review what the house holds about you" } }, 403);
+    }
+    const letters = await house.repo.listLettersForReview(address);
+    return c.json({ address, letters: letters.map(toLetter) });
+  });
+
   // ── Threads & frames ──────────────────────────────────────────────────────
 
   // Threads are correspondences. The thread is the unit, not the message.

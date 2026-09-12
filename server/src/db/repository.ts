@@ -399,6 +399,28 @@ export class PostgresRepository {
     return rows;
   }
 
+  /** Everything the house holds about a resident — the review surface
+   *  (SPEC §19: "what the house holds about you"). Same derived
+   *  visibility limb as every face (visibleToSql: participant AND
+   *  currently-in-thread, or public), but NOT filtered by the shelf:
+   *  a letter put away is still held by the house, and the resident
+   *  must be able to see it here. Newest first, capped high enough for
+   *  a record, not a mailbox. */
+  async listLettersForReview(address: string, limit = 500): Promise<StoredLetterRow[]> {
+    const { rows } = await this.pool.query<StoredLetterRow>(
+      `SELECT l.*, COALESCE(
+         (SELECT json_agg(json_build_object('frame', f.name, 'value', f.value))
+          FROM letter_frames lf JOIN frames f ON f.id = lf.frame_id
+          WHERE lf.letter_id = l.id), '[]'::json) AS frames
+      FROM letters l
+      WHERE ${visibleToSql(1)}
+      ORDER BY l.received_at DESC
+      LIMIT $2`,
+      [address, limit],
+    );
+    return rows;
+  }
+
   /** Fetch many letters by id, preserving the given order. */
   async getLetters(ids: string[]): Promise<StoredLetterRow[]> {
     if (ids.length === 0) return [];

@@ -407,10 +407,20 @@ export const house = {
     return request<HouseMeta>("/house/meta");
   },
 
-  /** The mailbox — pull by default. */
+  /** Read the mailbox — pull by default. */
   inbox(address: string, limit = 50) {
     return request<{ address: string; letters: Letter[] }>(
       `/addresses/${encodeURIComponent(address)}/inbox?limit=${limit}`,
+    );
+  },
+
+  /** What the house holds about you (SPEC §19) — every letter the caller
+   *  is party to, including what is on the shelf (a letter put away is
+   *  still held by the house). Newest first. Self-only: this is
+   *  self-regard, not administration. */
+  review(address: string) {
+    return request<{ address: string; letters: Letter[] }>(
+      `/addresses/${encodeURIComponent(address)}/review`,
     );
   },
 

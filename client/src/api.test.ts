@@ -94,6 +94,14 @@ describe("house client", () => {
     expect(url).toBe("/v1/addresses/you%40house/inbox?limit=5");
   });
 
+  it("reads the review — what the house holds about you, self-only", async () => {
+    globalThis.fetch = mockFetch(200, { address: "you@house", letters: [] });
+    const res = await house.review("you@house");
+    expect(res.address).toBe("you@house");
+    const [url] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe("/v1/addresses/you%40house/review");
+  });
+
   it("lists the whisper — the house's own letters", async () => {
     globalThis.fetch = mockFetch(200, { whispers: [] });
     await house.whisper(true);

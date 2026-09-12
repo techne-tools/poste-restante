@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added — the review: what the house holds about you (SPEC §19, surfaced 2026-09-12)
+
+Deletion was first-class but had no door. The review surface lands:
+
+- **`GET /v1/addresses/:address/review`** — self-only, every letter the
+  caller is party to, newest first, capped high enough to be a record.
+  Uses the same derived visibility limb as every face — but does NOT
+  filter by the shelf: a letter put away is still held by the house,
+  and the resident must be able to see it here (the mailbox hides the
+  shelf; the review does not).
+- **The section, in your record.** Profile gains "What the house holds
+  about you": a place to look, never a prompt. Each letter shows its
+  subject, correspondent, and time, with a quiet one-step "Forget this
+  letter" — first-class deletion, in place, no red (the same register
+  as the correspondence's scrub, one letter at a time). The record
+  re-reads on forget.
+
+Suite: server 273/273 unit + 3 review integration (shelved included →
+forget → gone → 403 for another's record), client 74/74 (+1 api),
+typecheck, build. Integration 396 passed; the two mailbox-sidecar
+integration files still need the dev Stalwart on 11430 — pre-existing.
+
 ### Added — the day, in the reference client: the callsheet whiteboard becomes a room (SPEC §18 — 2026-09-12)
 
 The server's thin day projection (`GET /v1/day`, built with the §18
