@@ -463,6 +463,24 @@ button.scrub-act {
   max-width: 34em;
 }
 
+/* A sealed body — the house never renders ciphertext; the reader
+   unseals with their own key, or reads a quiet explanation. The gated
+   button is the same register as the handle change: quiet until it can
+   act. */
+.sealed-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.sealed-hint {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-faint);
+  max-width: 34em;
+}
+
 /* Headings inside a letter are the writer's voice — serif, even in the
    sans body. */
 .letter .body h1,
@@ -621,6 +639,27 @@ button.scrub-act {
   font-size: 12px;
   color: var(--ink-faint);
   margin: var(--space-1) 0 0;
+}
+
+/* The seal — a per-letter choice (SPEC §15). Quiet, factual, no red:
+   the tradeoff is stated ("the house holds it without reading"), the
+   resident decides. The checkbox borrows the toggle register: small,
+   mono, not a banner. */
+.seal-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-faint);
+  margin-top: var(--space-2);
+  cursor: pointer;
+  user-select: none;
+}
+
+.seal-toggle input[type="checkbox"] {
+  accent-color: var(--fg);
+  margin: 0;
 }
 
 .compose-field select {

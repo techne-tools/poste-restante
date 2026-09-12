@@ -1,5 +1,7 @@
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { house } from "./api";
+import { sealDraft } from "./crypto";
+import type { Address } from "./api";
 
 interface Props {
   onError: (msg: string) => void;
@@ -26,6 +28,9 @@ export default function Compose({ onError, onDelivered, initialTo, initialThread
   const [thread, setThread] = useState(initialThread ?? "");
   const [frame, setFrame] = useState("");
   const [kind, setKind] = useState("letter");
+  const [sealed, setSealed] = useState(false);
+  const [addresses, setAddresses] = useState<Address[]>([]);
+  const [sealing, setSealing] = useState(false);
   const [files, setFiles] = useState<PendingFile[]>([]);
   const [sending, setSending] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -41,6 +46,20 @@ export default function Compose({ onError, onDelivered, initialTo, initialThread
     if (next.length > 0) setFiles((prev) => [...prev, ...next]);
   };
 
+  // Ensure the key registry is fresh when the resident reaches for the
+  // seal — sealing needs every correspondent's public half resident-side.
+  const loadAddressBook = useCallback(async () => {
+    if (addresses.length > 0) return addresses;
+    try {
+      const res = await house.addresses();
+      setAddresses(res.addresses);
+      return res.addresses;
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "the house could not show the address book");
+      return addresses;
+    }
+  }, [addresses, onError]);
+
   const send = async () => {
     if (!canSend) return;
     setSending(true);
@@ -53,27 +72,60 @@ export default function Compose({ onError, onDelivered, initialTo, initialThread
           const [name, value] = s.split(":");
           return { frame: name ?? "season", value: value ?? s };
         });
-      const { id } = await house.deliver({
-        envelope: {
-          from,
-          to: [to.trim() || "you@house"],
-          cc: [],
-          thread: thread.trim() || `th_${Date.now().toString(36)}`,
-          kind,
-          lang: "en-AU",
-          subject: subject.trim(),
-        },
-        time: {
-          gregorian: new Date().toISOString(),
-          frames,
-        },
-        body: { format: "markdown", content: body },
-      });
+      const envelope = {
+        from,
+        to: [to.trim() || "you@house"],
+        cc: [],
+        thread: thread.trim() || `th_${Date.now().toString(36)}`,
+        kind,
+        lang: "en-AU",
+        subject: sealed ? "" : subject.trim(),
+      };
+      const { id } = await house.deliver(
+        sealed
+          ? await (async () => {
+              // Seal first, then deliver. The address book is the
+              // identity map the letter id resolves through — fetched
+              // once and held for the composer's life.
+              const book = await loadAddressBook();
+              setSealing(true);
+              try {
+                const result = await sealDraft(
+                  {
+                    envelope,
+                    time: { gregorian: new Date().toISOString(), frames },
+                    body: { format: "markdown", content: body },
+                  },
+                  book,
+                  {
+                    registerKeys: (id, keys) => house.registerKeys(id, keys),
+                  },
+                );
+                // The delivered letter is EXACTLY what was canonicalised:
+                // the sealed body with an EMPTY envelope subject, signed
+                // against that stored form. The house renders "sealed
+                // letter"; the client presents the first line of the
+                // plaintext as the subject after unsealing (SPEC §15 —
+                // subject moves into the body).
+                return result.letter;
+              } finally {
+                setSealing(false);
+              }
+            })()
+          : {
+              envelope,
+              time: { gregorian: new Date().toISOString(), frames },
+              body: { format: "markdown", content: body },
+            },
+      );
 
-      // The letter is delivered; the enclosures follow. Each upload is its
-      // own request — a failure here fails the attachment alone, never the
-      // letter (the letter is already in the archive).
+      // The letter is delivered; the enclosures follow. Enclosures on
+      // sealed letters are client side only — the house cannot read or
+      // serve what it cannot open (SPEC §15: sealed payloads are
+      // client-side encrypted before upload; v1 ships text bodies, the
+      // payload layer is the recorded follow-on).
       for (const f of files) {
+        if (sealed) continue;
         try {
           await house.uploadPayload(id, f.blob, f.name);
         } catch (err) {
@@ -141,6 +193,18 @@ export default function Compose({ onError, onDelivered, initialTo, initialThread
             />
           </label>
         </div>
+        {/* The seal — a per-letter choice, not a default (SPEC §15).
+            Quiet, factual, no red: the tradeoff is stated, the resident
+            decides. Sealed = not indexed, not whispered, not
+            semantically connected. */}
+        <label className="seal-toggle">
+          <input
+            type="checkbox"
+            checked={sealed}
+            onChange={(e) => setSealed(e.target.checked)}
+          />
+          <span>Seal this letter — only {to.trim() || "the recipient"} and I can read it; the house holds it without reading</span>
+        </label>
         {kind === "audio" && body.trim().length === 0 && (
           <p className="compose-hint">An audio letter — the recording is the letter.</p>
         )}
@@ -172,8 +236,8 @@ export default function Compose({ onError, onDelivered, initialTo, initialThread
         />
       </label>
       <div className="compose-actions">
-        <button className="primary" onClick={send} disabled={!canSend}>
-          {sending ? "Posting…" : "Post the letter"}
+        <button className="primary" onClick={send} disabled={!canSend || sealing}>
+          {sealing ? "Sealing…" : sending ? "Posting…" : "Post the letter"}
         </button>
       </div>
     </div>

@@ -21,6 +21,15 @@ export interface LetterRow {
   received_at: Date;
   pinned_at: Date | null;
   pinned_by: string | null;
+  /** Sealed letters (SPEC §15). The body is ciphertext the house never
+   *  reads; `sealed` is a column, not a runtime flag — the visibility /
+   *  FTS / whisper paths branch on it structurally when they need to
+   *  (the semantic layer already skips sealed bodies at ingest). */
+  sealed: boolean;
+  /** The ed25519 signature over the letter id. Null for unsealed
+   *  letters — the house verifies on ingest and at rest, stores it, and
+   *  serves it so the client can present it (public keys are public). */
+  signature: string | null;
 }
 
 export interface StoredLetterRow extends LetterRow {
@@ -213,18 +222,43 @@ export class PostgresRepository {
     );
   }
 
-  /** List the address book — the social graph. Flat, no ranking. */
-  async listAddresses(): Promise<{ id: string; names: string[]; pronouns: string | null }[]> {
+  /** List the address book — the social graph. Flat, no ranking. The
+   *  public halves of any registered keys ride along (SPEC §15): an
+   *  address with a key record carries its age recipient and ed25519
+   *  public so correspondents can seal to it and verify its letters.
+   *  Public keys are public; the absent key record for a legacy
+   *  address is simply null. */
+  async listAddresses(): Promise<
+    { id: string; names: string[]; pronouns: string | null; ageRecipient: string | null; ed25519Public: string | null }[]
+  > {
     const { rows } = await this.pool.query(
-      `SELECT id, names, pronouns FROM addresses ORDER BY id`,
+      `SELECT a.id, a.names, a.pronouns,
+              ak.age_recipient AS "ageRecipient", ak.ed25519_public AS "ed25519Public"
+       FROM addresses a
+       LEFT JOIN address_keys ak ON ak.address = a.id AND ak.retired_at IS NULL
+       ORDER BY a.id`,
     );
     return rows;
   }
 
-  /** Get one address. */
-  async getAddress(id: string): Promise<{ id: string; names: string[]; pronouns: string | null; is_public: boolean } | null> {
+  /** Get one address. Carries the public halves of any registered keys
+   *  (SPEC §15) — same shape as the flat list. */
+  async getAddress(
+    id: string,
+  ): Promise<{
+    id: string;
+    names: string[];
+    pronouns: string | null;
+    is_public: boolean;
+    ageRecipient: string | null;
+    ed25519Public: string | null;
+  } | null> {
     const { rows } = await this.pool.query(
-      `SELECT id, names, pronouns, is_public FROM addresses WHERE id = $1`,
+      `SELECT a.id, a.names, a.pronouns, a.is_public,
+              ak.age_recipient AS "ageRecipient", ak.ed25519_public AS "ed25519Public"
+       FROM addresses a
+       LEFT JOIN address_keys ak ON ak.address = a.id AND ak.retired_at IS NULL
+       WHERE a.id = $1`,
       [id],
     );
     return rows[0] ?? null;
@@ -259,6 +293,15 @@ export class PostgresRepository {
        ON CONFLICT (address) DO UPDATE
          SET age_recipient = $2, ed25519_public = $3, recovery_age_recipient = $4, retired_at = NULL`,
       [address, keys.ageRecipient, keys.ed25519Public, keys.recoveryAgeRecipient],
+    );
+  }
+
+  /** Make the identity id durable (SPEC §19). After a resident registers
+   *  keys, the address's identity IS the ed25519 fingerprint. */
+  async setAddressIdentity(address: string, identityId: string): Promise<void> {
+    await this.pool.query(
+      `UPDATE addresses SET identity_id = $2 WHERE id = $1`,
+      [address, identityId],
     );
   }
 

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { house } from "./api";
+import { house, loadAuth } from "./api";
 import type { Letter, PayloadMeta } from "./api";
 import KindTag from "./KindTag";
 import { renderMarkdown } from "./markdown";
+import { unsealLetterBody } from "./crypto";
 
 interface Props {
   letter: Letter;
@@ -55,10 +56,23 @@ export default function LetterView({ letter, onBack, actions }: Props) {
   const { envelope, time, body } = letter;
   const to = envelope.to.join(", ");
   const frames = time.frames;
+  const sealed = body.format === "sealed";
 
   const [payloads, setPayloads] = useState<PayloadMeta[]>([]);
   const [blobs, setBlobs] = useState<Record<string, string>>({});
   const [failed, setFailed] = useState<Record<string, string>>({});
+  // A sealed body's plaintext — unsealed on demand with the resident's
+  // own key, held in memory for the life of the view. The envelope is
+  // always visible; the body waits for the reader.
+  const [plaintext, setPlaintext] = useState<string | null>(
+    sealed ? null : body.content,
+  );
+  const [unsealFailed, setUnsealFailed] = useState(false);
+  const [unsealing, setUnsealing] = useState(false);
+  // Sealed letters carry no plaintext subject — the first line of the
+  // unsealed body is the title. Until then, a quiet placeholder (SPEC
+  // §15: the house shows "sealed letter").
+  const [subjectLabel, setSubjectLabel] = useState<string | null>(null);
 
   // List the catalog once. Absence is silence: no payloads → no row.
   useEffect(() => {
@@ -123,6 +137,39 @@ export default function LetterView({ letter, onBack, actions }: Props) {
     },
     [letter.id],
   );
+
+  const unseal = useCallback(async () => {
+    if (!sealed || body.format !== "sealed") return;
+    setUnsealing(true);
+    try {
+      // The reader unseals with their own age identity. The session's
+      // handle is the key into the client-held keystore — the resident
+      // can open letters sealed to them, and only those.
+      const auth = loadAuth();
+      const resident = auth?.address ?? envelope.from;
+      const opened = await unsealLetterBody(resident, body.content);
+      if (opened === null) {
+        setUnsealFailed(true);
+        return;
+      }
+      // The first line of the plaintext is the subject; the body is the
+      // rest (SPEC §15 — the subject moves into the body for sealed
+      // letters).
+      const nl = opened.indexOf("\n");
+      if (nl >= 0) {
+        setSubjectLabel(opened.slice(0, nl).trim() || "sealed letter");
+        setPlaintext(opened.slice(nl).replace(/^\n+/, ""));
+      } else {
+        setSubjectLabel("sealed letter");
+        setPlaintext(opened);
+      }
+      setUnsealFailed(false);
+    } catch {
+      setUnsealFailed(true);
+    } finally {
+      setUnsealing(false);
+    }
+  }, [sealed, body, envelope.from]);
 
   const renderEnclosure = (p: PayloadMeta) => {
     const kind = isRenderable(p);
@@ -189,7 +236,9 @@ export default function LetterView({ letter, onBack, actions }: Props) {
           <KindTag kind={envelope.kind} />
         </div>
 
-        <h1 className="subject">{envelope.subject || "(no subject)"}</h1>
+        <h1 className="subject">
+          {sealed ? (subjectLabel ?? "sealed letter") : envelope.subject || "(no subject)"}
+        </h1>
 
         {frames.length > 0 && (
           <div className="frames">
@@ -201,7 +250,24 @@ export default function LetterView({ letter, onBack, actions }: Props) {
           </div>
         )}
 
-        <div className="body">{renderMarkdown(body.content)}</div>
+        {body.format === "sealed" ? (
+          <div className="body sealed-body">
+            {unsealFailed ? (
+              <p className="sealed-hint">
+                This letter is sealed — the house cannot open it. It was sealed to you; if it
+                is not readable with your key, you may not be a recipient.
+              </p>
+            ) : plaintext !== null ? (
+              renderMarkdown(plaintext)
+            ) : (
+              <button className="gated" onClick={unseal} disabled={unsealing}>
+                {unsealing ? "Opening…" : "Open the sealed letter"}
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="body">{renderMarkdown(body.content)}</div>
+        )}
 
         {payloads.length > 0 && (
           <div className="enclosures">

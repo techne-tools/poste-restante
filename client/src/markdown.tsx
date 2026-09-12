@@ -143,3 +143,14 @@ export function snippet(content: string, max = 120): string {
   }
   return cut;
 }
+
+/** The list-surface helper for a letter's body. A sealed body must
+ *  never render as ciphertext in a list — the house shows "sealed
+ *  letter", never a hash. The plaintext waits behind the reader's own
+ *  key, on the letter view. */
+export function snippetForLetter(letter: {
+  body: { format: string; content: string };
+}): string {
+  if (letter.body.format === "sealed") return "sealed letter";
+  return snippet(letter.body.content);
+}

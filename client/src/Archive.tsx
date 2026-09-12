@@ -4,7 +4,7 @@ import type { Letter } from "./api";
 import LetterView from "./LetterView";
 import { ThreadActionRow, useThreadMoves } from "./ThreadActions";
 import KindTag from "./KindTag";
-import { snippet } from "./markdown";
+import { snippetForLetter } from "./markdown";
 import {
   byTimeAsc,
   classifyLetter,
@@ -286,7 +286,7 @@ export default function Archive({ onError, initialFrame = null, onWhisperRefresh
                       </span>
                     ))}
                   </div>
-                  <div className="snippet">{snippet(l.body.content)}</div>
+                  <div className="snippet">{snippetForLetter(l)}</div>
                 </button>
               );
             })}

@@ -6,6 +6,81 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added — sealed letters reach the resident's hand (SPEC §15, client movement — 2026-09-12)
+
+The cryptographic horizon becomes a working surface. The server's side
+(migration 018, age/ed25519 primitives, the ingest signature gate, the
+sealed-not-indexed rule) was built; now the resident's half ships:
+
+- **Client-held keys, minted in the browser.** `client/src/crypto.ts`:
+  an age identity (X25519, ChaCha20-Poly1305 via the pure-ESM noble
+  stack — the `age-encryption` package, now a client dependency) plus an
+  ed25519 keypair (WebCrypto, zero new native deps). The private halves
+  live in the client's localStorage keystore; the house holds only the
+  public halves, registered through the new self-only route
+  `POST /v1/addresses/:id/keys` (upsert; the ed25519 fingerprint
+  becomes the address's identity id, keeping the letter-id resolver
+  and OIDC bindings in agreement).
+- **The seal, in the writing desk.** A quiet per-letter checkbox: "Seal
+  this letter — only [recipient] and I can read it; the house holds it
+  without reading." Sealing derives the letter id EXACTLY as the server
+  does (canonical form, addresses resolved to identity keys), signs it,
+  and seals the body to every participant's age recipient. The subject
+  moves into the body (SPEC §15) — the envelope's subject goes empty,
+  the first plaintext line becomes the title on open.
+- **The read, in the letter view.** A sealed letter renders "sealed
+  letter" until the reader opens it with their own key — the first
+  plaintext line becomes the subject, the rest the body. Lists
+  (mailbox, archive, thread, pub) show "sealed letter", never
+  ciphertext.
+- **The house serves what it cannot read.** `toLetter()` now serves
+  sealed bodies in their true shape (`format: "sealed"`, content +
+  signature) instead of pretending they are markdown; sealed raw audio
+  is never transcribed (ciphertext has no transcript the house may
+  touch).
+- **Parity proved, not assumed.** `sealed-client.test.ts` (integration)
+  runs the browser's own crypto against the live house: register →
+  address book carries the keys → sealDraft → POST → the server's
+  re-derived id matches (201) → the recipient's key unseals the
+  plaintext. One byte of canonical drift would fail at the signature
+  gate; the proof holds. Client unit tests lock the canonical form to
+  the exact server fixture and prove the seal/unseal round-trip,
+  including the keyless-recipient refusal.
+
+Suite: server 258/258 unit + 3 sealed-client integration, client
+72/72 (was 66; +5 crypto, +1 api — the transient age smoke test was
+absorbed into crypto.test and removed), typecheck, build
+(age-encryption bundles: 247 → 399 kB
+JS). The two mailbox-sidecar integration files still need the dev
+Stalwart on 11430 — pre-existing.
+
+### Added — the resident's own door: change the password in your record (2026-09-12)
+
+The profile's self-regard gains the turn of the door. The house never
+resets anyone — it only changes a credential when the caller proves
+possession of the current one. `POST /v1/addresses/:id/password`
+(`current` + `next`, min-8 like redemption) verifies the current scrypt
+hash first, records a door-knock on a wrong key exactly like any other,
+and rate-limits the door like the other authentication surfaces. A
+wrong current answers 409 — the refused-operation register (the caller
+is authenticated; only the secret refuses), never 401, so the client
+does not treat a live session as dead. The
+act is strictly self-only (403 for anyone else) and changes the secret
+in place — the credential row and all its edges stay; only the hash
+changes. The client's Profile now carries "Your door": current/new
+password fields, the same gated two-step confirm as the handle change,
+and on success the client signs out — the saved Basic header is dead, the
+resident returns under the new secret (the same path as relabel).
+`AuthService.changePassword` (unit: scrypt verifies-then-upserts, wrong
+current refuses + door-knock), route schema, integration tests against
+live infra (old credential 401s, new one authenticates, 403 for
+forgery, 400 for a short next, 409 for a wrong current — door-knock
+recorded). Server 258/258
+unit (from 256, +2 in auth.test), 66/66 client (from 65, +1 api), integration 14/14
+(book/citation) + 4 (password
+change; the two mailbox sidecar files need the dev sidecar up),
+typecheck, build.
+
 ### Fixed — the clause frontmatter stays in the archive, out of the reading surface (2026-09-11)
 
 A support act rendered as a wall of raw protocol in the book's correspondence:

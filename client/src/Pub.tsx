@@ -3,7 +3,7 @@ import { house } from "./api";
 import type { Letter } from "./api";
 import LetterView from "./LetterView";
 import KindTag from "./KindTag";
-import { snippet } from "./markdown";
+import { snippetForLetter } from "./markdown";
 import { groupConversations } from "./pubUtils";
 
 interface Props {
@@ -122,7 +122,7 @@ export default function Pub({ onError, onReply, onPost, onEnterHouse, name }: Pr
                     </span>
                   ))}
                 </div>
-                <div className="snippet">{snippet(l.body.content)}</div>
+                <div className="snippet">{snippetForLetter(l)}</div>
               </button>
             ))}
           </div>
@@ -164,7 +164,7 @@ export default function Pub({ onError, onReply, onPost, onEnterHouse, name }: Pr
                   last letter · {new Date(c.lastAt).toLocaleString("en-AU")}
                 </span>
               </div>
-              <div className="snippet">{snippet(c.letters[c.letters.length - 1]!.body.content)}</div>
+              <div className="snippet">{snippetForLetter(c.letters[c.letters.length - 1]!)}</div>
             </button>
           ))}
         </div>

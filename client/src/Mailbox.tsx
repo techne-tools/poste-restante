@@ -3,7 +3,7 @@ import { house } from "./api";
 import type { Letter } from "./api";
 import LetterView from "./LetterView";
 import KindTag from "./KindTag";
-import { snippet } from "./markdown";
+import { snippetForLetter } from "./markdown";
 import { ThreadActionRow, useThreadMoves } from "./ThreadActions";
 
 interface Props {
@@ -72,7 +72,7 @@ export default function Mailbox({ onError, address }: Props) {
                 ))}
                 {l.pinnedAt && <span className="frame">pinned</span>}
               </div>
-              <div className="snippet">{snippet(l.body.content)}</div>
+              <div className="snippet">{snippetForLetter(l)}</div>
             </button>
           ))}
         </div>
