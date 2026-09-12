@@ -17,6 +17,10 @@ const KIND_META: Record<string, { glyph: string }> = {
   join: { glyph: "→" },
   shelve: { glyph: "▽" },
   unshelve: { glyph: "▽" },
+  // An instrument's own letters, and the act that renames a handle — the
+  // two kinds that had drifted out of the client's kind identity.
+  agent: { glyph: "g" },
+  rename: { glyph: "r" },
 };
 
 export default function KindTag({ kind }: { kind: string }) {

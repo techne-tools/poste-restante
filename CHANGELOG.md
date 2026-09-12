@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added — the kind vocabulary and the error-code ledger (2026-09-12)
+
+- **`client/src/kinds.test.ts`** holds the client's kind identity to the
+  server's: every `LETTER_KINDS` entry has a `KindTag` glyph (and no extras),
+  and the client's `Whisper["kind"]` union equals the server's `WhisperKind`.
+  It caught a real drift: `agent` and `rename` letters rendered the fallback
+  dot — both now carry a quiet glyph (`g`, `r`).
+- **`server/test/unit/errorCodes.test.ts`** fails on any emitted error code
+  that is neither asserted in a server test nor named in a shrinking
+  `TRACKED` ledger. Twenty-nine codes are emitted; eleven are asserted, and
+  the eighteen status-covered refusals are tracked with a documented reason
+  (validation paths, `not_found`/`unauthorized`, and the credential/identity
+  refusals). The ledger may only shrink: a code that becomes asserted must
+  leave it, or the guard fails.
+
+Tests: client 146/146 (+2), server 305/305 (+4). Typecheck and both builds
+clean.
+
 ### Added — the client's copy guard, and the machine's vocabulary (2026-09-12)
 
 - **`client/src/copy.test.ts`** holds the client's own messages (`setError`,
