@@ -105,6 +105,12 @@ export interface HouseConfig {
   /** The community's name for the day board (SPEC §18) — the whiteboard
    *  room, a place-word like "the book". Default "the day". */
   dayName: string;
+  /** Whether GET /v1/house/meta is keyless (default true) or requires a
+   *  credential (HOUSE_META_PUBLIC=0). The payload is no sensitive state —
+   *  room names, the domain, the house's public keys — so the keyless door
+   *  can speak the community's own names. A keyed house answers 401 and the
+   *  door falls back to the founding vocabulary. */
+  houseMetaPublic: boolean;
   /** The mailbox sync heartbeat (SPEC §5 #12, the sync drive): how often
    *  the scheduled re-pass re-mirrors provisioned mailbox accounts. 0
    *  disables the scheduler — the house only syncs on start and on each
@@ -192,6 +198,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): HouseConfig {
     writeName: env.WRITE_NAME ?? "the writing desk",
     whisperName: env.WHISPER_NAME ?? "the whisper",
     dayName: env.DAY_NAME ?? "the day",
+    houseMetaPublic: boolFromEnv(env.HOUSE_META_PUBLIC, true),
     mailboxSyncIntervalMs: intFromEnv(env.MAILBOX_SYNC_INTERVAL_MS, 0),
     mailboxTlsInsecure: boolFromEnv(env.MAILBOX_TLS_INSECURE, false),
     agentSweepIntervalMs: intFromEnv(env.AGENT_SWEEP_INTERVAL_MS, 6 * 60 * 60 * 1000),

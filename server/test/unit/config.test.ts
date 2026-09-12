@@ -30,4 +30,13 @@ describe("loadConfig", () => {
     expect(loadConfig({ POSTE_RESTANTE_INTEGRATION: "true" }).integration).toBe(true);
     expect(loadConfig({ POSTE_RESTANTE_INTEGRATION: "0" }).integration).toBe(false);
   });
+
+  it("serves the house's words keylessly by default, keyed on request", () => {
+    // The door is pre-auth, so the meta read is keyless unless the operator
+    // asks for a credential (HOUSE_META_PUBLIC=0).
+    expect(loadConfig({}).houseMetaPublic).toBe(true);
+    expect(loadConfig({ HOUSE_META_PUBLIC: "1" }).houseMetaPublic).toBe(true);
+    expect(loadConfig({ HOUSE_META_PUBLIC: "0" }).houseMetaPublic).toBe(false);
+    expect(loadConfig({ HOUSE_META_PUBLIC: "false" }).houseMetaPublic).toBe(false);
+  });
 });

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import Pub from "./Pub";
+import { useHouseMeta } from "./useHouseMeta";
 
 interface Props {
   /** Back to the door — the full login. */
@@ -17,6 +18,8 @@ interface Props {
  */
 export default function GuestShell({ onEnterHouse }: Props) {
   const [error, setError] = useState<string | null>(null);
+  // The community's name for the house and the pub, read keylessly.
+  const meta = useHouseMeta();
 
   return (
     <div className="house door">
@@ -28,7 +31,7 @@ export default function GuestShell({ onEnterHouse }: Props) {
           </div>
         )}
         <header>
-          <h1>Poste Restante</h1>
+          <h1>{meta.houseName ?? "Poste Restante"}</h1>
           <span className="address">the house</span>
           <button className="signout" onClick={onEnterHouse} aria-label="enter the house">
             enter the house
@@ -36,7 +39,7 @@ export default function GuestShell({ onEnterHouse }: Props) {
         </header>
         <nav className="nav">
           <button className="active" type="button" aria-current="page">
-            the pub
+            {meta.pubName ?? "the pub"}
           </button>
         </nav>
         <Pub onError={setError} onEnterHouse={onEnterHouse} />

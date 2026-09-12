@@ -1,8 +1,11 @@
 import { useState } from "react";
 import { house, saveAuth } from "./api";
+import { useHouseMeta } from "./useHouseMeta";
 
 interface Props {
   onAuthed: (address: string) => void;
+  /** Back to the door — the invitation is one way in, not a one-way trip. */
+  onBack: () => void;
 }
 
 /**
@@ -13,12 +16,14 @@ interface Props {
  * silence: if the code is wrong, spent, or the letter was never written,
  * the house answers the same "no such thing in the house".
  */
-export default function Redeem({ onAuthed }: Props) {
+export default function Redeem({ onAuthed, onBack }: Props) {
   const [address, setAddress] = useState("");
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // The community's name for the house, read keylessly at the door.
+  const meta = useHouseMeta();
 
   const redeem = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,14 +49,14 @@ export default function Redeem({ onAuthed }: Props) {
   };
 
   return (
-    <div className="house">
+    <div className="house door">
       <main className="space login">
         <header>
-          <h1>Poste Restante</h1>
+          <h1>{meta.houseName ?? "Poste Restante"}</h1>
           <span className="address">an invitation</span>
         </header>
         <div className="letter compose">
-          <p className="empty">
+          <p className="door-intro">
             A resident of the house invited you. Present the letter — your
             address — and the one-time code you were given, and choose the
             password you will keep. The house holds only its hash.
@@ -102,6 +107,12 @@ export default function Redeem({ onAuthed }: Props) {
                 {busy ? "Knocking…" : "Accept the invitation"}
               </button>
             </div>
+            <p className="door-switch">
+              Not your invitation?{" "}
+              <button type="button" className="door-link" onClick={onBack} disabled={busy}>
+                Back to the door
+              </button>
+            </p>
           </form>
         </div>
       </main>

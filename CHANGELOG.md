@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed — the house's own words are keyless at the door; adherence pass over the invitation (2026-09-12)
+
+- **`GET /v1/house/meta` is keyless by default, keyed on request.** The
+  payload is no sensitive state — room names, the domain, the house's public
+  keys — so the keyless door can greet a community by its own name. Set
+  `HOUSE_META_PUBLIC=0` to require a credential; a keyless request then
+  answers 401 and the door keeps its founding vocabulary. The login, the
+  guest shell, and the invitation read the names through one hook
+  (`client/src/useHouseMeta.ts`); a closed read is silence, never an error.
+- **The invitation came out of the sidebar column.** `Redeem` mounted
+  `.house` — the two-column grid — instead of `.house.door`, stranding the
+  card in the 300px sidebar slot. It now joins the other two doors.
+- **The invitation is no longer a one-way trip.** It carries a quiet
+  *Back to the door* link.
+- **The invitation's welcome stopped dressing as an empty state** — the
+  same `.door-intro` fix the login received in pass 11.
+
+Tests: `Login.test.tsx` covers the door's three ways in; the config unit
+test locks the keyless default and the keyed opt-in; new integration
+`house-meta.test.ts` proves keyless 200 / keyed 401 against live infra.
+Client 104/104, server 288/288 unit, integration green. Typecheck and both
+builds clean.
+
 ### Fixed — adherence pass over the login door and the guest shell (2026-09-12)
 
 The threshold, read against the ten rules.

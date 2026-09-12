@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { house, saveAuth } from "./api";
 import Redeem from "./Redeem";
+import { useHouseMeta } from "./useHouseMeta";
 
 interface Props {
   onAuthed: (address: string) => void;
@@ -20,7 +21,7 @@ export default function Login({ onAuthed, onGuest }: Props) {
   const [redeeming, setRedeeming] = useState(false);
 
   if (redeeming) {
-    return <Redeem onAuthed={onAuthed} />;
+    return <Redeem onAuthed={onAuthed} onBack={() => setRedeeming(false)} />;
   }
 
   return <SignIn onAuthed={onAuthed} onRedeem={() => setRedeeming(true)} onGuest={onGuest} />;
@@ -31,6 +32,8 @@ function SignIn({ onAuthed, onRedeem, onGuest }: Props & { onRedeem: () => void 
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // The community's name for the house, read keylessly at the door.
+  const meta = useHouseMeta();
 
   const signIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -73,7 +76,7 @@ function SignIn({ onAuthed, onRedeem, onGuest }: Props & { onRedeem: () => void 
     <div className="house door">
       <main className="space login">
         <header>
-          <h1>Poste Restante</h1>
+          <h1>{meta.houseName ?? "Poste Restante"}</h1>
           <span className="address">the house</span>
         </header>
         <div className="letter compose">

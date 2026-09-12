@@ -1119,7 +1119,13 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
   // Islamic community calls them what it calls them. No sensitive state.
   app.get("/v1/house/meta", async (c) => {
     const who = await caller(c);
-    if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
+    // Keyless by default: the house's own words are public branding, so the
+    // keyless door can greet a community by its own name. HOUSE_META_PUBLIC=0
+    // makes the read keyed again — a keyless request then answers the door's
+    // silence, and the door falls back to the founding vocabulary.
+    if (!house.config.houseMetaPublic && !who) {
+      return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
+    }
     return c.json({
       houseName: house.config.houseName,
       pubName: house.config.pubName,
