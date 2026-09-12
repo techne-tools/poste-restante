@@ -28,11 +28,15 @@ import { MailboxAccountsService } from "../../src/bridge/mailbox-accounts.js";
 import { parseImapUrl } from "../../src/bridge/imap-writer.js";
 import { letterIdFromCanonical, canonicaliseWith } from "../../src/id.js";
 import type { House } from "../../src/house.js";
+import { sidecarUp } from "../support/sidecar.js";
 
 const INTEGRATION = process.env.POSTE_RESTANTE_INTEGRATION === "1";
 const IMAP_URL =
   process.env.IMAP_URL ??
   "imap://you@house.test:house-dev-sidecar@127.0.0.1:11430/";
+// The suite needs the live sidecar; on a host without it, skip rather than
+// fail on an unrelated dependency (the sidecar runs on the homelab host).
+const SIDECAR_UP = INTEGRATION && (await sidecarUp(IMAP_URL));
 
 const basic = (address: string, password: string) =>
   `Basic ${Buffer.from(`${address}:${password}`).toString("base64")}`;
@@ -105,7 +109,7 @@ const GHOST_LETTER = {
   },
 };
 
-describe.skipIf(!INTEGRATION)("the mailbox sync drive (integration)", () => {
+describe.skipIf(!SIDECAR_UP)("the mailbox sync drive (integration)", () => {
   let house: House;
   let auth: AuthService;
   let app: ReturnType<typeof createLetterServer>;

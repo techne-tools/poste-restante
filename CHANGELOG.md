@@ -6,6 +6,33 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed — adherence pass over the archive and the mailbox (2026-09-12)
+
+The two reading surfaces, read against the ten rules.
+
+- **The archive stopped counting.** A frame's label carried a live count of
+  its letters in the tooltip (`production:tempest-2026 — 12 letters`) — on
+  the one surface whose rule is *never ranks, never counts*. The tooltip
+  now names the frame and nothing else.
+- **The transit lines stop overlapping.** A line's horizontal placement
+  was derived from its frame id's length (`8 + (id.length % 4) * 8`), so
+  two frames whose ids share a length mod 4 drew over each other. The lines
+  are now spread evenly across the rail by index.
+- **One vertical flow, one class.** `.letter-list` and `.letter-flow` were
+  the same stack differing only by `min-width: 0`; the mailbox, the pub,
+  and the archive now share `.letter-list` (adherence rule 10).
+- **Long frame values wrap** inside the fixed 170px legend column instead
+  of overflowing into the rail.
+
+The pub board is extracted to `client/src/PubBoard.tsx`, with
+`PubBoard.test.tsx` locking the `.pub` notice-board contract. The two
+mailbox-sidecar integration suites (`imap-writer`, `mailbox-drive`) now
+probe the sidecar and skip safely when it is absent, so a live-infra run
+without Stalwart stays green instead of failing on an unrelated dependency.
+
+Tests: client 88/88 (+3 — the pub board). Integration (live): 416 passed,
+8 skipped, 0 failed. Typecheck and both builds clean.
+
 ### Fixed — adherence pass over the pub and the whisper; `doorName` gets its test (2026-09-12)
 
 The two oldest public faces were read against the ten adherence rules.

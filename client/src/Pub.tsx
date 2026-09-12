@@ -5,6 +5,7 @@ import LetterView from "./LetterView";
 import KindTag from "./KindTag";
 import { snippetForLetter } from "./markdown";
 import { groupConversations } from "./pubUtils";
+import PubBoard from "./PubBoard";
 
 interface Props {
   onError: (msg: string) => void;
@@ -86,11 +87,11 @@ export default function Pub({ onError, onReply, onPost, onEnterHouse, name }: Pr
   const openConv = openThread ? conversations.find((c) => c.thread === openThread) : undefined;
 
   return (
-    <div className="pub">
+    <div>
       {selected ? (
         <LetterView letter={selected} onBack={() => setSelected(null)} />
       ) : openConv ? (
-        <div>
+        <div className="pub">
           <button
             onClick={() => setOpenThread(null)}
             style={{ marginBottom: "var(--space-3)" }}
@@ -135,39 +136,12 @@ export default function Pub({ onError, onReply, onPost, onEnterHouse, name }: Pr
           )}
         </div>
       ) : (
-        <div className="pub-board">
-          <div className="ledger" aria-label={name ?? "the pub"}>
-            <h2>{name ?? "the pub"}</h2>
-            <span className="address">pub@house</span>
-          </div>
-          {onPost && (
-            <p className="pub-note">
-              The house's public room — conversations, not posts.{" "}
-              <button type="button" className="door-link" onClick={onPost}>
-                Post a letter to the pub
-              </button>
-            </p>
-          )}
-          {conversations.length === 0 && (
-            <p className="empty">The pub is quiet — no letters posted yet.</p>
-          )}
-          {conversations.map((c) => (
-            <button
-              key={c.thread}
-              type="button"
-              className="letter-row"
-              onClick={() => setOpenThread(c.thread)}
-            >
-              <p className="subject">{c.title}</p>
-              <div className="meta">
-                <span className="posted">
-                  last letter · {new Date(c.lastAt).toLocaleString("en-AU")}
-                </span>
-              </div>
-              <div className="snippet">{snippetForLetter(c.letters[c.letters.length - 1]!)}</div>
-            </button>
-          ))}
-        </div>
+        <PubBoard
+          name={name}
+          conversations={conversations}
+          onPost={onPost}
+          onOpenThread={setOpenThread}
+        />
       )}
     </div>
   );

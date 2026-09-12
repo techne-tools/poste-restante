@@ -19,11 +19,15 @@ import { ImapFlow, type FetchMessageObject } from "imapflow";
 import { ImapMailboxWriter, parseImapUrl } from "../../src/bridge/imap-writer.js";
 import { MailboxSync, type MailboxSyncSource, type MailboxWriter } from "../../src/bridge/sync.js";
 import { silentLogger } from "../../src/pipeline/logger.js";
+import { sidecarUp } from "../support/sidecar.js";
 
 const INTEGRATION = process.env.POSTE_RESTANTE_INTEGRATION === "1";
 const IMAP_URL =
   process.env.IMAP_URL ??
   "imap://you@house.test:house-dev-sidecar@127.0.0.1:11430/";
+// The suite needs the live sidecar; on a host without it, skip rather than
+// fail on an unrelated dependency (the sidecar runs on the homelab host).
+const SIDECAR_UP = INTEGRATION && (await sidecarUp(IMAP_URL));
 
 interface RowOver {
   id?: string;
@@ -67,7 +71,7 @@ function source(over: RowOver = {}, threadReplied = false): MailboxSyncSource {
   return { letter: mkRow(over), threadReplied };
 }
 
-describe.skipIf(!INTEGRATION)("the IMAP writer (integration)", () => {
+describe.skipIf(!SIDECAR_UP)("the IMAP writer (integration)", () => {
   let opts: ReturnType<typeof parseImapUrl>;
 
   beforeAll(() => {

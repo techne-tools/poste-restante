@@ -180,14 +180,13 @@ export default function Archive({ onError, initialFrame = null, onWhisperRefresh
           ) : (
             frames.map((f) => {
               const active = activeFrames.has(f.id);
-              const ticks = rail.get(f.id) ?? [];
               return (
                 <button
                   key={f.id}
                   className={`frame-label${active ? " active" : ""}`}
                   onClick={() => toggleFrame(f.id)}
                   aria-pressed={active}
-                  title={`${f.name}:${f.value} — ${ticks.length} letter${ticks.length === 1 ? "" : "s"}`}
+                  title={`${f.name}:${f.value}`}
                 >
                   <span className="frame-name">{f.name}</span>
                   <span className="frame-value">{f.value}</span>
@@ -200,14 +199,18 @@ export default function Archive({ onError, initialFrame = null, onWhisperRefresh
         {/* The transit lines — flanking the flow, sharing its height. */}
         <div className="frame-lines" aria-hidden="true">
           {selected ? null : (
-            frames.map((f) => {
+            frames.map((f, i) => {
               const active = activeFrames.has(f.id);
               const ticks = rail.get(f.id) ?? [];
+              // Space the lines across the 48px rail by index, not by an
+              // id-length hash: two frames with ids of equal length used to
+              // land on the same pixel and overlap. Even spread never does.
+              const left = frames.length > 1 ? 4 + (i / (frames.length - 1)) * 40 : 24;
               return (
                 <span
                   key={f.id}
                   className={`frame-line${active ? " active" : ""}`}
-                  style={{ left: `${8 + (f.id.length % 4) * 8}px` }}
+                  style={{ left: `${left}px` }}
                 >
                   {ticks.map((t) => (
                     <i key={t} style={{ top: tickTop(t) }} />
@@ -225,7 +228,7 @@ export default function Archive({ onError, initialFrame = null, onWhisperRefresh
             actions={<ThreadActionRow moves={moves} />}
           />
         ) : (
-          <div className="letter-flow">
+          <div className="letter-list">
             {activeFrames.size > 0 && (
               <p className="horizon-hint">
                 {activeFrames.size === 1
