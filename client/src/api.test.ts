@@ -109,6 +109,16 @@ describe("house client", () => {
     expect(url).toBe("/v1/threads/th_gap_dormant");
   });
 
+  it("changes the password — the resident's own door, POST to the address", async () => {
+    globalThis.fetch = mockFetch(200, { changed: true, address: "you@house" });
+    const res = await house.changePassword("you@house", "old-password-1", "new-password-1");
+    expect(res).toEqual({ changed: true, address: "you@house" });
+    const [url, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe("/v1/addresses/you%40house/password");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(init.body)).toEqual({ current: "old-password-1", next: "new-password-1" });
+  });
+
   it("deletes a letter — first-class, no soft delete", async () => {
     globalThis.fetch = mockFetch(200, { deleted: true, id: "abc" });
     const res = await house.deleteLetter("abc");

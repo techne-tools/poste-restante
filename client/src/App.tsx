@@ -144,6 +144,19 @@ export default function App() {
     setView("mailbox");
   }, []);
 
+  /** The resident changed their password — the credential changed with
+   *  the secret. The saved Basic header is dead; sign in under the new
+   *  one. Same path as relabel: the house holds the history, the
+   *  resident returns by the door they just turned. */
+  const passwordChanged = useCallback(() => {
+    clearAuth();
+    setAuth(null);
+    setGuest(false);
+    setWhispers([]);
+    setError(null);
+    setView("mailbox");
+  }, []);
+
   // A dead credential is keyless: the house answered 401 somewhere, the
   // stored session was cleared, and the resident surface must not stand
   // where the door should be. Return to Login (the same path as leave).
@@ -249,7 +262,15 @@ export default function App() {
         )}
         {view === "book" && <Book name={meta?.bookName} onError={setError} initialClause={bookClause} />}
         {view === "addresses" && <AddressBook onError={setError} onCompose={composeToAddress} />}
-        {view === "profile" && <Profile name={meta?.profileName} onError={setError} address={auth.address} onRelabeled={relabeled} />}
+        {view === "profile" && (
+          <Profile
+            name={meta?.profileName}
+            onError={setError}
+            address={auth.address}
+            onRelabeled={relabeled}
+            onPasswordChanged={passwordChanged}
+          />
+        )}
         {view === "thread" && threadId && (
           <ThreadView
             threadId={threadId}

@@ -23,7 +23,7 @@ import { bodyLimit } from "hono/body-limit";
 import { secureHeaders } from "hono/secure-headers";
 import { createRateLimiter } from "./auth/rate-limiter.js";
 import { LETTER_KINDS } from "./types.js";
-import { AddressSchema, LetterSchema, RedeemSchema, ClauseActionSchema, toLetter } from "./schemas.js";
+import { AddressSchema, LetterSchema, RedeemSchema, ChangePasswordSchema, RegisterKeysSchema, ClauseActionSchema, toLetter } from "./schemas.js";
 import { deliverLetter } from "./deliver.js";
 import type { House } from "./house.js";
 import type { RetrievalQuery } from "./retrieval/retrieval.js";
@@ -95,6 +95,11 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
     windowMs: 60_000,
     max: 10,
     message: "the house asks you to wait before trying another invitation code",
+  });
+  const pwLimiter = createRateLimiter({
+    windowMs: 60_000,
+    max: 10,
+    message: "the house asks you to wait a moment — too many attempts",
   });
   const whisperLimiter = createRateLimiter({
     windowMs: 60_000,
@@ -480,8 +485,12 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
       throw err;
     });
 
-    // If kind === "audio" and whisper is enabled, trigger transcription
-    if (row.kind === "audio" && house.config.whisperUrl) {
+    // If kind === "audio" and whisper is enabled, trigger transcription.
+    // A sealed body is never transcribed: the house cannot read what it
+    // sealed for a resident — a raw audio letter carries markdown/plain
+    // text, a sealed one carries ciphertext the house does not open
+    // (SPEC §15: the semantic layer and its helpers only see unsealed).
+    if (row.kind === "audio" && house.config.whisperUrl && !row.sealed) {
       void house.audio.transcribeAudioLetter(toLetter(row), key).catch((err) => {
         house.log.error("audio:payload-transcribe-failed", {
           letterId: id,
@@ -876,6 +885,93 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
       );
     }
     return c.json({ relabeled: true, from: address, to: newHandle });
+  });
+
+  // Change the password — the resident's own door. The house never
+  // resets anyone; it only changes when the caller proves possession of
+  // the current credential. The current password is verified first; a
+  // wrong current answers the same 401 the door answers — absence is
+  // silence, and a door-knock is recorded just like any other wrong key.
+  // Rate-limited like the other authentication doors.
+  app.post("/v1/addresses/:id/password", pwLimiter, async (c) => {
+    if (!auth) {
+      return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
+    }
+    const who = await caller(c);
+    if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
+    const address = c.req.param("id");
+    // Only the resident themselves may turn their own door.
+    if (address !== who.address) {
+      return c.json({ error: { code: "forged", message: "you can only change your own password" } }, 403);
+    }
+    const body = (await c.req.json().catch(() => null)) as {
+      current?: string;
+      next?: string;
+    } | null;
+    const parsed = ChangePasswordSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json(
+        {
+          error: {
+            code: "invalid_password_change",
+            message: "the new password must be at least 8 characters",
+          },
+        },
+        400,
+      );
+    }
+    const ok = await auth.changePassword(address, parsed.data.current, parsed.data.next);
+    if (!ok) {
+      // The caller is authenticated (the session is live); the CURRENT
+      // secret does not match — a refused operation, not an unknown
+      // caller. 409 (the house's conflict register, like the taken
+      // handle), never 401: a 401 with a credential attached would make
+      // the client treat a live session as dead and sign the resident
+      // out. The resident stays seated and can try again.
+      return c.json({ error: { code: "wrong_current", message: "the current password does not match" } }, 409);
+    }
+    house.log.info("auth:password-changed", { address });
+    return c.json({ changed: true, address });
+  });
+
+  // Register the public halves of a resident's keypairs (SPEC §15). The
+  // private halves are client-held — the house never holds a private
+  // key (consistent with "the house never holds a password"). Public
+  // keys are public: the address record carries them so correspondents
+  // can seal letters to this resident and verify their signatures. The
+  // ed25519 public fingerprint becomes the address's identity — the
+  // letter id resolver reads this table, so once keys exist, the
+  // identity IS the key, and every subsequent letter is hashed against
+  // it (legacy addresses without keys resolve to the handle itself
+  // until one exists). Registration is self-only and idempotent: a
+  // resident may re-register their own keys (rotation re-establishes
+  // the record; the §15 key-history rule keeps old letters
+  // decryptable with old keys).
+  app.post("/v1/addresses/:id/keys", async (c) => {
+    const who = await caller(c);
+    if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
+    const address = c.req.param("id");
+    if (address !== who.address) {
+      return c.json({ error: { code: "forged", message: "you can only register your own keys" } }, 403);
+    }
+    const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
+    const parsed = RegisterKeysSchema.safeParse(body);
+    if (!parsed.success) {
+      return c.json(
+        { error: { code: "invalid_keys", message: "the key record must carry the public halves" } },
+        400,
+      );
+    }
+    // Also make the identity id durable: after registration the address's
+    // identity IS the ed25519 fingerprint. The addresses.identity_id
+    // column is the canonical store (§19); address_keys is the parallel
+    // public-key record. Keeping both in sync means the resolver and the
+    // OIDC bindings agree on who this address is.
+    await house.repo.setAddressIdentity(address, parsed.data.ed25519Public);
+    await house.repo.setAddressKey(address, parsed.data);
+    house.log.info("keys:registered", { address });
+    const key = await house.repo.getAddressKey(address);
+    return c.json(key, 201);
   });
 
   // ── The whisper ────────────────────────────────────────────────────────────

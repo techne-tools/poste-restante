@@ -124,6 +124,39 @@ export class AuthService {
     );
   }
 
+  /**
+   * Change a resident's password. The house never resets anyone — it only
+   * changes when the caller can prove they hold the current one. The
+   * current password is verified against the stored hash first; a wrong
+   * current answers `null` (the route decides — 401, the resident
+   * surface's silence is the same as the door's), and records a
+   * door-knock just like any other wrong key. On success the new
+   * password is upserted in place (the credential row stays; only the
+   * secret changes).
+   */
+  async changePassword(address: string, current: string, next: string): Promise<boolean> {
+    const { rows } = await this.pool.query<{ secret: string }>(
+      `SELECT secret FROM credentials WHERE address = $1 AND kind = 'password'`,
+      [address],
+    );
+    const row = rows[0];
+    if (!row || !verifyPassword(current, row.secret)) {
+      this.log.warn("auth:password-change-failed", { address });
+      await this.whisper?.recordDoorKnock(address).catch((err) => {
+        this.log.error("auth:door-knock-failed", {
+          address,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+      return false;
+    }
+    await this.pool.query(
+      `UPDATE credentials SET secret = $2 WHERE address = $1 AND kind = 'password'`,
+      [address, hashPassword(next)],
+    );
+    return true;
+  }
+
   /** Issue a bearer token for an address. Returns the token — shown once. */
   async issueToken(address: string): Promise<string> {
     await this.ensureAddress(address);

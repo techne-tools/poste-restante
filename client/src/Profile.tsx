@@ -11,6 +11,10 @@ interface Props {
    *  Basic header is stale). The house holds the history; the resident
    *  signs in under their new label. */
   onRelabeled: (newHandle: string) => void;
+  /** The resident changed their password — the credential changed with
+   *  the secret; the saved Basic header is dead. Same path as relabel:
+   *  the resident returns by the door they just turned. */
+  onPasswordChanged: () => void;
   /** The community's name for the room — GET /v1/house/meta. */
   name?: string;
 }
@@ -25,11 +29,14 @@ interface Props {
  * never changes who you are — the edges, the letters, the trust all stay.
  * The old handle is retired. Quiet by default: no broadcast.
  */
-export default function Profile({ onError, address, onRelabeled, name }: Props) {
+export default function Profile({ onError, address, onRelabeled, onPasswordChanged, name }: Props) {
   const [record, setRecord] = useState<Address | null>(null);
   const [namesText, setNamesText] = useState("");
   const [pronouns, setPronouns] = useState("");
   const [newHandle, setNewHandle] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [confirmRelabel, setConfirmRelabel] = useState(false);
@@ -87,6 +94,24 @@ export default function Profile({ onError, address, onRelabeled, name }: Props) 
       setBusy(false);
     }
   }, [record, newHandle, onError, onRelabeled]);
+
+  const changePassword = useCallback(async () => {
+    if (!record || !currentPassword || !newPassword.trim()) return;
+    setBusy(true);
+    try {
+      await house.changePassword(record.id, currentPassword, newPassword.trim());
+      // The secret changed; the saved Basic header is dead. The house
+      // holds the history; the resident returns by the door they just
+      // turned — same path as relabel.
+      clearAuth();
+      onPasswordChanged();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "the house could not turn this door");
+      setConfirmPassword(false);
+    } finally {
+      setBusy(false);
+    }
+  }, [record, currentPassword, newPassword, onError, onPasswordChanged]);
 
   if (loading) return <p className="empty">Looking at your record…</p>;
   if (!record) return <p className="empty">The house has no record of you.</p>;
@@ -168,6 +193,58 @@ export default function Profile({ onError, address, onRelabeled, name }: Props) 
               disabled={busy || !newHandle.trim()}
             >
               Change my handle
+            </button>
+          )}
+        </div>
+      </section>
+
+      <section className="book-section">
+        <h3>Your door</h3>
+        <p className="book-hint">
+          The house never resets anyone — it only changes when you prove you hold the
+          current key. A wrong current password answers the same silence as the door;
+          the change signs you out, and you return under the new one.
+        </p>
+        <label className="compose-field">
+          <span className="compose-label">Current password</span>
+          <input
+            type="password"
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
+            autoComplete="current-password"
+          />
+        </label>
+        <label className="compose-field">
+          <span className="compose-label">New password</span>
+          <input
+            type="password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            autoComplete="new-password"
+          />
+        </label>
+        <div className="book-propose-actions">
+          {confirmPassword ? (
+            <span className="scrub-confirm">
+              <span className="scrub-question">Change your password?</span>
+              <button
+                className="clause-act"
+                onClick={changePassword}
+                disabled={busy || !currentPassword || !newPassword.trim()}
+              >
+                {busy ? "…" : "Yes, change it"}
+              </button>
+              <button className="door-link" onClick={() => setConfirmPassword(false)} disabled={busy}>
+                Keep it
+              </button>
+            </span>
+          ) : (
+            <button
+              className="gated"
+              onClick={() => setConfirmPassword(true)}
+              disabled={busy || !currentPassword || !newPassword.trim()}
+            >
+              Change my password
             </button>
           )}
         </div>

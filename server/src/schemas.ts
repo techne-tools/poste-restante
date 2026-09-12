@@ -94,6 +94,33 @@ export const RedeemSchema = z.object({
 });
 
 /**
+ * The password change — the resident's own door (SPEC §5, auth). The house
+ * never resets anyone; it only changes when the caller proves possession
+ * of the current credential. The current password is verified first; a
+ * wrong current answers null (the route decides — 401, absence is
+ * silence). The new password is min-8, the same rule as redemption.
+ */
+export const ChangePasswordSchema = z.object({
+  current: z.string().min(1),
+  next: z.string().min(8),
+});
+
+/**
+ * The key registration (SPEC §15) — the public halves of a resident's
+ * age + ed25519 keypairs. The private halves are client-held; the house
+ * stores only these (public keys are public). `ed25519Public` is the
+ * address's identity — the letter id resolver reads this table, so a
+ * registered key changes how every subsequent letter is hashed (the
+ * identity IS the key; legacy addresses without keys resolve to the
+ * handle itself until one exists).
+ */
+export const RegisterKeysSchema = z.object({
+  ageRecipient: z.string().min(1),
+  ed25519Public: z.string().min(1),
+  recoveryAgeRecipient: z.string().nullable().default(null),
+});
+
+/**
  * The house book — an act is a letter (SPEC §5.8). The role is stated
  * will; the house enforces what is declared, never what is inferred.
  * The vocabulary is the household's own — consent-forward, not
@@ -138,16 +165,28 @@ export function toLetter(row: StoredLetterRow) {
       gregorian: row.received_at.toISOString(),
       frames: row.frames,
     },
-    body: {
-      format: "markdown" as const,
-      // A clause letter's body begins with the stated-will frontmatter
-      // (the role/continues block). The reading surface never shows it —
-      // the act is the letter, the text is the clause. Stripped here, at
-      // the shared mapper, so every protocol face (HTTP + MCP) returns
-      // letters that read as letters. Derivation keeps stripping for the
-      // engine's own use; the archive stores the full body.
-      content: row.kind === "clause" ? stripClauseFrontmatter(row.body) : row.body,
-    },
+    body: row.sealed
+      ? {
+          format: "sealed" as const,
+          content: row.body,
+          // The house stores the ciphertext and the signature, never the
+          // recipient list (data minimisation — the reader needs only
+          // their own key and the envelope). Served as an empty list;
+          // inbound delivery (SealedBodySchema) still requires the
+          // recipients because delivery must know whom to seal to.
+          recipients: [],
+          signature: row.signature ?? "",
+        }
+      : {
+          format: "markdown" as const,
+          // A clause letter's body begins with the stated-will frontmatter
+          // (the role/continues block). The reading surface never shows it —
+          // the act is the letter, the text is the clause. Stripped here, at
+          // the shared mapper, so every protocol face (HTTP + MCP) returns
+          // letters that read as letters. Derivation keeps stripping for the
+          // engine's own use; the archive stores the full body.
+          content: row.kind === "clause" ? stripClauseFrontmatter(row.body) : row.body,
+        },
     receivedAt: row.received_at.toISOString(),
     pinnedAt: row.pinned_at?.toISOString() ?? null,
     pinnedBy: row.pinned_by ?? null,

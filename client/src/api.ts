@@ -23,14 +23,31 @@ export interface Letter {
     gregorian: string;
     frames: Frame[];
   };
-  body: {
-    format: "markdown";
-    content: string;
-  };
+  body: LetterBody;
   receivedAt: string;
   pinnedAt: string | null;
   pinnedBy: string | null;
 }
+
+/** The letter's body — markdown, or sealed ciphertext (SPEC §15). The
+ *  house stores sealed bodies without reading them; the reader unseals
+ *  with their own key. */
+export type LetterBody =
+  | {
+      format: "markdown";
+      content: string;
+    }
+  | {
+      format: "sealed";
+      /** The armored age ciphertext. The house stores it, never reads it. */
+      content: string;
+      /** The age recipients sealed to. Empty when served back (the house
+       *  stores the ciphertext, never the recipient list — data
+       *  minimisation; the reader needs only their own key). */
+      recipients: string[];
+      /** ed25519 signature over the letter id, base64url. */
+      signature: string;
+    };
 
 export interface Whisper {
   id: string;
@@ -68,6 +85,12 @@ export interface Address {
   id: string;
   names: string[];
   pronouns: string | null;
+  /** The public halves of any registered keys (SPEC §15). Null for a
+   *  legacy address without keys — the identity IS the handle until
+   *  one exists. Public keys are public; the correspondence needs them
+   *  to seal to this address and verify its letters. */
+  ageRecipient: string | null;
+  ed25519Public: string | null;
 }
 
 /** The house book — the derived constitution (SPEC §5.8). */
@@ -297,11 +320,43 @@ export const house = {
     });
   },
 
+  /** Register the public halves of a resident's keypairs (SPEC §15). The
+   *  private halves are client-held — the house never holds a private
+   *  key. Public keys are public; from this moment the ed25519
+   *  fingerprint is the identity the letter id resolver uses. */
+  registerKeys(
+    id: string,
+    keys: { ageRecipient: string; ed25519Public: string; recoveryAgeRecipient?: string | null },
+  ) {
+    return request<{
+      address?: string;
+      age_recipient: string;
+      ed25519_public: string;
+      recovery_age_recipient: string | null;
+    }>(`/addresses/${encodeURIComponent(id)}/keys`, {
+      method: "POST",
+      body: JSON.stringify(keys),
+    });
+  },
+
   /** Relabel — the handle is a label, the identity is the key (SPEC §19). */
   relabel(id: string, handle: string) {
     return request<{ relabeled: boolean; from: string; to: string }>(
       `/addresses/${encodeURIComponent(id)}/relabel`,
       { method: "POST", body: JSON.stringify({ handle }) },
+    );
+  },
+
+  /** Change the password — the resident's own door. The house never
+   *  resets anyone; it only changes when the caller proves possession of
+   *  the current credential. A wrong current answers 401 — the door's
+   *  silence. The saved session dies (the stored Basic header is built
+   *  from the old secret); the resident signs in again under the new
+   *  one. */
+  changePassword(id: string, current: string, next: string) {
+    return request<{ changed: boolean; address: string }>(
+      `/addresses/${encodeURIComponent(id)}/password`,
+      { method: "POST", body: JSON.stringify({ current, next }) },
     );
   },
 

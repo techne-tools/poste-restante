@@ -123,6 +123,46 @@ describe("AuthService", () => {
     expect(knocks).toBe(0);
   });
 
+  it("changes the password when the current one verifies", async () => {
+    const stored = hashPassword("old-password-1");
+    const calls: { sql: string; params: unknown[] }[] = [];
+    const pool = {
+      query: async (sql: string, params: unknown[]) => {
+        calls.push({ sql, params });
+        if (sql.includes("SELECT secret")) return { rows: [{ secret: stored }] };
+        return { rows: [] };
+      },
+    } as never;
+    const svc = new AuthService(pool, noopLog, cfg("basic"));
+    const ok = await svc.changePassword("you@house", "old-password-1", "new-password-1");
+    expect(ok).toBe(true);
+    // One UPDATE, against a real scrypt hash of the NEW password.
+    const update = calls.find((c) => c.sql.includes("UPDATE credentials"));
+    expect(update).toBeDefined();
+    const newHash = update!.params![1] as string;
+    expect(verifyPassword("new-password-1", newHash)).toBe(true);
+    expect(verifyPassword("old-password-1", newHash)).toBe(false);
+  });
+
+  it("refuses a change when the current password is wrong — and records a door-knock", async () => {
+    const stored = hashPassword("old-password-1");
+    let updated = false;
+    const pool = {
+      query: async (sql: string) => {
+        if (sql.includes("SELECT secret")) return { rows: [{ secret: stored }] };
+        if (sql.includes("UPDATE credentials")) updated = true;
+        return { rows: [] };
+      },
+    } as never;
+    let knocks = 0;
+    const whisper = { recordDoorKnock: async () => { knocks += 1; } } as never;
+    const svc = new AuthService(pool, noopLog, cfg("basic"), whisper);
+    const ok = await svc.changePassword("you@house", "wrong-current", "new-password-1");
+    expect(ok).toBe(false);
+    expect(updated).toBe(false);
+    expect(knocks).toBe(1);
+  });
+
   it("returns null for an unknown address", async () => {
     const svc = new AuthService(fakePool(), noopLog, cfg("basic"));
     const who = await svc.authenticate(
