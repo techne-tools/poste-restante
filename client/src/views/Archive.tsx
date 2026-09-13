@@ -1,0 +1,304 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { house } from "../api";
+import type { Letter } from "../api";
+import LetterView from "../components/LetterView";
+import LetterRow from "../components/LetterRow";
+import { ThreadActionRow, useThreadMoves } from "../components/ThreadActions";
+import WhyNote from "../components/WhyNote";
+import {
+  byTimeAsc,
+  classifyLetter,
+  railPositions,
+  threadsWithMultipleAccounts,
+  type FrameInfo,
+} from "../utils/frameUtils";
+
+interface Props {
+  onError: (msg: string) => void;
+  /** A corner offer to hold open — the archive mounts with this frame's
+   *  transit line activated, so the empty room is visible in the legend. */
+  initialFrame?: string | null;
+  /** The whisper re-pulls when a letter's correspondence is put away from
+   *  the archive — shelving quiets the house's offers in the same breath,
+   *  wherever the move is made. */
+  onWhisperRefresh?: () => void;
+}
+
+/**
+ * The archive — the Horizon View (DESIGN.md: the unit and the frame).
+ * The letter flow is a single vertical axis of TIME: oldest → newest when
+ * browsing, the house's relevance order under a query. Frames are parallel
+ * lines flanking it, like a transit diagram. Toggling frame lines brings the
+ * intersection forward: letters in EVERY selected frame stay full, letters
+ * in SOME mid-dim, the rest dim. Nothing is removed — the intersection
+ * stays visible. Plural time, made visible.
+ *
+ * Dimming is the honest operation here: letters dim but never disappear —
+ * presence is intermittent, and the archive's "now" is layered with
+ * retention and protention (Giannachi: the present is never singular; a
+ * presence that deletes the other frames to gain clarity would be a single
+ * archive, not a plural one).
+ */
+export default function Archive({ onError, initialFrame = null, onWhisperRefresh }: Props) {
+  const [letters, setLetters] = useState<Letter[]>([]);
+  const [frames, setFrames] = useState<FrameInfo[]>([]);
+  const [query, setQuery] = useState("");
+  const [activeFrames, setActiveFrames] = useState<ReadonlySet<string>>(
+    // A corner offer mounts with its frame's line already open, so the
+    // empty room is visible in the legend without the resident hunting.
+    () => new Set(initialFrame ? [initialFrame] : []),
+  );
+  const [selected, setSelected] = useState<Letter | null>(null);
+  const [loading, setLoading] = useState(true);
+  /** Browse = the timeline (oldest → newest); search = the house's
+   *  relevance order. The mode flips when a search runs, and back the
+   *  moment the query is emptied — the archive resumes its timeline. */
+  const [mode, setMode] = useState<"browse" | "search">("browse");
+
+  const load = useCallback(async () => {
+    try {
+      const [searchRes, framesRes] = await Promise.all([
+        house.search({ limit: "100" }),
+        house.frames(),
+      ]);
+      setLetters(searchRes.letters);
+      setFrames(framesRes.frames);
+      setMode("browse");
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "the archive is quiet");
+    } finally {
+      setLoading(false);
+    }
+  }, [onError]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const search = useCallback(async () => {
+    try {
+      const res = await house.search({ text: query, limit: "100" });
+      setLetters(res.letters);
+      setMode("search");
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "the archive could not answer");
+    }
+  }, [query, onError]);
+
+  const toggleFrame = useCallback((id: string) => {
+    setActiveFrames((prev) => {
+      if (prev.has(id)) {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      }
+      return new Set(prev).add(id);
+    });
+  }, []);
+
+  const clearFrames = useCallback(() => setActiveFrames(new Set()), []);
+
+  /** The displayed letter flow. The axis is time, not search order: when
+   *  browsing the house reads oldest → newest — a timeline, the way a
+   *  correspondence actually accumulates. With a query, the flow keeps the
+   *  house's relevance order — a feed, not a timeline, and the rails follow. */
+  const displayed = useMemo(() => {
+    if (mode === "search") return letters;
+    return [...letters].sort(byTimeAsc);
+  }, [letters, mode]);
+
+  /** The ∩ semantics: what each letter becomes under the active frames. */
+  const classified = useMemo(
+    () => new Map(displayed.map((l) => [l.id, classifyLetter(l, activeFrames)])),
+    [displayed, activeFrames],
+  );
+
+  /** Ticks on the transit lines — flow indexes per frame. */
+  const rail = useMemo(() => railPositions(displayed, frames), [displayed, frames]);
+
+  /** Empty active frames — the unvisited corners, surfaced as a quiet
+   *  invitation, never a guilt trip (DESIGN.md archive rule 3). */
+  const emptyActives = useMemo(
+    () =>
+      frames.filter((f) => activeFrames.has(f.id) && (rail.get(f.id)?.length ?? 0) === 0),
+    [frames, activeFrames, rail],
+  );
+
+  /** Contradictions made visible without picking a side (archive rule 4).
+   *  Two or more letters in the same thread, within an active frame. Both
+   *  accounts stay at full weight; the reader is simply told they may not
+   *  agree. */
+  const contradictionThreads = useMemo(
+    () => {
+      const out = new Set<string>();
+      for (const f of frames) {
+        if (!activeFrames.has(f.id)) continue;
+        for (const thread of threadsWithMultipleAccounts(letters, f.id)) {
+          out.add(thread);
+        }
+      }
+      return out;
+    },
+    [frames, activeFrames, letters],
+  );
+
+  const tickTop = useCallback(
+    (index: number) =>
+      displayed.length <= 1 ? "50%" : `${(index / (displayed.length - 1)) * 100}%`,
+    [displayed.length],
+  );
+
+  // A letter read from the archive belongs to a correspondence. The moves
+  // travel with the letter: reading is exactly when the thought arrives —
+  // put it aside, leave it, or decide it should not have happened. A move
+  // closes the letter and re-reads the room — the archive must reflect
+  // the new state (a scrubbed thread is gone, a left thread no longer
+  // visible, a shelved one still held).
+  const moves = useThreadMoves(selected?.envelope.thread ?? null, {
+    onError,
+    onWhisperRefresh,
+    onMutated: () => {
+      setSelected(null);
+      void load();
+    },
+  });
+
+  if (loading) return <p className="empty">Opening the archive…</p>;
+
+  return (
+    <div className="horizon">
+      <div className="search">
+        <input
+          placeholder="Search the archive — the house answers in any frame"
+          value={query}
+          onChange={(e) => {
+            const v = e.target.value;
+            setQuery(v);
+            // Emptying the query is the quiet way back to the timeline —
+            // the house resumes reading oldest → newest the moment the
+            // question is gone.
+            if (v === "") setMode("browse");
+          }}
+          onKeyDown={(e) => e.key === "Enter" && search()}
+        />
+        <button onClick={search}>Search</button>
+      </div>
+
+      <div className="horizon-body">
+        <div className="frame-legend" aria-label="frames">
+          {frames.length === 0 ? (
+            <p className="empty">No frames yet — time is still singular.</p>
+          ) : (
+            frames.map((f) => {
+              const active = activeFrames.has(f.id);
+              return (
+                <button
+                  key={f.id}
+                  className={`frame-label${active ? " active" : ""}`}
+                  onClick={() => toggleFrame(f.id)}
+                  aria-pressed={active}
+                  title={`${f.name}:${f.value}`}
+                >
+                  <span className="frame-name">{f.name}</span>
+                  <span className="frame-value">{f.value}</span>
+                </button>
+              );
+            })
+          )}
+          <WhyNote summary="why the frames">
+            Gregorian is the machine's spine — one total order for syncing
+            and sorting. The frames are the human's way in: seasons,
+            productions, tech weeks, the year the rains came. The house
+            holds both as real, because the residents' time is plural — the
+            archive lives in every frame at once, and dimming, never
+            deleting, is how they intersect.
+          </WhyNote>
+        </div>
+
+        {/* The transit lines — flanking the flow, sharing its height. */}
+        <div className="frame-lines" aria-hidden="true">
+          {selected ? null : (
+            frames.map((f, i) => {
+              const active = activeFrames.has(f.id);
+              const ticks = rail.get(f.id) ?? [];
+              // Space the lines across the 48px rail by index, not by an
+              // id-length hash: two frames with ids of equal length used to
+              // land on the same pixel and overlap. Even spread never does.
+              const left = frames.length > 1 ? 4 + (i / (frames.length - 1)) * 40 : 24;
+              return (
+                <span
+                  key={f.id}
+                  className={`frame-line${active ? " active" : ""}`}
+                  style={{ left: `${left}px` }}
+                >
+                  {ticks.map((t) => (
+                    <i key={t} style={{ top: tickTop(t) }} />
+                  ))}
+                </span>
+              );
+            })
+          )}
+        </div>
+
+        {selected ? (
+          <LetterView
+            letter={selected}
+            onBack={() => setSelected(null)}
+            actions={<ThreadActionRow moves={moves} />}
+          />
+        ) : (
+          <div className="letter-list">
+            {activeFrames.size > 0 && (
+              <p className="horizon-hint">
+                {activeFrames.size === 1
+                  ? "Showing one frame — letters outside it are dimmed."
+                  : `Showing the intersection of ${activeFrames.size} frames — letters in all stay full, in some mid-dim, the rest dim.`}{" "}
+                <button type="button" className="door-link" onClick={clearFrames}>
+                  Clear frames
+                </button>
+              </p>
+            )}
+            {emptyActives.length > 0 && (
+              <p className="horizon-note">
+                {emptyActives.length === 1
+                  ? `The frame “${emptyActives[0]!.name}” is open and quiet — nothing filed there yet. An invitation, not a gap to fill.`
+                  : `Some open frames are quiet — ${emptyActives
+                      .map((f) => `${f.name}:${f.value}`)
+                      .join(", ")} hold no letters yet. An invitation, not a gap to fill.`}{" "}
+                <button
+                  type="button"
+                  className="door-link"
+                  onClick={() =>
+                    setActiveFrames((prev) => {
+                      const next = new Set(prev);
+                      for (const f of emptyActives) next.delete(f.id);
+                      return next;
+                    })
+                  }
+                >
+                  Set these frames aside
+                </button>
+              </p>
+            )}
+            {contradictionThreads.size > 0 && (
+              <p className="horizon-note has-contradiction">
+                This time holds more than one account of the same thread. The
+                letters may not agree — both remain here, neither is weighed
+                or removed.
+              </p>
+            )}
+            {displayed.length === 0 && <p className="empty">Nothing here. The house holds.</p>}
+            {displayed.map((l) => (
+              <LetterRow
+                key={l.id}
+                letter={l}
+                state={classified.get(l.id) ?? "none"}
+                onClick={() => setSelected(l)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

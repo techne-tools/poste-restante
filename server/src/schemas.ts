@@ -79,6 +79,35 @@ export const LetterSchema = z.object({
 export const AddressSchema = z.object({
   names: z.array(z.string()).default([]),
   pronouns: z.string().nullable().default(null),
+  /** The desk's seal default — when the resident sits down to write, the
+   *  seal is already on. Absent leaves the stored preference unchanged
+   *  (a correction of names must not reset the desk). */
+  sealDefault: z.boolean().optional(),
+});
+
+/**
+ * A day card — a single item pinned to the board (SPEC §18 scope rule,
+ * design pass 2026-09-12). A card is NOT a letter and NOT a thread: it is
+ * one item on the board, scoped like every other visibility rule. Scope:
+ * 'house' (every resident), 'group' (a thread's participants), or
+ * 'address' (one address). The pub is NOT a valid scope — cards are
+ * household-facing by design.
+ */
+export const DayCardSchema = z.object({
+  text: z.string().min(1).max(500),
+  scope: z.enum(["house", "group", "address"]),
+  scopeValue: z.string().max(320).optional(),
+  /** The frame the card belongs to (plural time) — the board's columns. */
+  frame: z.string().max(200).optional(),
+});
+
+/**
+ * Constructing an invitation (SPEC §5.7) — the resident's own door opening.
+ * The address is the guest's future handle; the house writes the invite
+ * letter and returns the one-time code (shown once, stored only as a hash).
+ */
+export const InviteSchema = z.object({
+  address: z.string().min(3).max(320),
 });
 
 /**

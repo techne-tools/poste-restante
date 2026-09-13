@@ -267,10 +267,6 @@ a:hover {
   gap: var(--space-2);
 }
 
-.whisper-card.dismissed {
-  opacity: 0.5;
-}
-
 .whisper-card.replied {
   border-left: 2px solid var(--fg);
 }
@@ -851,6 +847,37 @@ a:hover {
   gap: var(--space-2);
 }
 
+/* The invitation desk — the resident's own door opening. Quiet, in place;
+   the code is shown once, mono, and the resident confirms it is passed on
+   (the same register as the recovery reveal — no red, held without drama). */
+.invite-desk {
+  margin-top: var(--space-5);
+  border-top: var(--rule);
+  padding-top: var(--space-4);
+  max-width: 34em;
+}
+
+.invite-desk h3 {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin: 0 0 var(--space-3);
+}
+
+.invite-reveal {
+  margin-top: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.invite-composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
 .address-row {
   background: var(--surface-raised);
   border: var(--rule);
@@ -899,6 +926,103 @@ a:hover {
 .address-row .names {
   color: var(--muted);
   font-size: 13px;
+}
+
+/* The day's own items — single cards, not letters, not threads. */
+.day-cards h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-faint);
+  margin: var(--space-3) 0 var(--space-1);
+}
+
+.day-card {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border-top: var(--rule);
+}
+
+.day-card-scope {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  border: var(--rule);
+  border-radius: 999px;
+  padding: 1px 8px;
+  flex-shrink: 0;
+}
+
+.day-card-text {
+  font-family: var(--font-display);
+  font-size: 14px;
+  color: var(--fg);
+  flex: 1;
+}
+
+.day-card-meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.day-card-remove {
+  border: none;
+  background: none;
+  padding: var(--space-1);
+  color: var(--ink-faint);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.day-card-remove:hover {
+  color: var(--fg);
+}
+
+/* Putting something on the day — a quiet desk below the board. */
+.day-put {
+  border-top: var(--rule);
+  padding-top: var(--space-3);
+}
+
+.day-card-composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.day-card-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.day-card-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ink-faint);
+}
+
+.day-card-field input,
+.day-card-field select {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--fg);
+  background: var(--surface-sunken);
+  border: var(--rule);
+  border-radius: var(--radius);
+  padding: 6px 10px;
 }
 
 /* The day — the callsheet whiteboard (SPEC §18). The frame is the call,
@@ -1605,6 +1729,15 @@ button.door-link:hover {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+}
+
+/* The speak heading — a support's invitation to stand with words (rule 9).
+   Serif, like the clause text; the book's own register, not a label. */
+.clause-speak-title {
+  font-family: var(--font-display);
+  font-size: 14px;
+  color: var(--fg);
+  margin: 0;
 }
 
 /* The resident's record — the profile self-regard. */

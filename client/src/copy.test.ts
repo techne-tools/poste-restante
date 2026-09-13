@@ -27,16 +27,21 @@ interface Copy {
 
 function collect(): Copy[] {
   const out: Copy[] = [];
-  const files = readdirSync(here).filter(
-    (f) => (f.endsWith(".ts") || f.endsWith(".tsx")) && !f.includes(".test."),
-  );
-  for (const name of files) {
-    const source = readFileSync(join(here, name), "utf8");
-    const push = (m: RegExpMatchArray) => out.push({ file: name, text: m[1]! });
-    for (const m of source.matchAll(/\bsetError\(\s*"((?:[^"\\]|\\.){3,})"/g)) push(m);
-    for (const m of source.matchAll(/err\.message\s*:\s*"((?:[^"\\]|\\.){3,})"/g)) push(m);
-    for (const m of source.matchAll(/throw new Error\(\s*"((?:[^"\\]|\\.){3,})"/g)) push(m);
-  }
+  const dirs = ["api", "components", "hooks", "utils", "views"];
+  const scan = (dir: string) => {
+    const files = readdirSync(dir).filter(
+      (f) => (f.endsWith(".ts") || f.endsWith(".tsx")) && !f.includes(".test."),
+    );
+    for (const name of files) {
+      const source = readFileSync(join(dir, name), "utf8");
+      const push = (m: RegExpMatchArray) => out.push({ file: `${dir.replace(here + "/", "")}/${name}`, text: m[1]! });
+      for (const m of source.matchAll(/\bsetError\(\s*"((?:[^"\\]|\\.){3,})"/g)) push(m);
+      for (const m of source.matchAll(/err\.message\s*:\s*"((?:[^"\\]|\\.){3,})"/g)) push(m);
+      for (const m of source.matchAll(/throw new Error\(\s*"((?:[^"\\]|\\.){3,})"/g)) push(m);
+    }
+  };
+  scan(here);
+  for (const dir of dirs) scan(join(here, dir));
   return out;
 }
 

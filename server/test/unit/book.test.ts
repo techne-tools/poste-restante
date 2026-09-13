@@ -105,11 +105,25 @@ describe("deriveClause — offer and settling", () => {
     expect(d!.settlesAt.getTime()).toBe(T0.getTime() + 7 * DAY);
   });
 
-  it("an offer stands after the settling period with no stop", () => {
+  it("an offer stands after the settling period with no stop — and carries a support", () => {
     const after = new Date(T0.getTime() + 8 * DAY);
-    const d = deriveClause([clause("you@house", T0, offer("the pub closes at dusk"))], after, 7);
+    const letters = [
+      clause("you@house", T0, offer("the pub closes at dusk")),
+      support("ben@house", new Date(T0.getTime() + DAY)),
+    ];
+    const d = deriveClause(letters, after, 7);
     expect(d!.state).toBe("standing");
     expect(d!.stoodAt!.getTime()).toBe(T0.getTime() + 7 * DAY);
+    expect(d!.supportsTowardStanding).toBe(1);
+  });
+
+  it("an offer does NOT stand on time alone — the commons is supported, not timed", () => {
+    const after = new Date(T0.getTime() + 8 * DAY);
+    const letters = [clause("you@house", T0, offer("the pub closes at dusk"))];
+    const d = deriveClause(letters, after, 7);
+    expect(d!.state).toBe("proposed"); // held — no one has stood with it
+    expect(d!.stoodAt).toBeNull();
+    expect(d!.supportsTowardStanding).toBe(0);
   });
 
   it("a stop contests an offered clause — it never stands", () => {
@@ -151,7 +165,7 @@ describe("deriveClause — offer and settling", () => {
     expect(d!.state).toBe("contested");
   });
 
-  it("supports are distinct per resident and order, never command", () => {
+  it("supports are distinct per resident and order — and carry the offer to standing", () => {
     const letters = [
       clause("you@house", T0, offer("the pub closes at dusk")),
       support("ben@house", new Date(T0.getTime() + DAY)),
@@ -160,7 +174,19 @@ describe("deriveClause — offer and settling", () => {
     ];
     const d = deriveClause(letters, new Date(T0.getTime() + 8 * DAY), 7);
     expect(d!.vouches).toBe(2);
-    expect(d!.state).toBe("standing"); // supports never block settling
+    expect(d!.supportsTowardStanding).toBe(2); // both endorse the offer lineage
+    expect(d!.state).toBe("standing");
+  });
+
+  it("the offerer cannot support their own offer — self-support is refused", () => {
+    const letters = [
+      clause("you@house", T0, offer("the pub closes at dusk")),
+      support("you@house", new Date(T0.getTime() + DAY)),
+    ];
+    const d = deriveClause(letters, new Date(T0.getTime() + 8 * DAY), 7);
+    expect(d!.vouches).toBe(0);
+    expect(d!.supportsTowardStanding).toBe(0);
+    expect(d!.state).toBe("proposed"); // never stood on a self-vouch
   });
 });
 
@@ -185,6 +211,7 @@ describe("deriveClause — develop", () => {
     const letters = [
       clause("you@house", T0, offer("the pub closes at dusk", "binding: pub@house.is_public: false\n")),
       clause("you@house", new Date(T0.getTime() + DAY), develop("the pub stays open", "binding: pub@house.is_public: true\n")),
+      support("ben@house", new Date(T0.getTime() + DAY)),
     ];
     const d = deriveClause(letters, new Date(T0.getTime() + 8 * DAY), 7);
     expect(d!.binding).toEqual({ door: "pub@house.is_public", value: true });
@@ -199,6 +226,7 @@ describe("deriveClause — reversal", () => {
     const letters = [
       clause("you@house", T0, offer("the pub closes at dusk")),
       clause("ben@house", revAt, offer("the pub stays open", "reverses: th_clause_test\n")),
+      support("sam@house", new Date(T0.getTime() + 3 * DAY)),
     ];
     const d = deriveClause(letters, after, 7);
     expect(d!.pendingReversal).toBe(true);
@@ -249,6 +277,7 @@ describe("deriveClause — edge cases", () => {
     const letters = [
       clause("you@house", T0, offer("the pub closes at dusk")),
       clause("ben@house", new Date(T0.getTime() + DAY), "I think this is a good idea."),
+      support("sam@house", new Date(T0.getTime() + DAY)),
     ];
     const d = deriveClause(letters, new Date(T0.getTime() + 8 * DAY), 7);
     expect(d!.state).toBe("standing");

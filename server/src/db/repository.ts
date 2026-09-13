@@ -241,10 +241,11 @@ export class PostgresRepository {
       ed25519Public: string | null;
       recoveryAgeRecipient: string | null;
       isAgent: boolean;
+      sealDefault: boolean;
     }[]
   > {
     const { rows } = await this.pool.query(
-      `SELECT a.id, a.names, a.pronouns,
+      `SELECT a.id, a.names, a.pronouns, a.seal_default AS "sealDefault",
               ak.age_recipient AS "ageRecipient", ak.ed25519_public AS "ed25519Public",
               ak.recovery_age_recipient AS "recoveryAgeRecipient",
               EXISTS (SELECT 1 FROM agents ag WHERE ag.address = a.id AND ag.died_at IS NULL) AS "isAgent"
@@ -268,9 +269,10 @@ export class PostgresRepository {
     ed25519Public: string | null;
     recoveryAgeRecipient: string | null;
     isAgent: boolean;
+    sealDefault: boolean;
   } | null> {
     const { rows } = await this.pool.query(
-      `SELECT a.id, a.names, a.pronouns, a.is_public,
+      `SELECT a.id, a.names, a.pronouns, a.is_public, a.seal_default AS "sealDefault",
               ak.age_recipient AS "ageRecipient", ak.ed25519_public AS "ed25519Public",
               ak.recovery_age_recipient AS "recoveryAgeRecipient",
               EXISTS (SELECT 1 FROM agents ag WHERE ag.address = a.id AND ag.died_at IS NULL) AS "isAgent"
@@ -332,15 +334,17 @@ export class PostgresRepository {
     return (res.rowCount ?? 0) > 0;
   }
 
-  /** Set an address's names and pronouns (the address book is correctable). */
+  /** Set an address's names, pronouns, and seal default (the address book
+   *  is correctable; the desk's default is a preference the resident owns). */
   async updateAddress(
     id: string,
     names: string[],
     pronouns: string | null,
+    sealDefault: boolean,
   ): Promise<void> {
     await this.pool.query(
-      `UPDATE addresses SET names = $2, pronouns = $3 WHERE id = $1`,
-      [id, names, pronouns],
+      `UPDATE addresses SET names = $2, pronouns = $3, seal_default = $4 WHERE id = $1`,
+      [id, names, pronouns, sealDefault],
     );
   }
 
@@ -353,9 +357,11 @@ export class PostgresRepository {
   }
 
   /** List the letters in an address's mailbox, newest first. Letters in
-   *  threads the resident has put away ('shelved') are excluded — the
-   *  thread is kept, the edges stand, but it is not in the mailbox (the
-   *  shelf, migration 025). */
+   *  threads the resident has put away ('shelved') OR left ('out') are
+   *  excluded — the thread is kept, the edges stand (or the leaver's
+   *  edges dissolve into the history), but it is not offered in the
+   *  mailbox. The archive still holds the history; the mailbox is where
+   *  the correspondence is live. */
   async listMailbox(
     address: string,
     limit: number,
@@ -365,16 +371,16 @@ export class PostgresRepository {
          (SELECT json_agg(json_build_object('frame', f.name, 'value', f.value))
           FROM letter_frames lf JOIN frames f ON f.id = lf.frame_id
           WHERE lf.letter_id = l.id), '[]'::json) AS frames
-       FROM letters l
-       WHERE (l.from_addr = $1 OR $1 = ANY(l.to_addrs) OR $1 = ANY(l.cc_addrs))
-         AND NOT EXISTS (
-           SELECT 1 FROM thread_participation tp
-           WHERE tp.thread_id = l.thread_id
-             AND tp.address_id = $1
-             AND tp.state = 'shelved'
-         )
-       ORDER BY l.received_at DESC
-       LIMIT $2`,
+      FROM letters l
+      WHERE (l.from_addr = $1 OR $1 = ANY(l.to_addrs) OR $1 = ANY(l.cc_addrs))
+        AND NOT EXISTS (
+          SELECT 1 FROM thread_participation tp
+          WHERE tp.thread_id = l.thread_id
+            AND tp.address_id = $1
+            AND tp.state IN ('shelved', 'out')
+        )
+      ORDER BY l.received_at DESC
+      LIMIT $2`,
       [address, limit],
     );
     return rows;
@@ -471,27 +477,36 @@ export class PostgresRepository {
   }
 
   /** The letters the mailbox sync may materialise for a resident: every
-   *  letter visible to them (the house's one visibility rule — participant
-   *  AND currently-in-the-thread, or public), oldest first, carrying the
-   *  strongest honest thread-reply signal: the resident wrote another
-   *  letter in the same thread. The caller hands only these rows to the
-   *  engine; the engine cannot leak a letter it is never given. */
+   *  LIVELY letter visible to them (the house's one visibility rule —
+   *  participant AND currently-in-the-thread, or public), oldest first,
+   *  carrying the strongest honest thread-reply signal: the resident
+   *  wrote another letter in the same thread. The sync is a live offer —
+   *  a left thread must not leak back into an IMAP client, so 'out' and
+   *  'shelved' threads are excluded here explicitly. The caller hands only
+   *  these rows to the engine; the engine cannot leak a letter it is
+   *  never given. */
   async lettersForMailboxSync(address: string): Promise<MailboxSyncSource[]> {
     const { rows } = await this.pool.query<StoredLetterRow & { threadReplied: boolean }>(
       `SELECT l.*, COALESCE(
          (SELECT json_agg(json_build_object('frame', f.name, 'value', f.value))
           FROM letter_frames lf JOIN frames f ON f.id = lf.frame_id
           WHERE lf.letter_id = l.id), '[]'::json) AS frames,
-       EXISTS (
-         SELECT 1 FROM letters r
-         WHERE r.thread_id = l.thread_id
-           AND r.from_addr = $1
-           AND r.id <> l.id
-       ) AS "threadReplied"
-       FROM letters l
-       WHERE ${visibleToSql(1)}
-       ORDER BY l.received_at ASC`,
-      [address],
+      EXISTS (
+        SELECT 1 FROM letters r
+        WHERE r.thread_id = l.thread_id
+          AND r.from_addr = $1
+          AND r.id <> l.id
+      ) AS "threadReplied"
+      FROM letters l
+      WHERE ${visibleToSql(1)}
+        AND NOT EXISTS (
+          SELECT 1 FROM thread_participation tp
+          WHERE tp.thread_id = l.thread_id
+            AND tp.address_id = $1
+            AND tp.state IN ('out', 'shelved')
+        )
+      ORDER BY l.received_at ASC`,
+     [address],
     );
     return rows.map((r) => ({
       letter: {
@@ -529,6 +544,67 @@ export class PostgresRepository {
       [address, cutoff],
     );
     return rows.map((r) => r.frame_id);
+  }
+
+  /** The day's cards — the resident's own, and any card scoped to them
+   *  ('house' is every resident; 'group' is the participants of a group
+   *  thread; 'address' is one address). Single items, not threads; the
+   *  pub is NOT a valid scope — cards are household-facing by design. */
+  async listDayCards(address: string): Promise<
+    {
+      id: string;
+      text: string;
+      scope: "house" | "group" | "address";
+      scopeValue: string;
+      frameId: string | null;
+      createdBy: string;
+      createdAt: string;
+    }[]
+  > {
+    const { rows } = await this.pool.query(
+      `SELECT dc.id, dc.text, dc.scope, dc.scope_value AS "scopeValue",
+              dc.frame_id AS "frameId", dc.created_by AS "createdBy",
+              dc.created_at AS "createdAt"
+       FROM day_cards dc
+       WHERE dc.scope = 'house'
+          OR (dc.scope = 'address' AND dc.scope_value = $1)
+          OR (dc.scope = 'group' AND EXISTS (
+            SELECT 1 FROM letter_addresses la
+            JOIN letters l ON l.id = la.letter_id
+            WHERE l.thread_id = dc.scope_value AND la.address_id = $1
+          ))
+       ORDER BY dc.created_at DESC`,
+      [address],
+    );
+    return rows;
+  }
+
+  /** Put a single item on the day. The scope is declared on the card —
+   *  never the pub (a card is household-facing, not public). 'group' is a
+   *  thread id: its participants see the card. */
+  async createDayCard(
+    id: string,
+    text: string,
+    scope: "house" | "group" | "address",
+    scopeValue: string,
+    frameId: string | null,
+    createdBy: string,
+  ): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO day_cards (id, text, scope, scope_value, frame_id, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [id, text, scope, scopeValue, frameId, createdBy],
+    );
+  }
+
+  /** Remove a card. The creator may remove their own card; 'house' cards
+   *  may be removed by the creator only — no admin, ever. */
+  async deleteDayCard(id: string, address: string): Promise<boolean> {
+    const res = await this.pool.query(
+      `DELETE FROM day_cards WHERE id = $1 AND created_by = $2`,
+      [id, address],
+    );
+    return (res.rowCount ?? 0) > 0;
   }
 
   /** Pin a letter (explicit house ranking signal). */

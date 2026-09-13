@@ -128,10 +128,18 @@ function usedClasses(src: string): Set<string> {
   return out;
 }
 
+const APP_DIRS = ["api", "components", "hooks", "utils", "views"];
+
 function sourceFiles(): string[] {
-  return readdirSync(here)
+  const root = readdirSync(here)
     .filter((f) => (f.endsWith(".ts") || f.endsWith(".tsx")) && !f.includes(".test."))
     .map((f) => join(here, f));
+  const nested = APP_DIRS.flatMap((dir) =>
+    readdirSync(join(here, dir))
+      .filter((f) => (f.endsWith(".ts") || f.endsWith(".tsx")) && !f.includes(".test."))
+      .map((f) => join(here, dir, f)),
+  );
+  return [...root, ...nested];
 }
 
 function allUsedClasses(): Map<string, string[]> {

@@ -12,7 +12,7 @@ export { migrate, type MigrationResult } from "./db/migrate.js";
 export { PostgresRepository, type LetterRow, type StoredLetterRow } from "./db/repository.js";
 export { createEmbedder, OpenAICompatibleEmbedder, type Embedder } from "./embed/embedder.js";
 export { QdrantSemanticStore, type SemanticStore, type SemanticHit } from "./qdrant/store.js";
-export { NoopPayloadStore, type PayloadStore } from "./minio/store.js";
+export { type PayloadStore } from "./minio/store.js";
 export { IngestionPipeline, type IngestResult } from "./pipeline/pipeline.js";
 export { markdownToText } from "./pipeline/markdown.js";
 export { createLogger, silentLogger, type Logger } from "./pipeline/logger.js";
@@ -131,7 +131,7 @@ export {
 } from "./queue/pubsub.js";
 export {
   createAudioTranscriber,
-  NoopAudioTranscriber,
+
   WhisperTranscriber,
   type AudioTranscriber,
   type TranscribeResult,
@@ -148,7 +148,7 @@ import { connectDbAndMigrate } from "./db/index.js";
 import { PostgresRepository } from "./db/repository.js";
 import { createEmbedder } from "./embed/embedder.js";
 import { QdrantSemanticStore } from "./qdrant/store.js";
-import { NoopPayloadStore, type PayloadStore } from "./minio/store.js";
+import { type PayloadStore, NoopPayloadStore } from "./minio/store.js";
 import { S3PayloadStore } from "./minio/s3-store.js";
 import { IngestionPipeline } from "./pipeline/pipeline.js";
 import { startOutbound, type OutboundRelay } from "./bridge/outbound.js";
@@ -190,7 +190,6 @@ export async function buildHouse(
   await semantic.ensureCollection();
   const repo = new PostgresRepository(db.pool);
 
-  // 1. Raw Payloads tier (SPEC §3.1 / §3.2)
   const payloads: PayloadStore = config.minioEnabled
     ? new S3PayloadStore({
         endpoint: config.minioEndpoint,

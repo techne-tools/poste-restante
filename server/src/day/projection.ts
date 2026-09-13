@@ -54,6 +54,19 @@ export interface DayProjection {
   }[];
   /** The resident's instruments alive in those frames. */
   agents: DayAgent[];
+  /** The day's cards — single items pinned to the board, scoped to the
+   *  resident ('house' is every resident; 'group' is a thread's
+   *  participants; 'address' is one address). Cards are single items,
+   *  not threads, and never the pub. */
+  cards: {
+    id: string;
+    text: string;
+    scope: "house" | "group" | "address";
+    scopeValue: string;
+    frameId: string | null;
+    createdBy: string;
+    createdAt: string;
+  }[];
   /** The whisper's current offers — what the house is offering right now. */
   whispers: {
     id: string;
@@ -76,8 +89,8 @@ export class DayProjectionService {
   /**
    * The resident's day. Letters in their visible frames (the same
    * derived-participation query every face uses), agents they created
-   * alive in those frames, the whisper's current offers, the book's
-   * standing clauses. Derived, never stored.
+   * alive in those frames, the day's cards scoped to them, the whisper's
+   * current offers, the book's standing clauses. Derived, never stored.
    */
   async project(address: string): Promise<DayProjection> {
     // The resident's active frames — the same 30-day derivation as the
@@ -155,6 +168,33 @@ export class DayProjectionService {
     // The whisper's current offers — what the house is offering right now.
     const whispers = await this.whisper.listUnread(address, 10);
 
+    // The day's cards — single items pinned to the board, scoped to the
+    // resident ('house' is every resident; 'group' is a thread's
+    // participants; 'address' is one address). Single items, not threads;
+    // never the pub — the pub is public, cards are household-facing.
+    const cards = await this.pool.query<{
+      id: string;
+      text: string;
+      scope: "house" | "group" | "address";
+      scope_value: string;
+      frame_id: string | null;
+      created_by: string;
+      created_at: Date;
+    }>(
+      `SELECT dc.id, dc.text, dc.scope, dc.scope_value, dc.frame_id,
+              dc.created_by, dc.created_at
+       FROM day_cards dc
+       WHERE dc.scope = 'house'
+          OR (dc.scope = 'address' AND dc.scope_value = $1)
+          OR (dc.scope = 'group' AND EXISTS (
+            SELECT 1 FROM letter_addresses la
+            JOIN letters l ON l.id = la.letter_id
+            WHERE l.thread_id = dc.scope_value AND la.address_id = $1
+          ))
+       ORDER BY dc.created_at DESC`,
+      [address],
+    );
+
     // The book's standing clauses — commons by right.
     const head = await this.book.head();
 
@@ -165,6 +205,15 @@ export class DayProjectionService {
         task: a.task,
         creator: a.creator,
         lifespanFrame: a.lifespan_frame,
+      })),
+      cards: cards.rows.map((c) => ({
+        id: c.id,
+        text: c.text,
+        scope: c.scope,
+        scopeValue: c.scope_value,
+        frameId: c.frame_id,
+        createdBy: c.created_by,
+        createdAt: c.created_at.toISOString(),
       })),
       whispers: whispers.map((w) => ({
         id: w.id,

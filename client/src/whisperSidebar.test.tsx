@@ -3,12 +3,15 @@
  *
  * A whisper offers Open only when there is a room to land in: a thread or a
  * frame. A door-knock carries an address, not a target, so its card must not
- * offer an action that resolves to silence (design adherence pass 03, held by
- * the whisper test here). Rendered with react-dom/server — no jsdom needed.
+ * offer an action that resolves to silence; and it is information only — it
+ * does not offer Write back either (there is nothing to answer). Dismissal
+ * really dismisses: the card leaves the sidebar (nothing lingers half-lit),
+ * and no button ever gates the others. Rendered with react-dom/server — no
+ * jsdom needed.
  */
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import WhisperSidebar from "./WhisperSidebar";
+import WhisperSidebar from "./components/WhisperSidebar";
 import type { Whisper } from "./api";
 
 function whisper(over: Partial<Whisper> = {}): Whisper {
@@ -38,7 +41,6 @@ function sidebar(w: Whisper): string {
       whispers={[w]}
       onOpen={() => {}}
       onDismiss={() => {}}
-      onUndismiss={() => {}}
       onGaps={() => {}}
       onWriteBack={() => {}}
       onCite={() => {}}
@@ -47,7 +49,7 @@ function sidebar(w: Whisper): string {
 }
 
 describe("WhisperSidebar — Open only when there is a room to land in", () => {
-  it("hides Open for a door-knock — it carries an address, not a target", () => {
+  it("hides Open and Write back for a door-knock — information only", () => {
     const html = sidebar(
       whisper({
         kind: "door-knock",
@@ -55,14 +57,15 @@ describe("WhisperSidebar — Open only when there is a room to land in", () => {
         summary: "Someone knocked at your door with a key that does not fit.",
       }),
     );
-    expect(html).toContain("Write back");
-    expect(html).toContain("Dismiss");
     expect(html).not.toContain(">Open</button>");
+    expect(html).not.toContain("Write back");
+    expect(html).toContain("Dismiss");
   });
 
-  it("offers Open when the whisper carries a thread", () => {
+  it("offers Write back and Open when the whisper carries a thread", () => {
     const html = sidebar(whisper({ kind: "gap-dormant-thread", targetThread: "th_1" }));
     expect(html).toContain(">Open</button>");
+    expect(html).toContain("Write back");
   });
 
   it("offers Open when the whisper carries a frame", () => {
@@ -73,8 +76,8 @@ describe("WhisperSidebar — Open only when there is a room to land in", () => {
   });
 });
 
-describe("WhisperSidebar — dismissal is reversible", () => {
-  it("keeps a dismissed offer on hand, quieted, with the Keep move", () => {
+describe("WhisperSidebar — dismissal really dismisses", () => {
+  it("a dismissed offer leaves the sidebar — nothing half-lit", () => {
     const html = sidebar(
       whisper({
         kind: "gap-dormant-thread",
@@ -82,11 +85,17 @@ describe("WhisperSidebar — dismissal is reversible", () => {
         dismissedAt: "2026-09-11T01:00:00.000Z",
       }),
     );
-    // The card stays — the .dismissed treatment quiets it, and the
-    // reversal (Keep → undismiss) is reachable. A dismissal is one tap,
-    // but it is never a dead end.
-    expect(html).toContain("whisper-card dismissed");
-    expect(html).toContain(">Keep</button>");
+    // The card is gone; no lingering Keep/Dismiss toggle.
+    expect(html).not.toContain("whisper-card");
+    expect(html).not.toContain(">Keep</button>");
     expect(html).not.toContain(">Dismiss</button>");
+    expect(html).toContain("The house is quiet.");
+  });
+
+  it("an undismissed offer keeps its calm actions — none gated by another", () => {
+    const html = sidebar(whisper({ kind: "gap-dormant-thread", targetThread: "th_1" }));
+    expect(html).toContain(">Write back</button>");
+    expect(html).toContain(">Open</button>");
+    expect(html).toContain(">Dismiss</button>");
   });
 });

@@ -302,15 +302,16 @@ export function createMcpHouse(house: House, options: McpHouseOptions = {}) {
         address: z.string().min(1).describe("the address, e.g. ben@house"),
         names: z.array(z.string()).default([]).describe("the person's names"),
         pronouns: z.string().nullable().default(null).describe("free-text pronouns"),
+        sealDefault: z.boolean().optional().describe("the desk's seal default — whether the seal is on when the resident sits down to write; absent leaves it unchanged"),
       },
     },
-    async ({ address, names, pronouns }) => {
+    async ({ address, names, pronouns, sealDefault }) => {
       const who = await caller();
       if (!who) return fail("the house does not know you — set POSTE_RESTANTE_TOKEN");
       if (address !== who.address) return fail("you may only correct your own address");
       const existing = await house.repo.getAddress(address);
       if (!existing) return fail("no such address");
-      await house.repo.updateAddress(address, names, pronouns);
+      await house.repo.updateAddress(address, names, pronouns, sealDefault ?? existing.sealDefault);
       return text(await house.repo.getAddress(address));
     },
   );

@@ -19,12 +19,6 @@ export interface PayloadStore {
   deleteForLetter(letterId: string): Promise<void>;
 }
 
-/**
- * A no-op payload store. It records nothing and returns null on read — the
- * fallback when MinIO is disabled (the house runs on postgres + qdrant
- * alone). It exists so the archive spine has a stable seam whether or not
- * the raw-payload tier is configured.
- */
 export class NoopPayloadStore implements PayloadStore {
   async put(_letterId: string, _name: string, _data: Uint8Array, _contentType?: string): Promise<string> {
     throw new Error("payload store is disabled — MinIO is not configured");
@@ -42,4 +36,3 @@ export class NoopPayloadStore implements PayloadStore {
     // Nothing to delete — the stub holds nothing.
   }
 }
-

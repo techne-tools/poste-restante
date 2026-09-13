@@ -33,6 +33,7 @@ export class NoopAudioTranscriber implements AudioTranscriber {
  * every real case: en-AU → en, pt-BR → pt, zh-CN → zh, yue-HK → yue.
  */
 export function normaliseWhisperLanguage(language?: string): string | undefined {
+  
   if (!language) return undefined;
   const tag = language.trim().toLowerCase().split("-")[0];
   return tag || undefined;

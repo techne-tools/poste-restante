@@ -13,14 +13,14 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import WhisperSidebar from "./WhisperSidebar";
+import WhisperSidebar from "./components/WhisperSidebar";
 import type { Whisper } from "./api";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const noop = () => {};
 
 function kinds(): string[] {
-  const api = readFileSync(join(here, "api.ts"), "utf8");
+  const api = readFileSync(join(here, "api", "types.ts"), "utf8");
   const start = api.indexOf("interface Whisper {");
   const block = api.slice(start, api.indexOf("targetThread", start));
   return [...block.matchAll(/"([^"]+)"/g)].map((m) => m[1]!);
@@ -52,7 +52,6 @@ function labelFor(kind: string): string {
       whispers={[whisper(kind)]}
       onOpen={noop}
       onDismiss={noop}
-      onUndismiss={noop}
       onGaps={noop}
       onWriteBack={noop}
       onCite={noop}

@@ -6,8 +6,8 @@ import type { Logger } from "../pipeline/logger.js";
 import { letterIdFromCanonical, canonicaliseLegacy } from "../id.js";
 
 export interface AudioLetterServiceOptions {
-  payloadStore: PayloadStore;
-  transcriber: AudioTranscriber;
+  payloadStore?: PayloadStore;
+  transcriber?: AudioTranscriber;
   ingest: (letter: Letter) => Promise<IngestResult>;
   log?: Logger;
 }
@@ -33,6 +33,11 @@ export class AudioLetterService {
   ): Promise<IngestResult | null> {
     if (audioLetter.envelope.kind !== "audio") {
       throw new Error(`Letter is not an audio letter (kind: ${audioLetter.envelope.kind})`);
+    }
+
+    if (!this.options.transcriber || !this.options.payloadStore) {
+      this.options.log?.info("audio:transcribe-skipped", { reason: "disabled" });
+      return null;
     }
 
     const id = audioLetter.id ?? letterIdFromCanonical(canonicaliseLegacy(audioLetter));

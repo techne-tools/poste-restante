@@ -6,7 +6,7 @@
  * without a browser (the repo renders with react-dom/server; no jsdom).
  */
 import { describe, it, expect } from "vitest";
-import { planOidcReturn, readOidcReturn } from "./oidcReturn";
+import { planOidcReturn, readOidcReturn } from "./utils/oidcReturn";
 
 describe("App — the OIDC return it applies", () => {
   it("signs in from a success fragment — a Bearer credential", () => {

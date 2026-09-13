@@ -106,7 +106,11 @@ describe.skipIf(!INTEGRATION)("house book (integration)", () => {
     const support = await app.request("/v1/book", {
       method: "POST",
       headers: { Authorization: basic("ben@house", "benbenben") },
-      body: JSON.stringify({ role: "support", continues: thread }),
+      body: JSON.stringify({
+        role: "support",
+        continues: thread,
+        text: "I stand with this — dusk is the honest hour here.",
+      }),
     });
     expect(support.status).toBe(201);
 
@@ -119,6 +123,7 @@ describe.skipIf(!INTEGRATION)("house book (integration)", () => {
 
     const head1 = await book.head();
     expect(head1.clauses[0]!.vouches).toBe(1);
+    expect(head1.clauses[0]!.supportsTowardStanding).toBe(1);
     expect(head1.clauses[0]!.objections).toBe(1);
     expect(head1.clauses[0]!.state).toBe("contested");
   });
@@ -192,6 +197,20 @@ describe.skipIf(!INTEGRATION)("house book (integration)", () => {
     expect(rev.status).toBe(201);
     const revBody = (await rev.json()) as { clause: { thread: string } };
     const revThread = revBody.clause.thread;
+
+    // A reversal is an offer — under the supported commons (rule 11) it
+    // needs a support toward standing, like any offer. sam (a third voice)
+    // stands with the reversal, in words.
+    const revSupport = await app.request("/v1/book", {
+      method: "POST",
+      headers: { Authorization: basic("sam@house", "samsamsam") },
+      body: JSON.stringify({
+        role: "support",
+        continues: revThread,
+        text: "the pub should stay open",
+      }),
+    });
+    expect(revSupport.status).toBe(201);
 
     // Fast-forward the reversal's settling.
     await house.db.pool.query(

@@ -49,7 +49,7 @@ export class IngestionPipeline {
     private readonly repo: PostgresRepository,
     private readonly semantic: SemanticStore,
     private readonly embedder: Embedder,
-    private readonly payloads: PayloadStore,
+    private readonly payloads: PayloadStore | undefined,
     private readonly log: Logger,
     private readonly onLeaveJoin?: LeaveJoinHook,
     private readonly onStored?: OnStoredHook,
@@ -200,7 +200,7 @@ export class IngestionPipeline {
     if (removed) {
       await this.semantic.delete(letterId);
       try {
-        await this.payloads.deleteForLetter(letterId);
+        await this.payloads?.deleteForLetter(letterId);
       } catch (err) {
         this.log.error("ingest:payload-delete-failed", {
           letterId,

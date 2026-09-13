@@ -39,7 +39,7 @@ describe.skipIf(!INTEGRATION)("day projection (integration)", () => {
     await house.db.pool.query(
       `TRUNCATE invites, whispers, clauses, clause_objectors, clause_vouchers,
               thread_participation, letters, threads, frames, addresses, credentials,
-              address_keys, agents, integrations, agent_integrations
+              address_keys, agents, integrations, agent_integrations, day_cards
        RESTART IDENTITY CASCADE`,
     );
     await house.db.pool.query(
@@ -135,5 +135,75 @@ describe.skipIf(!INTEGRATION)("day projection (integration)", () => {
     // ben is party to nothing — the board is empty, never a leak.
     expect(projection.frames.every((f) => f.letters.length === 0)).toBe(true);
     expect(projection.agents).toHaveLength(0);
+  });
+
+  it("puts a single card on the day — a typed frame is ensured, not a raw FK", async () => {
+    // The regression this guards: a card pinned to a frame the resident
+    // types (`production:tempest`, with no letter in it yet) used to 500 —
+    // the route handed the free-text string straight to the frames FK.
+    // The house's own rule applies: ensure the frame, then bind its id.
+    const create = await app.request("/v1/day/cards", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: basic("you@house", "youyouyou") },
+      body: JSON.stringify({
+        text: "check the rig before the call",
+        scope: "house",
+        frame: "production:tempest",
+      }),
+    });
+    expect(create.status).toBe(201);
+
+    const day = await app.request("/v1/day", {
+      method: "GET",
+      headers: { Authorization: basic("you@house", "youyouyou") },
+    });
+    expect(day.status).toBe(200);
+    const projection = (await day.json()) as {
+      cards: { text: string; scope: string; frameId: string | null }[];
+    };
+    const card = projection.cards.find((c) => c.text === "check the rig before the call");
+    expect(card).toBeDefined();
+    expect(card!.scope).toBe("house");
+    expect(card!.frameId).toBe("production:tempest");
+  });
+
+  it("cards are scoped — ben never sees you's address-scoped card, and the creator removes their own", async () => {
+    const mine = await app.request("/v1/day/cards", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: basic("you@house", "youyouyou") },
+      body: JSON.stringify({
+        text: "a personal note",
+        scope: "address",
+        scopeValue: "you@house",
+      }),
+    });
+    expect(mine.status).toBe(201);
+    const created = (await mine.json()) as { id: string };
+
+    const ben = await app.request("/v1/day", {
+      method: "GET",
+      headers: { Authorization: basic("ben@house", "benbenben") },
+    });
+    const benBody = (await ben.json()) as { cards: { text: string }[] };
+    expect(benBody.cards.some((c) => c.text === "a personal note")).toBe(false);
+
+    const remove = await app.request(`/v1/day/cards/${created.id}`, {
+      method: "DELETE",
+      headers: { Authorization: basic("you@house", "youyouyou") },
+    });
+    expect(remove.status).toBe(200);
+
+    // ben cannot remove someone else's card.
+    const second = await app.request("/v1/day/cards", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: basic("you@house", "youyouyou") },
+      body: JSON.stringify({ text: "another", scope: "house" }),
+    });
+    const secondBody = (await second.json()) as { id: string };
+    const benRemove = await app.request(`/v1/day/cards/${secondBody.id}`, {
+      method: "DELETE",
+      headers: { Authorization: basic("ben@house", "benbenben") },
+    });
+    expect(benRemove.status).toBe(404); // absence is silence — not ben's to remove
   });
 });

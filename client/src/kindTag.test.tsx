@@ -12,7 +12,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import KindTag from "./KindTag";
+import KindTag from "./components/KindTag";
 
 const here = dirname(fileURLToPath(import.meta.url));
 

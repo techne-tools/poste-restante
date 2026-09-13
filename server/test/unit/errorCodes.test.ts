@@ -53,6 +53,8 @@ for (const file of files(testRoot)) {
  */
 const TRACKED = new Set([
   "empty_payload",
+  "invalid_card",
+  "invalid_invite",
   "invalid_keys",
   "invalid_limit",
   "invalid_payload",

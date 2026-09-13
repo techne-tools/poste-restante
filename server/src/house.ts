@@ -29,7 +29,7 @@ export interface House {
   repo: PostgresRepository;
   semantic: SemanticStore;
   embedder: Embedder;
-  payloads: PayloadStore;
+  
   pipeline: IngestionPipeline;
   retrieval: Retrieval;
   whisper: WhisperService;
@@ -48,6 +48,8 @@ export interface House {
   /** The house's own keypair (SPEC §15, second model) — a participant,
    *  never a master. Provisioned once; opens collaborative letters only. */
   houseKeys: HouseKeysService;
+  /** Raw payload store (MinIO/S3 tier) (SPEC §3.1). */
+  payloads?: PayloadStore;
   /** Ingestion queue for letters (Direct or Redis). */
   queue: import("./queue/queue.js").IngestionQueue;
   /** Event bus for house events (Memory or Redis pub/sub). */
@@ -55,7 +57,7 @@ export interface House {
   /** Audio letter transcription service (SPEC §3.1 / §3.2). */
   audio: import("./audio/audio-service.js").AudioLetterService;
   /** Audio transcriber client for faster-whisper. */
-  transcriber: import("./audio/transcriber.js").AudioTranscriber;
+  transcriber?: import("./audio/transcriber.js").AudioTranscriber;
   /** The outbound relay (SPEC §5 #13) — null when dormant/refused. */
   outbound: OutboundRelay | null;
   /** The mailbox sync drive (SPEC §5 #12) — null when no accounts

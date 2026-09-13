@@ -98,6 +98,11 @@ export interface DerivedClause {
   reversesThread: string | null;
   objections: number;
   vouches: number;
+  /** Supports that endorse the ROOT offer (directly, or through its first
+   *  develop). Only these can carry an offer to standing — a support of a
+   *  develop-of-a-develop endorses the intermediate develop, never the
+   *  offer (the endorsement chain, rule 11). */
+  supportsTowardStanding: number;
   binding: { door: string; value: boolean } | null;
 }
 
@@ -126,6 +131,13 @@ export function deriveClause(
   let binding: { door: string; value: boolean } | null = null;
   const objectors = new Set<string>();
   const vouchers = new Set<string>();
+  const vouchesTowardStanding = new Set<string>();
+  /** The chain depth of the current text's proposal: 0 = the offer, 1 =
+   *  its first develop, 2+ = a develop of a develop. A support's
+   *  endorsement target is the depth AT THE TIME the support was written
+   *  — supports persist across develops, carrying their endorsement with
+   *  them (rule 11). */
+  let depth = 0;
 
   for (const letter of letters) {
     const fm = parseClauseFrontmatter(letter.body.content);
@@ -145,6 +157,8 @@ export function deriveClause(
         binding = fm.binding ?? null;
         objectors.clear();
         vouchers.clear();
+        vouchesTowardStanding.clear();
+        depth = 0;
         break;
       }
       case "develop": {
@@ -157,6 +171,11 @@ export function deriveClause(
         reversesThread = null;
         if (fm.binding) binding = fm.binding;
         objectors.clear();
+        // Supports persist — the support is to the norm's direction. The
+        // endorsement depth also persists: a support written to the offer
+        // stays an offer-lineage support through every develop, while a
+        // support written to a develop-of-a-develop stays anchored there.
+        depth += 1;
         break;
       }
       case "stop": {
@@ -167,7 +186,18 @@ export function deriveClause(
         break;
       }
       case "support": {
+        // No self-support (rule 10): the resident who proposes the
+        // current text cannot vouch for it — the offerer cannot support
+        // their offer, the developer cannot support their develop. They
+        // may develop; they may not vouch.
+        if (letter.envelope.from === proposedBy) break;
+        if (vouchers.has(letter.envelope.from)) break; // distinct per resident
         vouchers.add(letter.envelope.from);
+        // Supports whose endorsement sits at chain depth 0 or 1 (the
+        // offer, or its first develop) endorse the OFFER and can carry
+        // it to standing. A support at depth 2+ endorses the
+        // develop-of-a-develop, never the offer (rule 11).
+        if (depth <= 1) vouchesTowardStanding.add(letter.envelope.from);
         break;
       }
       case "set aside": {
@@ -189,12 +219,18 @@ export function deriveClause(
   let reversedAt: Date | null = null;
   let reversedIn: string | null = null;
   if (state === "proposed" && now >= settlesAt) {
-    stoodAt = settlesAt;
-    // A reversal proposal that settles becomes a STANDING norm — "the pub
-    // stays open" is the current norm. Its `reversesThread` marks it as a
-    // reversal; the TARGET's reversal is derived cross-thread (a standing
-    // reversal reverses its target), never declared here.
-    state = "standing";
+    // The commons is supported, not merely timed (rule 9+11): a norm
+    // stands when the settling period has passed with no open stop AND
+    // at least one support endorses the offer lineage. An offer or
+    // develop no one has supported stays before the household, held.
+    if (vouchesTowardStanding.size >= 1) {
+      stoodAt = settlesAt;
+      // A reversal proposal that settles becomes a STANDING norm — "the pub
+      // stays open" is the current norm. Its `reversesThread` marks it as a
+      // reversal; the TARGET's reversal is derived cross-thread (a standing
+      // reversal reverses its target), never declared here.
+      state = "standing";
+    }
   }
 
   return {
@@ -212,6 +248,7 @@ export function deriveClause(
     reversesThread,
     objections: objectors.size,
     vouches: vouchers.size,
+    supportsTowardStanding: vouchesTowardStanding.size,
     binding,
   };
 }
@@ -229,6 +266,12 @@ export class BookService {
    * Perform an act — write the clause letter (the act IS the letter; the
    * archive keeps the history), then derive the head and apply any door
    * the changed state binds. Returns the letter id and the derived clause.
+   *
+   * The stated will of the house (rule 9): a support is an opportunity to
+   * add context, thoughts, and value statements — like a develop, it
+   * carries the resident's words. A bare support (no text) is refused;
+   * no one supports themselves (rule 10) — the offerer develops, others
+   * vouch.
    */
   async act(who: string, action: ClauseAction): Promise<{ letterId: string; clause: DerivedClause }> {
     const thread = action.continues ?? `th_clause_${crypto.randomUUID().slice(0, 8)}`;
@@ -236,6 +279,16 @@ export class BookService {
     if (action.continues) fm.continues = action.continues;
     if (action.reverses) fm.reverses = action.reverses;
     if (action.binding) fm.binding = action.binding;
+
+    if (action.role === "support" && !action.text?.trim()) {
+      throw new Error("a support is a chance to stand with words — write what you see in it");
+    }
+    if (action.role === "support" && action.continues) {
+      const current = await this.getClause(action.continues);
+      if (current && current.proposedBy === who) {
+        throw new Error("you cannot support your own proposal — develop it instead");
+      }
+    }
 
     const lines = ["```clause", `role: ${action.role}`];
     if (action.continues) lines.push(`continues: ${action.continues}`);
@@ -462,12 +515,14 @@ export class BookService {
       reverses_thread: string | null;
       objections: number;
       vouches: number;
+      supports_toward_standing: number;
       binding_door: string | null;
       binding_value: boolean | null;
     }>(
       `SELECT thread_id, text, proposed_by, proposed_in, state, settling_from,
               stood_at, reversed_at, reversed_in, pending_reversal,
-              reverses_thread, objections, vouches, binding_door, binding_value
+              reverses_thread, objections, vouches, supports_toward_standing,
+              binding_door, binding_value
        FROM clauses WHERE thread_id = $1`,
       [threadId],
     );
@@ -488,6 +543,7 @@ export class BookService {
       reversesThread: r.reverses_thread,
       objections: r.objections,
       vouches: r.vouches,
+      supportsTowardStanding: r.supports_toward_standing,
       binding: r.binding_door
         ? { door: r.binding_door, value: r.binding_value ?? false }
         : null,
@@ -499,23 +555,24 @@ export class BookService {
       `INSERT INTO clauses
          (thread_id, text, proposed_by, proposed_in, state, settling_from,
           stood_at, reversed_at, reversed_in, pending_reversal, reverses_thread,
-          objections, vouches, binding_door, binding_value)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+          objections, vouches, supports_toward_standing, binding_door, binding_value)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
        ON CONFLICT (thread_id) DO UPDATE SET
-         text = EXCLUDED.text,
-         proposed_by = EXCLUDED.proposed_by,
-         proposed_in = EXCLUDED.proposed_in,
-         state = EXCLUDED.state,
-         settling_from = EXCLUDED.settling_from,
-         stood_at = EXCLUDED.stood_at,
-         reversed_at = EXCLUDED.reversed_at,
-         reversed_in = EXCLUDED.reversed_in,
-         pending_reversal = EXCLUDED.pending_reversal,
-         reverses_thread = EXCLUDED.reverses_thread,
-         objections = EXCLUDED.objections,
-         vouches = EXCLUDED.vouches,
-         binding_door = EXCLUDED.binding_door,
-         binding_value = EXCLUDED.binding_value`,
+        text = EXCLUDED.text,
+        proposed_by = EXCLUDED.proposed_by,
+        proposed_in = EXCLUDED.proposed_in,
+        state = EXCLUDED.state,
+        settling_from = EXCLUDED.settling_from,
+        stood_at = EXCLUDED.stood_at,
+        reversed_at = EXCLUDED.reversed_at,
+        reversed_in = EXCLUDED.reversed_in,
+        pending_reversal = EXCLUDED.pending_reversal,
+        reverses_thread = EXCLUDED.reverses_thread,
+        objections = EXCLUDED.objections,
+        vouches = EXCLUDED.vouches,
+        supports_toward_standing = EXCLUDED.supports_toward_standing,
+        binding_door = EXCLUDED.binding_door,
+        binding_value = EXCLUDED.binding_value`,
       [
         derived.thread,
         derived.text,
@@ -530,6 +587,7 @@ export class BookService {
         derived.reversesThread,
         derived.objections,
         derived.vouches,
+        derived.supportsTowardStanding,
         derived.binding?.door ?? null,
         derived.binding?.value ?? null,
       ],

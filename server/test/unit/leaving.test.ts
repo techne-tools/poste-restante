@@ -29,9 +29,13 @@ describe("isVisibleTo — the participation limb", () => {
     expect(isVisibleTo(letter, "sam@house", "in")).toBe(false);
   });
 
-  it("a leaver ('out') is not visible even though the edges stand", () => {
-    expect(isVisibleTo(letter, "you@house", "out")).toBe(false);
-    expect(isVisibleTo(letter, "ben@house", "out")).toBe(false);
+  it("a leaver ('out') still reads the archive — leaving moves the thread from the mailbox to the history", () => {
+    expect(isVisibleTo(letter, "you@house", "out")).toBe(true);
+    expect(isVisibleTo(letter, "ben@house", "out")).toBe(true);
+  });
+
+  it("a shelver ('shelved') stays a participant — the edges stand", () => {
+    expect(isVisibleTo(letter, "you@house", "shelved")).toBe(true);
   });
 
   it("a public letter is visible to everyone, even a leaver", () => {
@@ -50,21 +54,21 @@ describe("isVisibleTo — the participation limb", () => {
   });
 });
 
-describe("visibleToSql — the participation limb", () => {
-  it("includes the NOT EXISTS guard for the 'out' state", () => {
+describe("visibleToSql — the archive's rule: read-as-history", () => {
+  it("is participant OR public — no participation guard", () => {
     const sql = visibleToSql(1);
-    expect(sql).toContain("thread_participation");
-    expect(sql).toContain("tp.state = 'out'");
-    expect(sql).toContain("NOT EXISTS");
+    // The archive's rule is read-as-history: a leaver still reads the
+    // record (leaving moves the thread from the mailbox to the archive).
+    // The live-exclusion lives in the surfaces that offer — the mailbox
+    // and the IMAP sync — never in this fragment.
+    expect(sql).not.toContain("thread_participation");
+    expect(sql).not.toContain("NOT EXISTS");
   });
 
-  it("keeps the public exception outside the guard", () => {
+  it("keeps the public exception at the top level", () => {
     const sql = visibleToSql(1);
-    // The public limb is OR'd at the top level — a public letter is
-    // visible even to a leaver.
     const publicIdx = sql.indexOf("l.from_addr = 'pub@house'");
-    const guardIdx = sql.indexOf("NOT EXISTS");
     expect(publicIdx).toBeGreaterThan(-1);
-    expect(guardIdx).toBeGreaterThan(publicIdx);
+    expect(sql).toContain("l.from_addr = $1");
   });
 });

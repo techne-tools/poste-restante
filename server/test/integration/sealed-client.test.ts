@@ -32,7 +32,7 @@ import {
   mintRecoveryIdentity,
   sealDraft,
   unsealLetterBody,
-} from "../../../client/src/crypto.js";
+} from "../../../client/src/utils/crypto.js";
 
 const INTEGRATION = process.env.POSTE_RESTANTE_INTEGRATION === "1";
 

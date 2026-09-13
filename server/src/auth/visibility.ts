@@ -57,8 +57,13 @@ export function isPublicAddress(addr: { is_public: boolean } | null): boolean {
  * The visibility rule: participant AND currently-in-the-thread, OR public.
  * `participation` is the caller's derived state in the letter's thread —
  * 'in' by default (no leave/join letter means the historical edges stand).
- * A leaver ('out') cannot see the letter even though the participant edges
- * remain in the archive — the structural stop prunes visibility itself.
+ *
+ * Leaving moves the correspondence from the mailbox to the archive: the
+ * LEEVER still reads the history (the state surface promises "the archive
+ * keeps the history"), but the mailbox, the whisper, and the gap engine
+ * stop offering it. 'out' therefore keeps the participant edge visible
+ * for reading — the thread is no longer live for the resident, but the
+ * record of it stays in the archive, where the left state surface points.
  */
 export function isVisibleTo(
   l: LetterParty & { thread_id: string },
@@ -66,10 +71,11 @@ export function isVisibleTo(
   participation: ParticipationLike = "in",
 ): boolean {
   if (isPublicLetter(l)) return true;
-  if (participation === "out") return false;
-  // 'shelved' stays visible: putting a thread away is not leaving — the
-  // edges stand, the letters stay readable (only the mailbox and the
-  // whisper stop offering it).
+  // 'shelved' and 'out' are read-as-history states: putting a thread away
+  // is not leaving — the edges stand, the letters stay readable — and
+  // leaving still keeps the archive's record readable (only the live
+  // surfaces stop offering it: the mailbox and the whisper filter 'out'
+  // and 'shelved' at their own SQL).
   return isParticipant(l, address);
 }
 
@@ -91,11 +97,12 @@ export function filterVisible<T extends LetterParty & { thread_id: string }>(
  * The SQL fragment for the visibility rule, bound to a parameter index.
  * Use as: `AND ${visibleToSql(i)}` with `params.push(address)`.
  *
- * The participation limb is a NOT EXISTS guard: the letter is visible iff
- * the caller is a participant AND the caller is not currently 'out' of the
- * letter's thread. The guard is a NOT EXISTS because the default is 'in' —
- * an address with no leave/join letter has no row, and absence means the
- * historical edges stand.
+ * The rule is participant OR public — leaving keeps the archive's record
+ * readable (history), so there is no participation guard here. The live
+ * surfaces that must NOT offer a left/shelved thread (the mailbox, the
+ * IMAP sync) add their own explicit `NOT EXISTS ... state IN ('out',
+ * 'shelved')` guard at their own query. This fragment is the archive's
+ * rule: read-as-history, never a live offer.
  */
 export function visibleToSql(paramIndex: number): string {
   return `(
@@ -103,15 +110,9 @@ export function visibleToSql(paramIndex: number): string {
     OR '${PUB_ADDRESS}' = ANY(l.to_addrs)
     OR '${PUB_ADDRESS}' = ANY(l.cc_addrs)
     OR (
-      (l.from_addr = $${paramIndex}
-       OR $${paramIndex} = ANY(l.to_addrs)
-       OR $${paramIndex} = ANY(l.cc_addrs))
-      AND NOT EXISTS (
-        SELECT 1 FROM thread_participation tp
-        WHERE tp.thread_id = l.thread_id
-          AND tp.address_id = $${paramIndex}
-          AND tp.state = 'out'
-      )
+      l.from_addr = $${paramIndex}
+      OR $${paramIndex} = ANY(l.to_addrs)
+      OR $${paramIndex} = ANY(l.cc_addrs)
     )
   )`;
 }
