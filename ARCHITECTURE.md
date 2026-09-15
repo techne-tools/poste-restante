@@ -140,17 +140,17 @@ The house lives on **the Docker homelab host** (corrected 2026-09-04 — the mac
 
 | Layer | Choice | Status today |
 |---|---|---|
-| Letter server | TypeScript + Hono | ✅ container next (dev: `npm run serve`) |
+| Letter server | TypeScript + Hono | ✅ live — `poste-restante-house` on 21016 (dev: `npm run serve`) |
 | Letters/addresses/threads/frames | postgres 15 (shared instance) | ✅ `shared-postgres` (dev 5433) |
 | Semantic layer | qdrant | ✅ `app-qdrant` 21022 (dev 6333) |
-| Raw payloads | minio | ✅ `S3PayloadStore` built (`server/src/minio/`, `containers/minio/`) |
-| Ingestion queue | redis | ✅ `RedisIngestionQueue` + pub/sub built (`server/src/queue/`) |
+| Raw payloads | minio | ✅ `app-minio` 21035; `S3PayloadStore` live (`server/src/minio/`, `containers/minio/`) |
+| Ingestion queue | redis | ✅ `shared-redis`; `RedisIngestionQueue` + pub/sub built (`server/src/queue/`) |
 | Local brain | ollama | ✅ `app-ollama` 21023 (dev 11434) |
-| Audio letters | faster-whisper | ✅ `AudioLetterService` built (`server/src/audio/`, `whisper` 9000) |
-| Bridges | IMAP/SMTP (primary), Matrix + ActivityPub (optional) | 🟡 in-flight — SMTP door (in) + outbound seam (dormant) live; movement B LIVE (pure engine + sync seam + imapflow adapter + sync drive + per-resident accounts), flag read-back next |
-| Reference client | Vite + React (Tauri was the original lineage) | ✅ `client/` |
+| Audio letters | faster-whisper | ✅ `whisper` reachable over `backend_net`; `AudioLetterService` built (`server/src/audio/`) |
+| Bridges | IMAP/SMTP (primary), Matrix + ActivityPub (optional) | 🟡 mail both ways — SMTP door (in) + outbound seam live; IMAP read-side LIVE and **proven end-to-end** (`letter_reads` records opened/replied via `\Seen`/`\Answered`; Spark attaches to the sidecar). Matrix/ActivityPub not started |
+| Reference client | Vite + React (Tauri was the original lineage) | ✅ `poste-restante-client` on 21034 (`client/`) |
 | Agent integration | MCP server | ✅ `server/src/mcp/` |
-| Deployment | docker stack + oauth-proxy/routing | ⬜ first slice — `containers/poste-restante/` |
+| Deployment | docker stack + oauth-proxy/routing | ✅ four containers live on the homelab host — `poste-restante-house`, `poste-restante-client`, `stalwart-mailbox-sidecar`, `app-minio` |
 
 ### The buildable first slice
 
@@ -160,7 +160,20 @@ host:    postgres (shared-postgres) + qdrant (21022) + ollama (21023)   ← resi
 dev mac: the same software as native processes                          ← dev box, not the target
 ```
 
-The letter server + whisper engine + scheduler are the house software on top. The first deployment slice is the `containers/poste-restante/` package (Dockerfile + compose service + .env.public + deploy.sh, host ports in the free 21xxx range — 21016/21036 are free as of 2026-09-07, and tailnet access is host-serve on the horza node, the sidecar collapse of 2026-08-23) wiring the house to the host's resident postgres/qdrant/ollama, exactly as AGENTS.md specifies.
+The letter server + whisper engine + scheduler are the house software on top. The first deployment slice is the `containers/poste-restante/` package (Dockerfile + compose service + .env.public + deploy.sh, ports in the 21000 range) wiring the house to the host's resident postgres/qdrant/ollama, exactly as AGENTS.md specifies.
+
+**This slice is deployed (2026-09-13, ports re-verified 2026-09-15).** The house, its reference client, the Stalwart mailbox sidecar, and MinIO all run on the homelab host:
+
+| Service | Container | Host port |
+|---|---|---|
+| The house (HTTP/MCP) | `poste-restante-house` | 21016 |
+| The house (SMTP door) | `poste-restante-house` | 21036 |
+| Reference client | `poste-restante-client` | 21034 |
+| Mailbox sidecar (IMAP) | `stalwart-mailbox-sidecar` | 21037 |
+| Mailbox sidecar (submission) | `stalwart-mailbox-sidecar` | 21038 |
+| MinIO (API) | `app-minio` | 21035 |
+
+The sidecar's TLS cert is issued for the Tailnet FQDN (`horza.mermaid-darter.ts.net`), so clients must connect by that name, not by the service name or bare host — and the house itself connects over the internal network with relaxed verification (`MAILBOX_TLS_INSECURE`). The 2026-09-07 port probes are superseded: several 21xxx slots the earlier runbook assumed free were taken by other services, and the ports above were chosen against the live host.
 
 ## Key Architectural Decisions
 

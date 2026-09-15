@@ -6,6 +6,100 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed — modularise: the client and the server split into modules (2026-09-13)
+
+The two mega-files are gone. `client/src/` was a flat directory of ~30
+siblings with `App.tsx` and `api.ts` carrying the bulk of it; `server.ts`
+was a single route file. Both are now organised by role, with no
+behavioural change intended — the pass is structural, and the nine
+regressions it caused were fixed in the same commit.
+
+- **Client** — `api/` (`client.ts`, `house.ts`, `types.ts`, `index.ts`),
+  `components/`, `hooks/`, `utils/`, `views/`. The letter-kind vocabulary
+  and the wire types move to `api/types.ts`, so `utils/kinds.ts` holds
+  only derivation.
+- **Server** — `server.ts` becomes `server/src/routes/` with caller
+  injection: routes receive what they need rather than reaching for a
+  module-level singleton, which is what makes them testable in isolation.
+- **`styles.css` reordered** alongside the module split (141 lines
+  touched) so the cascade follows the new component order.
+- **The nine split regressions, all fixed here:**
+  - `sealed-client.test.ts` — stale crypto import path.
+  - `audio/transcriber.ts` — `NoopAudioTranscriber` restored; a missing
+    transcriber must fail loud, not surface as a silent `undefined`.
+  - `minio/store.ts` — `NoopPayloadStore.put()` fails closed, which is
+    what prevents phantom catalog pointers.
+  - `classCoverage.test.ts` + `copy.test.ts` — scan recursively over the
+    root and all five app dirs, so moved files stay covered.
+  - `whyNote.test.tsx`, `whisperKinds.test.tsx`, `utils/kinds.test.ts`,
+    `Login.test.tsx` — paths updated to the new module layout.
+
+Two of those fixes are behaviour, not bookkeeping: the transcriber and
+payload-store no-ops were reachable only after the split exposed them,
+and both now fail closed rather than silently degrading.
+
+Tests: 158 client, 308 server unit, typecheck and build clean.
+
+### Added — the mailbox read-back, the learning loop's other half (2026-09-12)
+
+The write side of the mailbox seam was live — the drive mirrored letters into
+Stalwart frame folders — but the read-back never landed: the IMAP flags flowed
+out to the mailbox and stopped there. This closes the loop.
+
+- **`readBack()`** on `MailboxWriter` + `ImapMailboxWriter` — one connection per
+  pass, walks every folder once, merges by the house `Message-ID`
+  (`<sha256@house>`), never by IMAP uid (the Archive copy and the frame folder
+  copy carry the same id; either may carry the signal). `\Seen` → `opened`,
+  `\Answered` → `replied`. `\Flagged` stays write-only — pinning is a global
+  letter signal and `letter_reads` has no pinned column.
+- **The drive records observations** after the writes: idempotent
+  first-open-wins, failure isolated per letter, counts-only logs
+  (`mailbox:read-back {reads, opened, replied}`), credential-redacted errors.
+- **`MAILBOX_SYNC_INTERVAL_MS=60000`** on the house package — the pass runs
+  every minute (was 0 = boot + `onStored` only), so the read-back converges on
+  its own.
+- Tests: 2 drive read-back (flag → record, failure isolation), 3 Message-ID
+  parser; 256/256 server unit, 65/65 client, typecheck, build.
+
+**Known defect (found live 2026-09-15) — the read-back is a lower bound.** The
+FK `letter_reads.letter_id → letters(id)` means a mirrored letter whose archive
+row no longer exists cannot be recorded: the sidecar accumulates every letter the
+house has ever mirrored (test letters since expunged, letters removed from the
+archive), while the house's `letters` table holds only what still lives. Live
+observation: 14 mirrored ids, 4 still in the archive, six FK warnings per pass,
+`{reads:14, opened:0, replied:1}`. The write is correctly refused — fail-closed
+is the right behaviour and the integration suite asserts it — but the signal is
+then dropped and the pass reports success overall. So `opened` undercounts, and
+it is **not** evidence that no letters were read. Fixing it is a decision
+(prune orphaned mirrors, soften the FK, or key reads on the sidecar's own
+identity) and belongs in its own slice.
+
+### Changed — the theory situates the load-bearing sites (philosophy passes A–D, 2026-09-12)
+
+Four application passes reading the house through its own knowledge base
+(Nancy, Badiou, Giannachi, Böhme, Cull, Nelson), grounded in the Zotero
+collection rather than quotation. The passes are recorded here because
+they changed shipped surfaces, not only prose.
+
+- **A — docs.** The house read through its own philosophy: README,
+  PRODUCT, and DESIGN re-grounded in what the house actually is.
+- **B — app copy.** The surfaces speak the house's register: the words
+  residents read were brought into line with the register the founding
+  text sets, still inside the existing copy guards.
+- **C — code comments.** The theory situates the load-bearing sites — the
+  comments at the points where the invariants are actually enforced now
+  name what they hold.
+- **D — the why-notes.** A new affordance, `WhyNote`: a `<details>` block
+  carrying the distilled thinking for the three surfaces whose behaviour
+  most needs explaining (being/the seal, doing/the book, how-and-why/the
+  frames). Same shape as the whisper's "here's what I was seeing" — never
+  a popup, never hover, never a `title=`. Door-word in mono, body in the
+  muted sans hand. Four contract tests pin the form and the three notes.
+
+Tests: 156 client (+4), 305 server unit, typecheck and build clean. The
+live stack carries this build (client bundle hash-verified against the
+local build at deploy).
+
 ### Changed — every KindTag glyph fits the mono column (2026-09-12)
 
 - `client/src/kindTag.test.tsx` asserts every letter kind's glyph is a
@@ -875,7 +969,7 @@ The read-side mirror for the deployment round (SPEC §5 #12 + §5 #14): `contain
 
 - **Pinned to v0.16.20** (`ARG STALWART_VERSION`) — the upstream Docker image is v0.11.8 (too old; its CLI has no declarative `apply`). The release tarball ships a single `stalwart` binary, so the image carries the server; provisioning is operator-gated via the dev-Mac `stalwart-cli` (recovery-mode apply, the house's established deploy-gate shape).
 - **Entrypoint** writes the same minimal RocksDb config the dev sidecar uses; fail-closed with no plan (no domain, no listener, no accounts — the house's mailbox_accounts have nothing to sync against until the operator applies).
-- **Network shape**: the house reaches the sidecar by compose DNS (`mailbox-sidecar:11430` on `backend_net`) — the host-published port 21032 is for operator / Spark checks only; per-resident credentials never cross a host interface.
+- **Network shape**: the house reaches the sidecar by compose DNS (`mailbox-sidecar:11430` on `backend_net`) — the host-published IMAP port (**21037**, not the 21032 written here originally) is for operator / Spark checks only; per-resident credentials never cross a host interface.
 - **Disposable store**: `sidecar-data` + `sidecar-etc` volumes; the mailbox is a derived view — wipe and re-sync re-materialises it.
 - **watchtower-excluded** (locally-built image, the house's convention).
 - Validated on the host (compose v5 config, image build, smoke: PID 1 runs, `--version` = 0.16.20, fail-closed no-listener; no containers left running, images cleaned).
