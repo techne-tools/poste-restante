@@ -19,7 +19,7 @@ Pre-IRC, two 14-year-olds exchanged floppy disks with text files on them as lett
 ## The house
 
 - **The address space is the spine.** Everything has an address (`you@house`, `hermes@house`, `feed:lurker@house`, `archive@house`). The address book is the social graph.
-- **The mailbox protocol is the whole protocol.** Envelope + markdown body. Async by default. Threads are correspondences. Bridges to IMAP/SMTP, Matrix, ActivityPub.
+- **The mailbox protocol is the whole protocol.** Envelope + markdown body. Async by default. Threads are correspondences. The outbound SMTP seam bridges outward; the inbound SMTP door is built and dormant. The IMAP read-side was built and backed out (SPEC §5 #11/#12) — the house speaks one protocol, and the reference client is its client.
 - **The archive is the remains, and the residents are the memory.** postgres (letters + FTS) + qdrant (semantics) + minio (raw payloads). **Plural time**: Gregorian is the index, frames are the addresses. Retrieval: exact + FTS + semantic, merged by RRF. Redis (queue/pubsub) and faster-whisper (audio letters) complete the stack; the house's home is **the Docker homelab host** (docker; shared-postgres 15-alpine, qdrant 21022, ollama 21023 — the `containers/` stack is the deployment shape), with a native-processes dev house on a Mac (verified 2026-09-04).
 - **The resident is the collaborator.** The whisper surfaces the gap — six gap types, convergent by construction: converging on *the work*, never on the house's judgment of the work, derived from the active frame. Offer not audition, gap not surprise, reassessment not apology. The address is the meaning (Nancy).
 - **The house is headless; the UI is composed.** The house has no UI of its own — it exposes primitives as a protocol. The resident composes the space (cmux, shell, obsidian, neomutt); the house generates the letters. Composable, not generative.
@@ -42,7 +42,7 @@ Privacy as schema, anti-hierarchy as capability, queer/indigenous/global-majorit
 | Ingestion queue | redis | ✅ built (`server/src/queue/`, Direct + Redis queue & pub/sub) |
 | Audio letters | faster-whisper | ✅ built (`server/src/audio/`, ASR transcript letters) |
 | Local brain | ollama (embeddings, 768-dim) | ✅ live on the host (`app-ollama`, 21023) |
-| Bridges | IMAP/SMTP (primary), Matrix + ActivityPub (optional) | ✅ inbound SMTP built (`server/src/bridge/smtp.ts`, `SMTP_ENABLED=1`); IMAP/Matrix/AP deferred |
+| Bridges | Outbound SMTP seam (kept); inbound SMTP door (dormant). IMAP read-side **backed out 2026-09-16** (SPEC §5 #11/#12) | ✅ inbound SMTP built and closed (`server/src/bridge/smtp.ts`, `SMTP_ENABLED=0`); outbound seam built, dormant; IMAP/Matrix/AP not in service |
 | Deployment | the Docker homelab host — `containers/poste-restante/` (Dockerfile + compose + deploy.sh) | ✅ package built 2026-09-04; local dev remains native processes on a Mac |
 
 ## What this is not

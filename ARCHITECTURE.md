@@ -33,7 +33,10 @@ server/   — the house. TypeScript, Hono, postgres 15 + qdrant + FTS.
                       mailbox.ts + sync.ts + imap-writer.ts + mailbox-drive.ts +
                       mailbox-accounts.ts + mailbox-cli.ts (movement B — the read-side:
                       the pure engine, the sync state machine, the live IMAP adapter,
-                      the sync drive, the per-resident accounts, and the CLI)
+                      the sync drive, the per-resident accounts, and the CLI).
+                      ⚠️ Movement B was BACKED OUT 2026-09-16 (SPEC §5 #11/#12): the
+                      sidecar is stopped and no mailbox account is provisioned, so this
+                      code is DORMANT, not deleted. The outbound seam stays live-capable.
 client/   — the reference client. Vite + React, calm design tokens bound to .impeccable/design.json (seal wax, no red).
   src/
     api.ts          — the house protocol as a client (POST deliver, GET mailbox); auth-gated, attaches the
@@ -55,7 +58,7 @@ bridge translates at the door (SPEC §5 #10):
 - **MCP** — 17 tools (deliver, search, mailbox, whisper, gaps). Registered with Hermes as `poste-restante`.
 - **SMTP (inbound)** — the door (`server/src/bridge/smtp.ts`). A resident with a house credential can write mail to `SMTP_BIND` (default `127.0.0.1:2525`, enabled by `SMTP_ENABLED=1`) and it becomes a letter through the same pipeline. Envelope from = authenticated address (the no-forging invariant, verbatim).
 - **SMTP (outbound)** — the seam (`server/src/bridge/outbound.ts`, SPEC §5 #13). A letter addressed to an external domain (≠ `HOUSE_DOMAIN`) is relayed via `SMTP_OUTBOUND_URL` after it is stored (store first, relay second — never lose a letter). Ships dormant (unset = closed); refuses `AUTH_MODE=none` and its own door. nodemailer transport.
-- **IMAP (outbound mirror)** — the mailbox seam (`server/src/bridge/mailbox-drive.ts`, SPEC §5 #12). Provisioned residents' mailboxes converge with the archive: resync on start, delta after every stored letter (the pipeline's `onStored` hook), optional heartbeat (`MAILBOX_SYNC_INTERVAL_MS`). Accounts carry sidecar-specific credentials (`npm run mailbox:add`); no account row, no sync. TLS fail-closed: `MAILBOX_TLS_INSECURE=1` is the explicit dev-only key.
+- **IMAP (outbound mirror)** — ⚠️ **BACKED OUT 2026-09-16** (SPEC §5 #11/#12). The mailbox seam (`server/src/bridge/mailbox-drive.ts`) is dormant: the Stalwart sidecar is stopped and the `mailbox_accounts` row removed, so no sync runs. The code is kept (Depth C deferred), the design record is kept, and the read-back proved inert before removal — `LetterReadsService.stateFor()` was called by nothing but its own tests. Restoring it is one row plus one `docker start`.
 
 ### Identity
 
@@ -114,7 +117,7 @@ Every letter is an envelope + body. Envelope: from, to, cc, thread, kind, lang, 
 - Async by default. The letter waits.
 - Threads are correspondences. The thread is the unit, not the message.
 - Internal protocol: HTTP + JSON + markdown. Every address is a resource. Delivery is a POST to an inbox. Pull by default.
-- Bridges: IMAP/SMTP (primary), Matrix + ActivityPub (optional), NNTP (steal the threading model).
+- Bridges: the outbound SMTP seam (the house writes to the outside world); the inbound SMTP door (built, dormant). The IMAP read-side was backed out 2026-09-16 (SPEC §5 #11/#12). Matrix + ActivityPub remain unstarted.
 
 ### The archive
 
@@ -147,33 +150,33 @@ The house lives on **the Docker homelab host** (corrected 2026-09-04 — the mac
 | Ingestion queue | redis | ✅ `shared-redis`; `RedisIngestionQueue` + pub/sub built (`server/src/queue/`) |
 | Local brain | ollama | ✅ `app-ollama` 21023 (dev 11434) |
 | Audio letters | faster-whisper | ✅ `whisper` reachable over `backend_net`; `AudioLetterService` built (`server/src/audio/`) |
-| Bridges | IMAP/SMTP (primary), Matrix + ActivityPub (optional) | 🟡 mail both ways — SMTP door (in) + outbound seam live; IMAP read-side LIVE and **proven end-to-end** (`letter_reads` records opened/replied via `\Seen`/`\Answered`; Spark attaches to the sidecar). Matrix/ActivityPub not started |
+| Bridges | Outbound SMTP seam (live-capable); IMAP read-side backed out 2026-09-16 | 🟡 mail out is live-capable — the outbound seam ships dormant (unset = closed) and the inbound SMTP door is built and closed (`SMTP_ENABLED=0`). The IMAP read-side was **backed out** (SPEC §5 #11/#12): its read-back was inert, so the sidecar and account were removed. Matrix/ActivityPub not started |
 | Reference client | Vite + React (Tauri was the original lineage) | ✅ `poste-restante-client` on 21034 (`client/`) |
 | Agent integration | MCP server | ✅ `server/src/mcp/` |
-| Deployment | docker stack + oauth-proxy/routing | ✅ four containers live on the homelab host — `poste-restante-house`, `poste-restante-client`, `stalwart-mailbox-sidecar`, `app-minio` |
+| Deployment | docker stack + oauth-proxy/routing | ✅ three containers live on the homelab host — `poste-restante-house`, `poste-restante-client`, `app-minio` (the `stalwart-mailbox-sidecar` was stopped in the 2026-09-16 backout) |
 
 ### The buildable first slice
 
 ```
 host:    postgres (shared-postgres) + qdrant (21022) + ollama (21023)   ← resident services, reused
-         poste-restante (server container) + stalwart (IMAP, 21xxx)     ← the house's own services
+         poste-restante (server container)                              ← the house's own services
 dev mac: the same software as native processes                          ← dev box, not the target
 ```
 
 The letter server + whisper engine + scheduler are the house software on top. The first deployment slice is the `containers/poste-restante/` package (Dockerfile + compose service + .env.public + deploy.sh, ports in the 21000 range) wiring the house to the host's resident postgres/qdrant/ollama, exactly as AGENTS.md specifies.
 
-**This slice is deployed (2026-09-13, ports re-verified 2026-09-15).** The house, its reference client, the Stalwart mailbox sidecar, and MinIO all run on the homelab host:
+**This slice is deployed (2026-09-13, ports re-verified 2026-09-15; sidecar removed 2026-09-16).** The house, its reference client, and MinIO run on the homelab host. The Stalwart mailbox sidecar was stopped in the 2026-09-16 backout (SPEC §5 #11/#12) — its ports are no longer published:
 
 | Service | Container | Host port |
 |---|---|---|
 | The house (HTTP/MCP) | `poste-restante-house` | 21016 |
 | The house (SMTP door) | `poste-restante-house` | 21036 |
 | Reference client | `poste-restante-client` | 21034 |
-| Mailbox sidecar (IMAP) | `stalwart-mailbox-sidecar` | 21037 |
-| Mailbox sidecar (submission) | `stalwart-mailbox-sidecar` | 21038 |
 | MinIO (API) | `app-minio` | 21035 |
+| ~~Mailbox sidecar (IMAP)~~ | ~~`stalwart-mailbox-sidecar`~~ | ~~21037~~ — stopped 2026-09-16 |
+| ~~Mailbox sidecar (submission)~~ | ~~`stalwart-mailbox-sidecar`~~ | ~~21038~~ — stopped 2026-09-16 |
 
-The sidecar's TLS cert is issued for the Tailnet FQDN (`horza.mermaid-darter.ts.net`), so clients must connect by that name, not by the service name or bare host — and the house itself connects over the internal network with relaxed verification (`MAILBOX_TLS_INSECURE`). The 2026-09-07 port probes are superseded: several 21xxx slots the earlier runbook assumed free were taken by other services, and the ports above were chosen against the live host.
+*(2026-09-16: with the sidecar stopped, this TLS paragraph is moot — kept as the record of what the sidecar required. The cert was issued for the Tailnet FQDN (`horza.mermaid-darter.ts.net`), so clients had to connect by that name, not by the service name or bare host, and the house itself connected over the internal network with relaxed verification (`MAILBOX_TLS_INSECURE`).)* The 2026-09-07 port probes are superseded: several 21xxx slots the earlier runbook assumed free were taken by other services, and the ports above were chosen against the live host.
 
 ## Key Architectural Decisions
 

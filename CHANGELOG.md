@@ -6,6 +6,69 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Removed — the mailbox read-side, backed out (2026-09-16)
+
+The house stops running a mail server. This is a **strategic reversal**, made
+deliberately rather than by attrition: the IMAP read-side was built in full
+(movement B, through the sync drive and the Stalwart sidecar) and then
+withdrawn, because operating an IMAP/SMTP server is the complexity the house
+is supposed to *not* have.
+
+- **Why, recorded rather than erased.** The read-back was **inert** —
+  `LetterReadsService.stateFor()` was called by nothing in `server/src` but
+  its own tests, so `letter_reads` was written and never read: not by the
+  whisper, the gap engine, the convergence ordering, or the client. The loop
+  was built and never closed on the consuming end. The live log showed it
+  actively failing (`mailbox:read-back-error`, FK violation on
+  `letter_reads_letter_id_fkey`) while writing rows nothing consumed. The SMTP
+  door shipped closed (`SMTP_ENABLED=0`) and was never opened in the alpha. And
+  the bridge layer was never in the two-month scope — SPEC §4 named it
+  plumbing, and this reversal vindicates that boundary.
+- **What was stopped.** The `stalwart-mailbox-sidecar` container is stopped
+  (kept, not deleted); no tailnet serve entry existed for it to clear (verified
+  — 35 services, no `svc:imap`/`svc:smtp`); `MAILBOX_SYNC_INTERVAL_MS=0` in the
+  host and repo `.env.public`; the `mailbox_accounts` row removed.
+- **Why the row and not just the interval.** `onStored` is *awaited* on the
+  ingest path, so `MAILBOX_SYNC_INTERVAL_MS=0` alone would still have dialled a
+  dead host on every stored letter. The account row is the switch the drive's
+  own privacy design already defines — *no row, no sync, no connection*. The
+  row was backed up to a `600` file on the host first, so rollback is: restore
+  the row + `docker start stalwart-mailbox-sidecar`.
+- **Corrected a false claim.** SPEC §20's *"the read-back loop is closed"* was
+  wrong, and TASK.md's 2026-09-12 Spark slice claimed an attach verified *on the
+  host only* — the tailnet path never worked. Both are corrected in place.
+- **The invariant reason, recorded 2026-09-21 (this entry originally gave only
+  the operational case).** Beyond the complexity argument above, the read-back
+  is refused on principle: **it is a read receipt**, and `AGENTS.md` invariant 3
+  is explicit — *"Presence, not pressure. No push notifications, **no read
+  receipts**, no pings. The house holds; it never interrupts. Visible, not
+  sent."* Read-back would record that a named resident opened a named letter at
+  a named time, with the house as the holder of that knowledge. Invariant 3
+  does not permit it; per the invariant's own instruction, a feature that needs
+  to interrupt or surveil becomes a letter or a whisper instead. This is the
+  reason the three recorded fix options (prune orphaned mirrors / soften the
+  `letter_reads` FK / key reads on the sidecar's own identity) are **void rather
+  than deferred** — each exists only to make read-back work, so choosing any of
+  them would be building a read receipt by another route. Verified inert before
+  the claim: `MAILBOX_SYNC_INTERVAL_MS=0`, zero `mailbox`/`read-back`/FK log
+  lines across the container's full 2-day lifetime, and `0` `mailbox_accounts`
+  rows — no pass runs, so no signal is dropped. Dropping this also strengthens
+  invariant 4: the house never learns who opened what.
+- **What is kept.** The outbound seam (`bridge/outbound.ts`) — dormant,
+  harmless, and the one piece that means the house can write to the outside
+  world (`nodemailer` stays for it). The SMTP door code. The design record
+  (SPEC §5 #11/#12 stay as superseded entries). The bridge code itself —
+  dormant, not deleted.
+- **Verified before the claim.** With the sidecar down, a letter was delivered
+  through the house (HTTP 201) and read back (HTTP 200, body intact), and
+  `onStored` found nothing to sync. The house is provably unaffected without a
+  mail server.
+- **Not done (deferred, Depth C).** The code, tests, dependencies
+  (`imapflow`/`smtp-server`/`mailparser`), and `containers/stalwart-sidecar/`
+  are untouched. Dropping `letter_reads`/`mailbox_accounts` via a new migration
+  is a separate, deliberate act. The recommendation stands: live with Depth B
+  for a fortnight, then decide.
+
 ### Changed — modularise: the client and the server split into modules (2026-09-13)
 
 The two mega-files are gone. `client/src/` was a flat directory of ~30
@@ -61,7 +124,7 @@ out to the mailbox and stopped there. This closes the loop.
 - Tests: 2 drive read-back (flag → record, failure isolation), 3 Message-ID
   parser; 256/256 server unit, 65/65 client, typecheck, build.
 
-**Known defect (found live 2026-09-15) — the read-back is a lower bound.** The
+**Known defect (found live 2026-09-15; RESOLVED by decision 2026-09-21 — read-back DROPPED as a read receipt, invariant 3; all three fix options void) — the read-back was a lower bound.** The
 FK `letter_reads.letter_id → letters(id)` means a mirrored letter whose archive
 row no longer exists cannot be recorded: the sidecar accumulates every letter the
 house has ever mirrored (test letters since expunged, letters removed from the
