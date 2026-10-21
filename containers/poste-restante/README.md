@@ -98,7 +98,7 @@ and issue an invite the usual way. The house self-migrates on boot
 | `GAP_PASS_INTERVAL_MS` | `21600000` (6 h) | gap-pass heartbeat; 0 disables |
 | `BOOK_SETTLING_DAYS` | `7` | clause settling period |
 | `QDRANT_COLLECTION` | `letters` | semantic collection (created on boot) |
-| `EMBEDDING_MODEL` | `nomic-embed-text` | ollama model (`EMBEDDING_BASE_URL` fixed to `app-ollama:11434`) |
+| `EMBEDDING_MODEL` | `embeddinggemma-2:740m` | ollama model (`EMBEDDING_BASE_URL` fixed to `app-ollama:11434`); pinned by digest — another build of the same tag is a different numeric space |
 | `MINIO_BUCKET` | `letters` | payload bucket (`MINIO_ENDPOINT` fixed to `app-minio:9000`) |
 | `REDIS_URL` | `redis://shared-redis:6379` | ingestion queue + pub/sub (fixed in compose) |
 | `WHISPER_URL` | `http://whisper:9000` | audio transcription (fixed in compose; whisper attached to backend_net at deploy) |

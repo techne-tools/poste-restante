@@ -64,7 +64,7 @@ services:
       QDRANT_URL: http://app-qdrant:6333
       QDRANT_COLLECTION: ${QDRANT_COLLECTION:-letters}
       EMBEDDING_BASE_URL: http://app-ollama:11434
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-embeddinggemma-2:740m}
       EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-768}
       # ── the enclosures tier (SPEC §3.1 / §3.2, migration 016). MinIO is a
       #    house-resident service on backend_net; the house reaches it by
