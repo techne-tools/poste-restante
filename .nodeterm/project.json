@@ -1,22 +1,39 @@
 {
   "version": 1,
-  "rev": 5,
-  "savedAt": "2026-10-23T20:38:39.984Z",
+  "rev": 9,
+  "savedAt": "2026-10-23T21:51:37.009Z",
   "id": "project-1nxv7df",
   "name": "poste-restante",
   "color": "#0a84ff",
   "viewport": {
-    "x": 40,
-    "y": 40,
+    "x": 32,
+    "y": 32,
     "zoom": 1
   },
   "nodes": [
+    {
+      "id": "group-7833b932-865e5263",
+      "kind": "group",
+      "position": {
+        "x": 48,
+        "y": 48
+      },
+      "size": {
+        "width": 760,
+        "height": 1480
+      },
+      "title": "poste-restante",
+      "titleAuto": true,
+      "color": "#6ac4dc",
+      "group": null,
+      "collapsed": false
+    },
     {
       "id": "term-mvlfj1jz-6d4af80c",
       "kind": "terminal",
       "position": {
         "x": 96,
-        "y": 96
+        "y": 570
       },
       "size": {
         "width": 624,
@@ -36,34 +53,38 @@
       "kind": "terminal",
       "position": {
         "x": 96,
-        "y": 640
+        "y": 1044
       },
       "size": {
         "width": 624,
         "height": 432
       },
       "title": "Terminal 2",
+      "titleAuto": true,
       "color": "#32d74b",
       "group": null,
       "tags": [],
+      "collapsed": false,
       "cwd": "."
     },
     {
-      "id": "group-7833b932-865e5263",
-      "kind": "group",
+      "id": "term-mvli8tny-6ca3cf89",
+      "kind": "terminal",
       "position": {
-        "x": 48,
-        "y": 48
+        "x": 96,
+        "y": 96
       },
       "size": {
-        "width": 760,
-        "height": 1030
+        "width": 624,
+        "height": 432
       },
-      "title": "poste-restante",
+      "title": "Tekton",
       "titleAuto": true,
-      "color": "#6ac4dc",
+      "color": "#888888",
       "group": null,
-      "collapsed": false
+      "tags": [],
+      "cwd": ".",
+      "agentId": "custom:3ef54700-aedf-466e-8dc7-d03a6318f402"
     }
   ],
   "bridges": [],
