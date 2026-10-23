@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "rev": 3,
+  "savedAt": "2026-10-23T20:35:46.930Z",
+  "id": "project-1nxv7df",
+  "name": "poste-restante",
+  "color": "#0a84ff",
+  "viewport": {
+    "x": 40,
+    "y": 40,
+    "zoom": 1
+  },
+  "nodes": [
+    {
+      "id": "term-mvlfj1jz-6d4af80c",
+      "kind": "terminal",
+      "position": {
+        "x": 40,
+        "y": 40
+      },
+      "size": {
+        "width": 624,
+        "height": 432
+      },
+      "title": "Antigravity",
+      "titleAuto": true,
+      "color": "#00a3a3",
+      "group": null,
+      "tags": [],
+      "collapsed": false,
+      "cwd": ".",
+      "agentId": "antigravity"
+    }
+  ],
+  "bridges": [],
+  "ropes": []
+}
