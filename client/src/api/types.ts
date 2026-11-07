@@ -85,10 +85,17 @@ export interface Address {
   id: string;
   names: string[];
   pronouns: string | null;
+  /** The address's DURABLE identity (SPEC §19, amended 2026-11-08) — what a
+   *  letter id resolves this handle to. Pinned at the address's first key
+   *  registration and never moved by a rotation; for a keyless legacy address
+   *  it is the handle itself. A public fingerprint, not a secret. This, not
+   *  `ed25519Public`, is what the canonical form hashes. */
+  identityId?: string | null;
   /** The public halves of any registered keys (SPEC §15). Null for a
    *  legacy address without keys — the identity IS the handle until
    *  one exists. Public keys are public; the correspondence needs them
-   *  to seal to this address and verify its letters. */
+   *  to seal to this address and verify its letters. This is the key the
+   *  address holds NOW — what sealing targets, not what hashing uses. */
   ageRecipient: string | null;
   ed25519Public: string | null;
   /** The recovery age recipient (SPEC §15 backstop). Sealed to whenever

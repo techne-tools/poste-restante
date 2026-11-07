@@ -262,16 +262,25 @@ export function createAgentsRoutes(
   // key (consistent with "the house never holds a password"). Public
   // keys are public: the address record carries them so correspondents
   // can seal letters to this resident and verify their signatures. The
-  // ed25519 public fingerprint becomes the address's identity — the
-  // letter id resolver reads this table, so once keys exist, the
-  // identity IS the key, and every subsequent letter is hashed against
-  // it (legacy addresses without keys resolve to the handle itself
-  // until one exists). Registration is self-only and idempotent: a
-  // resident may re-register their own keys. A DIFFERENT key is a
-  // rotation, and rotation is append-only (030): the old record is
-  // closed (`retired_at`), not overwritten, so letters already sealed
+  // ed25519 public fingerprint becomes the address's identity at its
+  // FIRST registration — the letter id resolver reads this table, so once
+  // keys exist, the identity IS the key, and every subsequent letter is
+  // hashed against it (legacy addresses without keys resolve to the
+  // handle itself until one exists). Registration is self-only and
+  // idempotent: a resident may re-register their own keys. A DIFFERENT
+  // key is a rotation, and rotation is append-only (030): the old record
+  // is closed (`retired_at`), not overwritten, so letters already sealed
   // and signed under it stay verifiable, and a re-delivery of one keeps
-  // its original id. Re-registering the SAME key writes nothing.
+  // its original id.
+  //
+  // A rotation does NOT move the identity (SPEC §19, amended 2026-11-08).
+  // The pin lives in `repo.setAddressKey()` — the only path that writes a
+  // key record — so it holds in one transaction with the key row rather
+  // than as a rule a caller has to remember. The identity is the address's
+  // durable identity; the key is material it holds over time. That is what
+  // makes an OIDC binding survive a rotation unchanged: the binding is
+  // `sub → identity`, and rotation does not re-bind, because there is
+  // nothing to re-bind to.
   app.post("/v1/addresses/:id/keys", async (c) => {
     const who = await caller(c);
     if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
@@ -287,15 +296,9 @@ export function createAgentsRoutes(
         400,
       );
     }
-    // The key row first — it is what the id resolver and the address book
-    // read — then make the identity id durable: after registration the
-    // address's identity IS the ed25519 fingerprint. The addresses.identity_id
-    // column is the canonical store (§19); address_keys is the public-key
-    // record. Keeping both in sync means the resolver and the OIDC bindings
-    // agree on who this address is (a rotation re-establishes the binding to
-    // the new key, per §19).
+    // One call: the key row (with its generation history) and the pin commit
+    // together, or neither does.
     await house.repo.setAddressKey(address, parsed.data);
-    await house.repo.setAddressIdentity(address, parsed.data.ed25519Public);
     house.log.info("keys:registered", { address });
     const key = await house.repo.getAddressKey(address);
     return c.json(key, 201);

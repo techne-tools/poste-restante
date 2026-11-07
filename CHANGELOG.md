@@ -6,6 +6,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed — the letter id keys on a rotation-stable identity (2026-11-08)
+
+`addresses.identity_id` was minted as the handle and then **overwritten with the current
+key's fingerprint on every key registration** (`setAddressIdentity`). So the identity was a
+moving target, and every letter id that named a rotated address moved with it: a sealed
+letter re-delivered after a party **other than the sender** had rotated could not be
+re-derived at all and was rejected (the limitation 030 recorded). `022` had stated two
+contradictory things and the code implemented the wrong one — "the identity is the
+public-key fingerprint" and "the key never changes; the label can". The key does change;
+that is what key history is for.
+
+**The identity is durable; the key is material the address holds over time.** `identity_id`
+is set once, at the address's **first** key registration, to that key's ed25519
+fingerprint, and never moves afterwards — the pin lives inside `setAddressKey`'s
+transaction, the only path that writes a key record, so no rotation can bypass it. Letter
+ids are now stable against *any* party's rotation, not only the sender's, and an OIDC
+binding created against the identity simply never needs re-establishing (`033` makes
+`oidc_bindings.identity_id` `ON UPDATE CASCADE`, which also closes a latent foreign-key
+failure for any address that bound OIDC before registering keys).
+
+The archive was **not** re-indexed and will not be: a stored sealed letter's id is what its
+ed25519 signature covers, the house holds no private key to re-sign with, and re-derivation
+would orphan `letter_addresses` / `letter_frames` / the payload catalog / Qdrant points.
+Stored ids never move, and verification accepts both the pinned id (`resolvePinnedId`,
+checking the signature against every key the sender has ever held) and the pre-pin
+resolution (`resolveSignedId`, the sender's key-history walk). That second rule is also
+what keeps a deployed client working: a client that predates the address book's new
+`identityId` field resolves by the live key, and its letters still verify. The mixed
+archive is recorded rather than hidden — a **pre-pin** letter re-delivered after a third
+party rotated is still unrecoverable; it was already stored, so nothing is lost.
+
+`identityId` is now served in the address book (public — it is a fingerprint), and the
+client hashes `identityId ?? ed25519Public ?? handle`, in that order. Amended in place,
+dated: `SPEC.md` §5 #19 and §15, `CONTRACT.md`, and the `022`/`023` headers. Migration
+`033_identity_pin.sql` carries the transition rule and the mixed-archive consequence.
+
 ### Changed — the library that makes every ciphertext is pinned, and now made to prove it interoperates (2026-11-08)
 
 `age-encryption` was `^0.3.1` in both `server/package.json` and
@@ -57,7 +93,7 @@ Losing the key means collaborative letters sealed before the loss are unreadable
 re-encryption can rescue them; sealed letters are unaffected, because no house key of any
 kind ever opened one. Corrected in place: the `026` header, `SPEC.md` §5 #15, and this
 entry.
-||||||| 36d99f2
+
 ### Added — sealed letters keep their enclosures sealed too (2026-11-08)
 
 A sealed letter's **body** was age ciphertext the house could not read; its
@@ -199,6 +235,7 @@ Also fixed, unrelated to the above: `server/test/unit/config.test.ts` still
 asserted `nomic-embed-text` as the embedding default, which `9e5085a` had
 already moved to `embeddinggemma-2:740m` — the one stale expectation keeping
 `npm run test` red on the branch.
+
 ### Changed — the house's private key left the database (2026-11-08)
 
 - **`house@house`'s private halves moved out of Postgres, into the deployment
@@ -281,7 +318,7 @@ already moved to `embeddinggemma-2:740m` — the one stale expectation keeping
 - **`PLAN-crypto.md` replaced** with a delta plan: what is built, what is genuinely
   missing, and what must not be built (`seal_level` enum, body re-encryption). Process
   docs are local-only by `AGENTS.md`; the file had been committed, and is now untracked.
-||||||| c68135c
+
 ### Changed — the resident's keystore is sealed (2026-11-08)
 
 The client held every private key in `localStorage` as plain JSON

@@ -13,6 +13,7 @@ import {
   letterIdFromCanonical,
   generateKeys,
   ensureKeys,
+  identityOf,
   mintRecoveryIdentity,
   sealToRecipients,
   unsealWithIdentity,
@@ -612,5 +613,189 @@ describe("sealed payloads — the enclosure's own seal", () => {
     expect(opened.ok).toBe(true);
     if (!opened.ok) return;
     expect(new Uint8Array(await opened.blob.arrayBuffer())).toEqual(bytes);
+  });
+});
+
+/* ── The identity the id hashes (SPEC §19, amended 2026-11-08) ──────────────
+ *
+ * The canonical map must resolve each handle to the address's DURABLE identity
+ * — `identityId` from the address book — not to the live key. Hashing the live
+ * key is what re-keyed every letter naming a rotated address. The fallbacks are
+ * part of the contract too: a house that has not shipped `identityId` resolves
+ * by the live key, and a keyless legacy address by its handle.
+ */
+
+describe("the canonical map — identity first, key second, handle last", () => {
+  let saved: Storage | undefined;
+
+  beforeEach(() => {
+    lockAllKeystores();
+    saved = KEYSTORE ?? undefined;
+    Object.defineProperty(globalThis, "localStorage", {
+      value: fakeLocalStorage(),
+      configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    if (saved !== undefined) {
+      Object.defineProperty(globalThis, "localStorage", {
+        value: saved,
+        configurable: true,
+      });
+    } else {
+      delete (globalThis as Record<string, unknown>).localStorage;
+    }
+  });
+
+  /** The id the letter would be keyed under, given the map under test. */
+  async function idUnder(
+    result: Awaited<ReturnType<typeof sealDraft>>,
+    identities: Map<string, string>,
+  ): Promise<string> {
+    const { envelope, time, body } = result.letter;
+    return letterIdFromCanonical(
+      canonicalise({ envelope, time, body: { format: body.format, content: body.content } }, identities),
+    );
+  }
+
+  const draft = (from: string, to: string[]) => ({
+    envelope: { from, to, cc: [], thread: "th_identity_map", kind: "letter", lang: "en-AU", subject: "a secret" },
+    time: { gregorian: "2026-11-08T12:00:00Z", frames: [] },
+    body: { format: "markdown", content: "the pin" },
+  });
+
+  it("prefers identityId over the recipient's live key", async () => {
+    await createKeystore("chris@house", PASSPHRASE);
+    const writer = ensureKeys("chris@house");
+    const recipient = await generateKeys();
+    // The recipient rotated: the key it holds now is NOT the identity it pinned.
+    const addressBook = [
+      {
+        id: "sam@house",
+        identityId: recipient.ed25519Public,
+        ageRecipient: recipient.ageRecipient,
+        ed25519Public: "sam-live-key-after-rotation",
+        recoveryAgeRecipient: null,
+      },
+    ];
+    const result = await sealDraft(draft("chris@house", ["sam@house"]), addressBook, {
+      registerKeys: async () => ({ ok: true }),
+    });
+
+    const pinned = new Map([
+      ["chris@house", writer.ed25519Public],
+      ["sam@house", recipient.ed25519Public],
+    ]);
+    const live = new Map([
+      ["chris@house", writer.ed25519Public],
+      ["sam@house", "sam-live-key-after-rotation"],
+    ]);
+    expect(result.id).toBe(await idUnder(result, pinned));
+    expect(result.id).not.toBe(await idUnder(result, live));
+  });
+
+  it("falls back to the live key when the house does not serve identityId", async () => {
+    await createKeystore("chris@house", PASSPHRASE);
+    const writer = ensureKeys("chris@house");
+    const recipient = await generateKeys();
+    const addressBook = [
+      {
+        id: "sam@house",
+        ageRecipient: recipient.ageRecipient,
+        ed25519Public: recipient.ed25519Public,
+        recoveryAgeRecipient: null,
+      },
+    ];
+    const result = await sealDraft(draft("chris@house", ["sam@house"]), addressBook, {
+      registerKeys: async () => ({ ok: true }),
+    });
+
+    expect(result.id).toBe(
+      await idUnder(
+        result,
+        new Map([
+          ["chris@house", writer.ed25519Public],
+          ["sam@house", recipient.ed25519Public],
+        ]),
+      ),
+    );
+  });
+
+  it("keys the writer on the identity it pinned, and signs with the key it holds now", async () => {
+    // The writer rotated: the house pinned the first key as its identity, and
+    // the book serves that identity beside the current key. The id hashes the
+    // identity; the signature is made by the current key, which is what the
+    // house checks its key history against.
+    await createKeystore("chris@house", PASSPHRASE);
+    const current = ensureKeys("chris@house");
+    const firstGeneration = await generateKeys();
+    const recipient = await generateKeys();
+    const addressBook = [
+      {
+        id: "chris@house",
+        identityId: firstGeneration.ed25519Public,
+        ageRecipient: current.ageRecipient,
+        ed25519Public: current.ed25519Public,
+        recoveryAgeRecipient: null,
+      },
+      {
+        id: "sam@house",
+        identityId: recipient.ed25519Public,
+        ageRecipient: recipient.ageRecipient,
+        ed25519Public: recipient.ed25519Public,
+        recoveryAgeRecipient: null,
+      },
+    ];
+    const result = await sealDraft(
+      draft("chris@house", ["sam@house"]),
+      addressBook,
+      { registerKeys: async () => ({ ok: true }) },
+    );
+
+    // The id is the PINNED identity's…
+    expect(result.id).toBe(
+      await idUnder(
+        result,
+        new Map([
+          ["chris@house", firstGeneration.ed25519Public],
+          ["sam@house", recipient.ed25519Public],
+        ]),
+      ),
+    );
+
+    // …and the signature is the LIVE key's: that is the pair the house verifies
+    // (id from the identity, signature over it from any generation held).
+    const verifyWith = async (publicKey: string) => {
+      const key = await crypto.subtle.importKey(
+        "spki",
+        new Uint8Array([...fromBase64url(publicKey)]),
+        { name: "Ed25519" },
+        false,
+        ["verify"],
+      );
+      return crypto.subtle.verify(
+        "Ed25519",
+        key,
+        new Uint8Array([...fromBase64url(result.letter.body.signature)]),
+        new TextEncoder().encode(result.id),
+      );
+    };
+    expect(await verifyWith(current.ed25519Public)).toBe(true);
+    expect(await verifyWith(firstGeneration.ed25519Public)).toBe(false);
+  });
+
+  it("identityOf falls back in order — identity, key, handle", () => {
+    expect(
+      identityOf({ id: "sam@house", identityId: "pinned", ed25519Public: "live" }),
+    ).toBe("pinned");
+    expect(identityOf({ id: "sam@house", identityId: null, ed25519Public: "live" })).toBe("live");
+    // An empty string is "nothing to offer", not an identity.
+    expect(identityOf({ id: "sam@house", identityId: "", ed25519Public: "live" })).toBe("live");
+    // A keyless legacy address: the identity IS the handle until a key exists.
+    expect(identityOf({ id: "legacy@house", identityId: null, ed25519Public: null })).toBe(
+      "legacy@house",
+    );
+    expect(identityOf({ id: "legacy@house" })).toBe("legacy@house");
   });
 });

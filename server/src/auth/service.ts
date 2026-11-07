@@ -190,13 +190,21 @@ export class AuthService {
   /** Bind an OIDC subject to an address's IDENTITY (the claim step of
    *  first login). The binding is `provider sub → identity_id → current
    *  handle`, never `sub → handle` (SPEC §19: OIDC is a door, not an
-   *  identity). The identity id is the address's key fingerprint (§15);
-   *  for legacy addresses without keys it is the handle itself. */
+   *  identity). The identity id is the address's DURABLE identity — the
+   *  fingerprint pinned at its first key registration (amended 2026-11-08);
+   *  for legacy addresses without keys it is the handle itself.
+   *
+   *  A key rotation is no longer a re-binding event. It used to be one — the
+   *  identity was the live key's fingerprint, so rotating moved the identity
+   *  and the binding had to be re-established on the new key. Now the identity
+   *  is durable and rotation only touches `address_keys`, so the binding is
+   *  created once and survives every rotation unchanged. The upsert below is
+   *  therefore idempotent in the strong sense: after the pin it writes the same
+   *  value it already holds. */
   async bindOidc(address: string, sub: string, provider = "voidauth"): Promise<void> {
     await this.ensureAddress(address);
-    // The identity id: the address's current key fingerprint, or the
-    // handle itself for legacy addresses (the identity IS the handle
-    // until a key exists).
+    // The identity id: the address's durable identity, or the handle itself for
+    // a legacy address (the identity IS the handle until a key exists).
     const identity = await this.identityIdFor(address);
     await this.pool.query(
       `INSERT INTO oidc_bindings (identity_id, provider, sub)
@@ -401,10 +409,13 @@ export class AuthService {
 
     // Resolve the address: an existing OIDC binding, or the owner
     // claiming the house on first login. The binding is keyed by the
-    // IDENTITY (the key fingerprint), never the handle — so a handle
-    // change, a provider change, or a key rotation never severs the
-    // person from their correspondence (SPEC §19: OIDC is a door, not
-    // an identity).
+    // IDENTITY (the durable identity id), never the handle — so a handle
+    // change or a provider change never severs the person from their
+    // correspondence (SPEC §19: OIDC is a door, not an identity). A key
+    // rotation does not enter here at all: since the identity is pinned
+    // (amended 2026-11-08), rotating a key leaves `identity_id` — and so this
+    // join — untouched. Before the pin the binding had to be re-established
+    // on the new key; there is nothing left to re-establish.
     const { rows } = await this.pool.query<{ address: string }>(
       `SELECT a.id AS address
        FROM oidc_bindings ob

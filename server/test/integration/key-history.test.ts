@@ -157,10 +157,14 @@ describe.skipIf(!INTEGRATION)("key history (integration)", () => {
     const address = await repo.getAddress("you@house");
     expect(address!.ageRecipient).toBe(after.public.ageRecipient);
     expect(address!.ed25519Public).toBe(after.public.ed25519Public);
+    // The identity, though, is still the FIRST key's — served side by side with
+    // the live key so the client can tell "who this is" from "what it holds".
+    expect(address!.identityId).toBe(before.public.ed25519Public);
 
     const book = await repo.listAddresses();
     const you = book.find((a) => a.id === "you@house");
     expect(you!.ageRecipient).toBe(after.public.ageRecipient);
+    expect(you!.identityId).toBe(before.public.ed25519Public);
   });
 
   it("a pre-rotation sealed letter still verifies and re-delivers to its ORIGINAL id", async () => {
@@ -191,13 +195,17 @@ describe.skipIf(!INTEGRATION)("key history (integration)", () => {
     expect(await repo.getAddressKeyHistory("you@house")).toHaveLength(2);
   });
 
-  it("a new letter seals to the new recipient and keys on the new identity", async () => {
+  it("a new letter seals to the new recipient and keys on the PINNED identity", async () => {
+    // Sealing targets the LIVE key (after's age recipient) — that is what the
+    // recipient can open. The ID, though, resolves to the identity pinned at
+    // the first registration (before), because a rotation moves the key and not
+    // the identity (SPEC §19, amended 2026-11-08).
     const fresh = await sealed(
       "you@house",
       ["you@house"],
       after.public.ageRecipient,
       after.ed25519Private,
-      new Map([["you@house", after.public.ed25519Public]]),
+      new Map([["you@house", before.public.ed25519Public]]),
     );
     expect(fresh.id).not.toBe(preRotation.id);
 
@@ -209,9 +217,28 @@ describe.skipIf(!INTEGRATION)("key history (integration)", () => {
     expect(row!.sealed).toBe(true);
   });
 
+  it("still verifies a letter sealed over the LIVE keys — the pre-pin client", async () => {
+    // A client that predates the `identityId` wire field resolves every handle
+    // to the key it reads in the address book, which is the live one. The pin
+    // must not turn such a client's letters into rejections.
+    const legacy = await sealed(
+      "you@house",
+      ["you@house"],
+      after.public.ageRecipient,
+      after.ed25519Private,
+      new Map([["you@house", after.public.ed25519Public]]),
+    );
+
+    const result = await pipeline.ingest(legacy.letter);
+    expect(result).toEqual({ letterId: legacy.id, created: true });
+    expect(result.rejected).toBeUndefined();
+  });
+
   it("a keyless legacy address still resolves to its handle", async () => {
     expect(await repo.getAddressKey("legacy@house")).toBeNull();
     expect(await repo.getAddressKeyHistory("legacy@house")).toEqual([]);
+    // No identity beyond the handle, and none is invented for it.
+    expect(await repo.getIdentityId("legacy@house")).toBe("legacy@house");
 
     const letter: Letter = {
       envelope: {
@@ -228,10 +255,10 @@ describe.skipIf(!INTEGRATION)("key history (integration)", () => {
     };
     // The legacy address's own identity is its handle — it is absent from the
     // resolution map, so the canonical form keeps `legacy@house` as typed. The
-    // recipient still resolves to its key: resolution is per handle, not per
-    // property of the sender.
+    // recipient still resolves to its PINNED identity: resolution is per
+    // handle, not per property of the sender.
     const expectedId = letterIdFromCanonical(
-      canonicaliseWith(letter, new Map([["you@house", after.public.ed25519Public]])),
+      canonicaliseWith(letter, new Map([["you@house", before.public.ed25519Public]])),
     );
 
     const result = await pipeline.ingest(letter);

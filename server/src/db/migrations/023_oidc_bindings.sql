@@ -20,6 +20,14 @@
 --     identity_id.
 --   * Key rotation: the binding re-establishes to the new key (the §15
 --     key-history rule).
+--     ⚠️ RETRACTED 2026-11-08 (033_identity_pin.sql): there is no
+--     re-establishing, because the identity no longer moves. The binding is
+--     `sub → identity_id`, and the identity is pinned at the address's first
+--     key registration, so rotation leaves the binding untouched. See SPEC
+--     §5 #19 (amended the same day). The scrub bullet below is corrected the
+--     same way: a binding cannot be re-established to a new key, because the
+--     identity is durable — severing the provider link is deleting the
+--     binding, not re-pointing it.
 --   * Scrub: the handle is scrubbed, the key rotated, the OIDC binding
 --     re-established to the new key — the provider link is severed with
 --     the old identity.

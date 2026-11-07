@@ -363,6 +363,22 @@ export class HouseKeysService {
        ON CONFLICT (address) WHERE retired_at IS NULL DO NOTHING`,
       [HOUSE_ADDRESS, key.ageRecipient, key.ed25519Public],
     );
+    // Pin the house's identity at its first record (SPEC §19, amended
+    // 2026-11-08). house@house is a participant whose key record is written
+    // here rather than through `setAddressKey`, so the pin has to be made here
+    // too — otherwise the id resolver reads a handle where the client reads a
+    // fingerprint, and a collaborative letter's id forks between the two ends.
+    // Conditional on the identity not being a key the address holds, so a later
+    // mirror never moves it: the identity is durable, the key is material.
+    await this.pool.query(
+      `UPDATE addresses a SET identity_id = $2
+        WHERE a.id = $1
+          AND NOT EXISTS (
+            SELECT 1 FROM address_keys k
+             WHERE k.address = $1 AND k.ed25519_public = a.identity_id
+          )`,
+      [HOUSE_ADDRESS, key.ed25519Public],
+    );
   }
 
   /**

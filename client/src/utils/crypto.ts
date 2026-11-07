@@ -10,8 +10,10 @@
  * The letter id is derived EXACTLY as the server derives it
  * (id.ts::canonicaliseWith + letterIdFromCanonical): sha256 of a
  * canonical JSON serialisation of the zod-parsed letter, with each
- * handle resolved to its identity (the ed25519 public fingerprint, §19;
- * legacy addresses without keys resolve to the handle itself). The
+ * handle resolved to its identity (the address's durable identity — the
+ * fingerprint pinned at its first key registration, §19 amended
+ * 2026-11-08; a house that predates the `identityId` field resolves to the
+ * live key, and a keyless legacy address to the handle itself). The
  * client must reproduce that derivation byte-for-byte — a drifted
  * canonical form would make the id never match on the server side and
  * every sealed letter would be rejected at the signature gate. The
@@ -194,12 +196,42 @@ export async function letterIdFromCanonical(canonical: string): Promise<string> 
 /** A participant's public halves, from the address book. */
 export interface ParticipantKeys {
   id: string;
+  /** The address's DURABLE identity (SPEC §19, amended 2026-11-08) — the
+   *  value the canonical form hashes. Optional because a house that has not
+   *  shipped the `identityId` wire field yet does not send it; the caller then
+   *  falls back to the live key, which is what such a house resolves to. */
+  identityId?: string | null;
   ageRecipient: string | null;
   ed25519Public: string | null;
   /** The recovery age recipient — the §15 backstop. Sealed to whenever
    *  present, so a correspondent whose primary key is lost can still
    *  open with the off-box recovery key. */
   recoveryAgeRecipient: string | null;
+}
+
+/**
+ * The identity a letter's id resolves an address to (SPEC §19, amended
+ * 2026-11-08). In order:
+ *
+ *   1. `identityId` — the address's durable identity, pinned at its first key
+ *      registration. This is what the house resolves with, so this is what the
+ *      client must hash. A rotation moves the key, never this.
+ *   2. `ed25519Public` — the live key. Only reached when the house has not
+ *      shipped the wire field (an older server), where the live key IS the
+ *      resolution. Keeps a new client working against an old house.
+ *   3. the handle — a keyless legacy address, where the identity IS the label
+ *      until a key exists.
+ *
+ * Empty strings count as absent: a caller that has no value to offer says so
+ * with `""` in places (the composer's house entry), and hashing an empty string
+ * as an identity would silently fork the id from the house's.
+ */
+export function identityOf(address: {
+  id: string;
+  identityId?: string | null;
+  ed25519Public?: string | null;
+}): string {
+  return address.identityId || address.ed25519Public || address.id;
 }
 
 /**
@@ -213,11 +245,13 @@ export interface ParticipantKeys {
  *   2. Register the public halves with the house (self-only, idempotent
  *      upsert; skipped when the address record already carries ours).
  *   3. Resolve every participant (from/to/cc, plus the writer) through
- *      the address book: an address with keys resolves to its ed25519
- *      fingerprint — the identity IS the key (§19). An address without
- *      keys resolves to its handle (the legacy identity). This must be
- *      EXACTLY the map the server's pipeline builds at ingest, or the
- *      id will not match and the signature gate will reject the letter.
+ *      the address book: an address resolves to its DURABLE identity —
+ *      `identityId`, the fingerprint pinned at its first key registration,
+ *      which a rotation never moves (§19, amended 2026-11-08). A house
+ *      that has not shipped the field resolves to the live key, which is
+ *      what it uses; a keyless legacy address resolves to its handle. This
+ *      must be EXACTLY the map the server's pipeline builds at ingest, or
+ *      the id will not match and the signature gate will reject the letter.
  *   4. Derive the letter id from the canonical form with that map —
  *      the same sha256 the server derives.
  *   5. Sign the id with the writer's ed25519 key — the non-extractable
@@ -267,11 +301,18 @@ export async function sealDraft(
     });
   }
 
-  // Every participant must be resolvable to a recipient. The writer is
-  // always a participant (their own key exists by construction). Each
-  // participant's recovery recipient is sealed to as well, when present
-  // — the §15 backstop: a correspondent whose primary key is lost can
-  // still open the letter with the off-box recovery key.
+  // The identity map the id hashes (SPEC §19, amended 2026-11-08): each handle
+  // resolves to its DURABLE identity — `identityId` from the address book, not
+  // the live key. The distinction is the whole point: a rotation moves a key,
+  // and hashing the key is what re-keyed every letter naming a rotated address.
+  //
+  // The writer's own entry needs one extra condition. This call may be the
+  // writer's FIRST registration (nothing registered yet, so the book has no
+  // key for it — the house pins the key being registered below). It may also
+  // be a rotation, where the house keeps the identity it pinned and the book's
+  // `identityId` is the authority. `ed25519Public` is what tells them apart: a
+  // book entry with no live key cannot be carrying a pin.
+  const ownRecord = own && own.ed25519Public ? own : null;
   const participants = new Set([
     draft.envelope.from,
     ...draft.envelope.to,
@@ -284,7 +325,7 @@ export async function sealDraft(
   for (const handle of participants) {
     const rec = byAddress.get(handle);
     if (handle === draft.envelope.from) {
-      identities.set(handle, keys.ed25519Public);
+      identities.set(handle, ownRecord ? identityOf(ownRecord) : keys.ed25519Public);
       recipients.push(keys.ageRecipient);
       if (keys.recoveryAgeRecipient) recipients.push(keys.recoveryAgeRecipient);
       continue;
@@ -294,7 +335,7 @@ export async function sealDraft(
         `${handle} has no keys registered — seal to ${handle} once they register theirs`,
       );
     }
-    identities.set(handle, rec.ed25519Public);
+    identities.set(handle, identityOf(rec));
     recipients.push(rec.ageRecipient);
     if (rec.recoveryAgeRecipient) recipients.push(rec.recoveryAgeRecipient);
   }

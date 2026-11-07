@@ -57,10 +57,16 @@ export interface AddressKeyRecord {
 export class PostgresRepository {
   constructor(private readonly pool: pg.Pool) {}
 
-  /** Ensure an address exists (the address book is the social graph). */
+  /** Ensure an address exists (the address book is the social graph).
+   *
+   *  `identity_id` is set to the handle at creation, as 022 backfilled it: a
+   *  keyless address's identity IS its handle until a key exists, and the id
+   *  resolver plus the address book both read the column (SPEC §19, amended
+   *  2026-11-08). Leaving it null would be the same fact stated less clearly,
+   *  and a null would have to be re-derived at every read. */
   async ensureAddress(address: string): Promise<void> {
     await this.pool.query(
-      `INSERT INTO addresses (id) VALUES ($1)
+      `INSERT INTO addresses (id, identity_id) VALUES ($1, $1)
        ON CONFLICT (id) DO NOTHING`,
       [address],
     );
@@ -267,12 +273,22 @@ export class PostgresRepository {
    *  (the §15 backstop). Public keys are public; the absent key record
    *  for a legacy address is simply null. Agents are marked as
    *  instruments (SPEC §16) — shown flat, never ranked, flat in the
-   *  same list. */
+   *  same list.
+   *
+   *  `identityId` rides along too (SPEC §19, amended 2026-11-08): it is the
+   *  address's DURABLE identity — what a letter id resolves to, and what the
+   *  client must hash. It is a public fingerprint (for a keyless legacy
+   *  address, the handle itself), not a secret, and it does not move when a
+   *  key rotates: `ed25519Public` is the key the address holds NOW, and it is
+   *  what sealing wants; `identityId` is who the address IS, and it is what
+   *  hashing wants. Serving them side by side is the point — a client that
+   *  conflated them re-keyed every letter on rotation. */
   async listAddresses(): Promise<
     {
       id: string;
       names: string[];
       pronouns: string | null;
+      identityId: string;
       ageRecipient: string | null;
       ed25519Public: string | null;
       recoveryAgeRecipient: string | null;
@@ -282,6 +298,7 @@ export class PostgresRepository {
   > {
     const { rows } = await this.pool.query(
       `SELECT a.id, a.names, a.pronouns, a.seal_default AS "sealDefault",
+              COALESCE(a.identity_id, a.id) AS "identityId",
               ak.age_recipient AS "ageRecipient", ak.ed25519_public AS "ed25519Public",
               ak.recovery_age_recipient AS "recoveryAgeRecipient",
               EXISTS (SELECT 1 FROM agents ag WHERE ag.address = a.id AND ag.died_at IS NULL) AS "isAgent"
@@ -293,7 +310,8 @@ export class PostgresRepository {
   }
 
   /** Get one address. Carries the public halves of any registered keys
-   *  (SPEC §15) — same shape as the flat list. */
+   *  (SPEC §15) — same shape as the flat list, `identityId` included
+   *  (SPEC §19, amended 2026-11-08: the durable identity, not the live key). */
   async getAddress(
     id: string,
   ): Promise<{
@@ -301,6 +319,7 @@ export class PostgresRepository {
     names: string[];
     pronouns: string | null;
     is_public: boolean;
+    identityId: string;
     ageRecipient: string | null;
     ed25519Public: string | null;
     recoveryAgeRecipient: string | null;
@@ -309,6 +328,7 @@ export class PostgresRepository {
   } | null> {
     const { rows } = await this.pool.query(
       `SELECT a.id, a.names, a.pronouns, a.is_public, a.seal_default AS "sealDefault",
+              COALESCE(a.identity_id, a.id) AS "identityId",
               ak.age_recipient AS "ageRecipient", ak.ed25519_public AS "ed25519Public",
               ak.recovery_age_recipient AS "recoveryAgeRecipient",
               EXISTS (SELECT 1 FROM agents ag WHERE ag.address = a.id AND ag.died_at IS NULL) AS "isAgent"
@@ -318,6 +338,22 @@ export class PostgresRepository {
       [id],
     );
     return rows[0] ?? null;
+  }
+
+  /** The address's DURABLE identity — what a letter id resolves this handle
+   *  to (SPEC §19, amended 2026-11-08). Null means the address has no
+   *  identity beyond its handle, and the resolver keeps the handle itself.
+   *
+   *  This is the read the id resolver makes instead of reading the live key.
+   *  Reading the live key is what made a rotation move every letter id; the
+   *  identity is pinned at the address's first key registration and never
+   *  moves, so a rotation retires a key without touching an id. */
+  async getIdentityId(id: string): Promise<string | null> {
+    const { rows } = await this.pool.query<{ identity_id: string | null }>(
+      `SELECT identity_id FROM addresses WHERE id = $1`,
+      [id],
+    );
+    return rows[0]?.identity_id ?? null;
   }
 
   /** Get an address's current public key record (SPEC §15). Public keys
@@ -365,11 +401,26 @@ export class PostgresRepository {
    *  no-op — the house does not mint a generation for an identity that has
    *  not changed, which also keeps "idempotent registration" true.
    *
+   *  THE IDENTITY IS PINNED HERE (SPEC §19, amended 2026-11-08). The address's
+   *  first registration sets `addresses.identity_id` to that key's ed25519
+   *  fingerprint, and no later registration moves it: the identity is durable,
+   *  the key is material the address holds over time. The pin lives in this
+   *  method — not in a caller's rule — because this is the only path that
+   *  writes a key record, so a rotation cannot bypass it, and because the pin
+   *  and the key row must commit or roll back together: an identity that said
+   *  one thing while the live key said another would fork the id resolver from
+   *  the client.
+   *
+   *  `no live row` is the first registration: 030's partial unique index
+   *  (`address_keys_one_active_idx`) guarantees exactly one live row per
+   *  address that has any, so an address with history always has one.
+   *
    *  Concurrency: `FOR UPDATE` serialises rotations of a live row. Two
    *  *first* registrations for a keyless address race on a row that does not
    *  exist yet, so the partial unique index breaks the tie — the loser's
    *  INSERT fails and its transaction rolls back rather than forking the
-   *  history. */
+   *  history (and with it, the pin).
+   */
   async setAddressKey(
     address: string,
     keys: { ageRecipient: string; ed25519Public: string; recoveryAgeRecipient: string | null },
@@ -397,6 +448,7 @@ export class PostgresRepository {
         live.recovery_age_recipient === keys.recoveryAgeRecipient;
 
       if (!unchanged) {
+        const first = live === undefined;
         if (live) {
           await client.query(
             `UPDATE address_keys SET retired_at = now() WHERE id = $1`,
@@ -408,6 +460,23 @@ export class PostgresRepository {
            VALUES ($1, $2, $3, $4)`,
           [address, keys.ageRecipient, keys.ed25519Public, keys.recoveryAgeRecipient],
         );
+        if (first) {
+          // Pin, once. The predicate is the belt on the `first` gate: it writes
+          // only while the identity is not one of the keys the address holds —
+          // i.e. while it is still just a handle (the address's own, or an old
+          // one it was relabelled from). An identity that is already a
+          // fingerprint is never the same string as the key being registered,
+          // so a rotation leaves it alone by construction as well as by gate.
+          await client.query(
+            `UPDATE addresses a SET identity_id = $2
+              WHERE a.id = $1
+                AND NOT EXISTS (
+                  SELECT 1 FROM address_keys k
+                   WHERE k.address = $1 AND k.ed25519_public = a.identity_id
+                )`,
+            [address, keys.ed25519Public],
+          );
+        }
       }
       await client.query("COMMIT");
     } catch (err) {
@@ -416,15 +485,6 @@ export class PostgresRepository {
     } finally {
       client.release();
     }
-  }
-
-  /** Make the identity id durable (SPEC §19). After a resident registers
-   *  keys, the address's identity IS the ed25519 fingerprint. */
-  async setAddressIdentity(address: string, identityId: string): Promise<void> {
-    await this.pool.query(
-      `UPDATE addresses SET identity_id = $2 WHERE id = $1`,
-      [address, identityId],
-    );
   }
 
   /** Open or close an address's door. The house's visibility law reads this. */

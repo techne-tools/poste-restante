@@ -12,7 +12,7 @@
  */
 import type { Logger } from "./logger.js";
 import type { Letter, StoredLetter } from "../types.js";
-import { letterIdFromCanonical, canonicaliseWith, resolveSignedId } from "../id.js";
+import { letterIdFromCanonical, canonicaliseWith, resolvePinnedId, resolveSignedId } from "../id.js";
 import { markdownToText } from "./markdown.js";
 import { verifyLetterId } from "../crypto/keys.js";
 import type { PostgresRepository } from "../db/repository.js";
@@ -59,8 +59,10 @@ export class IngestionPipeline {
    * Ingest a letter. Idempotent: the same letter (same id) is stored once.
    * The id is derived from the envelope+body with addresses resolved to
    * their identity ids (SPEC §19) — a rename never changes a letter's id, and
-   * neither does a key rotation (a sealed letter keeps the id its signature
-   * was made over; see resolveId).
+   * neither does a key rotation: since 2026-11-08 the identity is pinned at an
+   * address's first key registration, so rotation retires a key and moves no
+   * id at all (see resolveId; the id a sealed letter was signed under is
+   * recovered by the pin, or by the kept pre-pin rule).
    */
   async ingest(letter: Letter): Promise<IngestResult> {
     // The id is derived from the envelope+body, and a sealed letter's
@@ -162,20 +164,28 @@ export class IngestionPipeline {
   /**
    * Resolve a letter's id — and, for a sealed letter, verify its signature on
    * the way (SPEC §15). The id hashes the envelope+body with every handle
-   * resolved to its identity id, which is the ed25519 fingerprint of the key
-   * the address holds NOW (SPEC §19); legacy addresses without keys resolve to
-   * their handle.
+   * resolved to its DURABLE identity (SPEC §19, amended 2026-11-08), which is
+   * the ed25519 fingerprint the address pinned at its first key registration
+   * and never moved; legacy addresses without keys resolve to their handle.
    *
-   * A sealed letter's signature is ed25519 over the id as of signing, and a
-   * rotation changes the fingerprint the id resolves to. So verification walks
-   * the sender's key history newest-first (`resolveSignedId`) and returns the
-   * id the signature actually covers: a letter written before the sender
-   * rotated re-delivers to its ORIGINAL id — verified against the retired key,
-   * stored once, not rejected and not duplicated.
+   * A sealed letter's signature is ed25519 over the id as of signing, and two
+   * rules can name that id, because the archive spans both:
    *
-   * `rejected` means no key the sender has ever held verifies the signature.
-   * The returned id is then the current-resolution id (what the letter would
-   * have been keyed as), which is what the logs and the 400 name.
+   *   the pin (`resolvePinnedId`) — the identity is durable, so the id is the
+   *   same whatever generation signed it. This is what makes a letter sealed to
+   *   a recipient who later rotated re-deliver to its ORIGINAL id: the
+   *   recipient's rotation no longer moves the id at all.
+   *
+   *   the pre-pin rule (`resolveSignedId`) — the id re-derived from the LIVE
+   *   keys, which is what a client that predates the address book's
+   *   `identityId` field computes, and what every stored pre-pin letter was
+   *   keyed under. Accepting it is what lets a deployed client keep sealing
+   *   across this change.
+   *
+   * `rejected` means neither rule verifies: no key the sender has ever held
+   * covers the letter. The returned id is then the current-resolution id (what
+   * the letter would have been keyed as), which is what the logs and the 400
+   * name.
    */
   private async resolveId(letter: Letter): Promise<{ id: string; rejected?: boolean }> {
     const identities = await this.identityIds(letter);
@@ -183,33 +193,68 @@ export class IngestionPipeline {
     if (letter.body.format !== "sealed") return { id };
 
     const history = await this.repo.getAddressKeyHistory(letter.envelope.from);
-    const signedId = resolveSignedId(
+    const senderKeys = history.map((record) => record.ed25519_public);
+
+    const pinned = resolvePinnedId(
       letter,
       identities,
-      history.map((record) => record.ed25519_public),
+      senderKeys,
       letter.body.signature,
       verifyLetterId,
     );
-    return signedId === null ? { id, rejected: true } : { id: signedId };
+    if (pinned !== null) return { id: pinned };
+
+    const legacyIdentities = await this.liveKeyIdentities(letter);
+    const legacy = resolveSignedId(
+      letter,
+      legacyIdentities,
+      senderKeys,
+      letter.body.signature,
+      verifyLetterId,
+    );
+    return legacy === null ? { id, rejected: true } : { id: legacy };
   }
 
   /**
-   * The identity ids for every handle a letter names (SPEC §19). The resolver
-   * reads address_keys — the LIVE row only (a retired key is not where a
-   * correspondent seals, and not what a new letter's id resolves to).
+   * The DURABLE identity ids for every handle a letter names (SPEC §19,
+   * amended 2026-11-08): `addresses.identity_id`, which is pinned at the
+   * address's first key registration. A handle with no identity beyond its own
+   * label stays absent, and the canonical form keeps it as typed.
    */
   private async identityIds(letter: Letter): Promise<Map<string, string>> {
-    const handles = new Set<string>([
-      letter.envelope.from,
-      ...letter.envelope.to,
-      ...letter.envelope.cc,
-    ]);
     const identities = new Map<string, string>();
-    for (const handle of handles) {
+    for (const handle of this.handles(letter)) {
+      const identity = await this.repo.getIdentityId(handle);
+      if (identity) identities.set(handle, identity);
+    }
+    return identities;
+  }
+
+  /**
+   * The LIVE key resolution — the PRE-PIN rule, for verification only. Each
+   * handle resolves to the key the address holds now (a retired key is not
+   * where a correspondent seals, and not what a new letter's id resolves to).
+   * A client that predates the address book's `identityId` field computes
+   * exactly this map, so a letter it sealed still verifies here.
+   */
+  private async liveKeyIdentities(letter: Letter): Promise<Map<string, string>> {
+    const identities = new Map<string, string>();
+    for (const handle of this.handles(letter)) {
       const key = await this.repo.getAddressKey(handle);
       if (key) identities.set(handle, key.ed25519_public);
     }
     return identities;
+  }
+
+  /** Every handle a letter names — sender, recipients, copies. */
+  private handles(letter: Letter): string[] {
+    return [
+      ...new Set<string>([
+        letter.envelope.from,
+        ...letter.envelope.to,
+        ...letter.envelope.cc,
+      ]),
+    ];
   }
 
   /**
