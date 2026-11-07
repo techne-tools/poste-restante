@@ -7,7 +7,7 @@ describe("loadConfig", () => {
     expect(cfg.databaseUrl).toContain("localhost");
     expect(cfg.qdrantUrl).toContain("localhost");
     expect(cfg.embedding.baseUrl).toBeUndefined(); // local ollama
-    expect(cfg.embedding.model).toBe("nomic-embed-text");
+    expect(cfg.embedding.model).toBe("embeddinggemma-2:740m");
     expect(cfg.embedding.dimension).toBe(768);
     expect(cfg.integration).toBe(false);
   });

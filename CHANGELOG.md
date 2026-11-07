@@ -6,6 +6,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed — crypto claims corrected, the house key fails closed, `.env` loads (2026-11-08)
+
+- **The house refuses to mint its keypair on boot.** `HouseKeysService.ensure()` now
+  reads and mirrors the singleton, and throws `HouseKeyMissingError` when the row is
+  absent. Minting on boot meant a database restored without its key row would acquire a
+  new identity and strand every collaborative letter sealed to the old one — an
+  unrecoverable loss indistinguishable from a successful start. Provisioning is an
+  explicit operator act: `npm run house:key:init` (new; `house:key:show` prints the
+  public halves). `buildHouse` passes `provision` only under `NODE_ENV=test`, because
+  tests build a throwaway house per run.
+- **Two architecture claims retracted** (ARCHITECTURE §7). "All bodies are ciphertext at
+  rest" was false — unsealed bodies are plaintext markdown plus their extracted
+  `body_text`, because the retrieval layer is built on that plaintext. "Backups encrypt to
+  the operator's key off-box" was aspirational — no backup path exists in the repo. Both
+  corrected in place rather than deleted.
+- **`server/.env` is now loaded** by the server and its CLIs (`process.loadEnvFile`, no
+  dependency; a variable already set in the process wins). `.env.example` has told the
+  operator to copy it to `.env` since the beginning, and nothing read the result.
+- **Signature-verification comment corrected** in `types.ts`: verification happens at
+  ingest, not at rest.
+- **Log hygiene.** `ingest:stored` no longer carries the thread id — a thread id in a log
+  names a relationship (privacy checklist #6).
+- **Embedding defaults documented and a stale test fixed.** The template still named
+  `nomic-embed-text`; the default is `embeddinggemma-2:740m` (768-dim) and
+  `EMBEDDING_BASE_URL` is the switch when the model is served elsewhere. The config test
+  that still expected the old default now passes again.
+- **`PLAN-crypto.md` replaced** with a delta plan: what is built, what is genuinely
+  missing, and what must not be built (`seal_level` enum, body re-encryption). Process
+  docs are local-only by `AGENTS.md`; the file had been committed, and is now untracked.
+
 ### Removed — the mailbox read-side, backed out (2026-09-16)
 
 The house stops running a mail server. This is a **strategic reversal**, made

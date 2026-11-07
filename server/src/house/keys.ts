@@ -23,6 +23,26 @@ import { generateHouseKeypair, unsealWithIdentity, type HouseKeypair } from "../
 /** The house's own address — a participant in collaborative letters. */
 export const HOUSE_ADDRESS = "house@house";
 
+/**
+ * Thrown when the house has no keypair and none has been provisioned.
+ *
+ * The house refuses to mint one on demand. A restored database without its
+ * key row would otherwise acquire a new identity on the next boot and strand
+ * every collaborative letter sealed to the old one — an unrecoverable loss
+ * that looks exactly like a successful start. Provisioning is an explicit
+ * operator act (`npm run house:key:init`).
+ */
+export class HouseKeyMissingError extends Error {
+  constructor() {
+    super(
+      "the house has no keypair. Provision one with `npm run house:key:init` " +
+        "(in server/). Refusing to mint on boot: a restored database would " +
+        "otherwise change identity and strand every collaborative letter.",
+    );
+    this.name = "HouseKeyMissingError";
+  }
+}
+
 export class HouseKeysService {
   constructor(
     private readonly pool: pg.Pool,
@@ -51,17 +71,41 @@ export class HouseKeysService {
   }
 
   /**
-   * Ensure the house's keypair exists — provision once on boot, mirror
-   * the public halves to the address book (house@house is a participant
-   * in collaborative letters; its recipient is discovered like any
-   * resident's). Idempotent: already-provisioned houses keep their key.
+   * Read the house's keypair and mirror its public halves to the address
+   * book (house@house is a participant in collaborative letters; its
+   * recipient is discovered like any resident's). Refuses rather than
+   * mints — see `HouseKeyMissingError`. `provision: true` exists for the
+   * explicit operator path and for tests; nothing in the serving path
+   * passes it.
    */
-  async ensure(): Promise<HouseKeypair> {
+  async ensure(opts: { provision?: boolean } = {}): Promise<HouseKeypair> {
     const existing = await this.get();
     if (existing) {
       // Mirror the public halves in case the address rows were wiped
       // (tests TRUNCATE; a fresh house after a restore must still be
       // reachable). Cheap and idempotent.
+      await this.mirrorPublic(existing);
+      return existing;
+    }
+
+    if (!opts.provision) {
+      this.log.error("house:key-missing", {
+        remedy: "npm run house:key:init",
+      });
+      throw new HouseKeyMissingError();
+    }
+
+    return this.provision();
+  }
+
+  /**
+   * Provision the singleton keypair — the explicit operator act
+   * (`npm run house:key:init`). Idempotent: an existing key is mirrored and
+   * returned, never replaced.
+   */
+  async provision(): Promise<HouseKeypair> {
+    const existing = await this.get();
+    if (existing) {
       await this.mirrorPublic(existing);
       return existing;
     }

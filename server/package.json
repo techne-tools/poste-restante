@@ -17,6 +17,8 @@
     "auth:add": "tsx src/auth/cli.ts add",
     "auth:list": "tsx src/auth/cli.ts list",
     "auth:remove": "tsx src/auth/cli.ts remove",
+    "house:key:init": "tsx src/house/cli.ts init",
+    "house:key:show": "tsx src/house/cli.ts show",
     "mailbox:add": "tsx src/bridge/mailbox-cli.ts add",
     "mailbox:list": "tsx src/bridge/mailbox-cli.ts list",
     "mailbox:remove": "tsx src/bridge/mailbox-cli.ts remove",

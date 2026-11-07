@@ -7,7 +7,7 @@
  * unseal capability (only letters sealed WITH the house open).
  */
 import { describe, it, expect } from "vitest";
-import { HouseKeysService, HOUSE_ADDRESS } from "../../src/house/keys.js";
+import { HouseKeysService, HOUSE_ADDRESS, HouseKeyMissingError } from "../../src/house/keys.js";
 import { generateResidentKeypair, sealToRecipients } from "../../src/crypto/keys.js";
 
 function fakePool(over: Partial<{ rows: unknown[] }> = {}) {
@@ -63,14 +63,31 @@ describe("HouseKeysService — the singleton", () => {
     expect(key.ed25519Public).toBe("ed-pub-1");
   });
 
-  it("provisions once when missing — the singleton INSERT is idempotent", async () => {
+  it("refuses to mint when the key is missing — no silent re-provisioning", async () => {
+    const queries: string[] = [];
+    const pool = {
+      query: async (sql: string) => {
+        queries.push(sql);
+        if (sql.includes("FROM house_keys")) return { rows: [] };
+        return { rows: [] };
+      },
+    } as never;
+    const s = new HouseKeysService(pool, noopLog);
+
+    await expect(s.ensure()).rejects.toBeInstanceOf(HouseKeyMissingError);
+    // The refusal is structural: nothing was written, so a restored database
+    // cannot acquire a new identity simply by starting up.
+    expect(queries.some((q) => q.includes("INSERT INTO house_keys"))).toBe(false);
+  });
+
+  it("provisions once when asked — the singleton INSERT is idempotent", async () => {
     const pool = fakePool();
     const s = svc(pool);
 
-    // First ensure: SELECT returns nothing → the service generates,
-    // inserts, then re-reads (still nothing in the fake — the
-    // concurrent-first-wins path takes the generated key).
-    const key = await s.ensure();
+    // provision(): SELECT returns nothing → generate, insert, re-read (the
+    // fake does not echo the row, so the concurrent-first-wins path takes
+    // the generated key).
+    const key = await s.provision();
     expect(key.ageIdentity).toBeTruthy();
     expect(key.ageRecipient).toBeTruthy();
     expect(key.ed25519Public).toBeTruthy();
@@ -86,7 +103,7 @@ describe("HouseKeysService — the singleton", () => {
       },
     } as never;
     const s = new HouseKeysService(pool, noopLog);
-    await s.ensure();
+    await s.provision();
 
     const addressInsert = inserts.find((i) => i.sql.includes("INSERT INTO addresses"));
     expect(addressInsert).toBeDefined();
@@ -100,7 +117,7 @@ describe("HouseKeysService — the singleton", () => {
     // Provision the house key.
     const pool = fakePool();
     const s = svc(pool);
-    const house = await s.ensure();
+    const house = await s.provision();
 
     // A resident seals a letter WITH the house.
     const resident = await generateResidentKeypair("you@house");

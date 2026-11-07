@@ -299,7 +299,12 @@ export async function buildHouse(
   // credential isolation needs the house keys to unseal integration
   // credentials at call time.
   const houseKeys = new HouseKeysService(db.pool, log);
-  await houseKeys.ensure();
+  // Fail closed. The serving path never mints a key: a restored database
+  // missing its key row would otherwise acquire a new identity on boot and
+  // strand every collaborative letter sealed to the old one. Provisioning is
+  // the operator's act — `npm run house:key:init`. Tests provision, because
+  // they build a throwaway house per run.
+  await houseKeys.ensure({ provision: env.NODE_ENV === "test" });
   const integrations = new IntegrationService(db.pool, pipeline, log, {
     houseKeys,
   });

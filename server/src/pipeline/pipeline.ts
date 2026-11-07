@@ -96,7 +96,10 @@ export class IngestionPipeline {
 
     // 1. Postgres row + links (thread, correspondents, frames).
     await this.repo.storeLetter(stored);
-    this.log.info("ingest:stored", { letterId: id, thread: letter.envelope.thread, sealed });
+    // Log the seal, never the pointer: a thread id in a log names a
+    // relationship (AGENTS.md privacy checklist #6). The letter id is a
+    // content hash; the sealed flag is the one fact an operator needs.
+    this.log.info("ingest:stored", { letterId: id, sealed });
 
     // 2. Embed the plain-text body and index in Qdrant — only for
     //    unsealed letters. Sealed bodies never reach the semantic layer
