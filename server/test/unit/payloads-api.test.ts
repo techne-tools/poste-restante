@@ -658,3 +658,23 @@ describe("Payloads API — the enclosure's name is constrained", () => {
     }
   });
 });
+
+describe("Payloads API — an upload with no file", () => {
+  it("answers invalid_payload by code, not only by status", async () => {
+    // Shrinks one line of the error-code ledger: this refusal was covered by
+    // status alone. The code is what a client branches on.
+    const { house } = fakeHouse([{ letter: plainLetter(), sealed: false }]);
+    const app = server(house);
+
+    const form = new FormData();
+    form.set("note", "no file here");
+    const res = await app.request("/v1/letters/let_plain_1/payloads", {
+      method: "POST",
+      headers: bearer("alice@house"),
+      body: form,
+    });
+
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: { code: string } }).error.code).toBe("invalid_payload");
+  });
+});

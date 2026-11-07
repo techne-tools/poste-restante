@@ -36,6 +36,18 @@ for (const file of files(srcRoot)) {
   }
 }
 
+/**
+ * Is this code asserted by the corpus — as a whole code, not as a substring
+ * of a longer one? `invalid_payload` must not be satisfied by a test of
+ * `invalid_payload_name`: the ledger is about the exact string a route
+ * answers with, and a plain `includes()` let a newer, longer code silently
+ * retire a shorter one's debt (found when `invalid_payload_name` landed).
+ * `_` is a word character, so the boundary test tells the two apart.
+ */
+function assertedInCorpus(code: string): boolean {
+  return new RegExp(`(^|[^A-Za-z0-9_])${code}($|[^A-Za-z0-9_])`, "m").test(corpus);
+}
+
 // The corpus excludes this guard — its own TRACKED list names the codes it
 // is checking, which would make every tracked code look asserted.
 let corpus = "";
@@ -71,7 +83,7 @@ describe("every error code has a matching test", () => {
   });
 
   it("every emitted code is asserted in a test, or tracked", () => {
-    const untested = [...emitted].filter((c) => !corpus.includes(c) && !TRACKED.has(c)).sort();
+    const untested = [...emitted].filter((c) => !assertedInCorpus(c) && !TRACKED.has(c)).sort();
     expect(untested).toEqual([]);
   });
 
@@ -81,7 +93,7 @@ describe("every error code has a matching test", () => {
   });
 
   it("no tracked code has since been asserted — the ledger may only shrink", () => {
-    const nowTested = [...TRACKED].filter((c) => corpus.includes(c)).sort();
+    const nowTested = [...TRACKED].filter((c) => assertedInCorpus(c)).sort();
     expect(nowTested).toEqual([]);
   });
 });
