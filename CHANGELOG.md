@@ -6,6 +6,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed — the library that makes every ciphertext is pinned, and now made to prove it interoperates (2026-11-08)
+
+`age-encryption` was `^0.3.1` in both `server/package.json` and
+`client/package.json`. A caret range was the wrong shape here: this one library produces
+every ciphertext the house stores, so a minor bump that changed header or stanza behaviour
+would not fail loudly at write time — it would leave letters already in the archive that no
+longer open. Both workspaces now pin **`0.3.1` exactly**, with the lockfile's tarball and
+integrity digest unchanged. Upgrading is a deliberate act: bump the pin, run the interop
+fixture against the new build, then commit.
+
+Every crypto test in the repo sealed and unsealed **within this port**
+(`server/test/unit/crypto-keys.test.ts`), which cannot see a port bug that is self-consistent
+— it would pass while producing ciphertext no other implementation can read. The header of
+`server/src/crypto/keys.ts` now records what "compatible" means — **C2SP `age` v1**, header
+line `age-encryption.org/v1`, `age-encryption.org/v1/X25519` stanza — and where the armouring
+boundary sits (`letters.body` is armoured text; object-store payloads are raw bytes and never
+armoured).
+
+New `server/test/unit/age-interop.test.ts` reads `server/test/fixtures/age/`: a fixture
+identity, one plaintext, a ciphertext sealed by **filippo.io/age v1.3.2** (the Go reference
+implementation), and one sealed by this port that the reference decrypted. Both directions
+are asserted, plus the digests in `manifest.json` so a fixture quietly regenerated from this
+port cannot pass as interop evidence. The reference direction runs in CI; the reverse runs
+there too from the frozen fixture, and against a freshly sealed ciphertext only where an
+`age` binary exists (a skip there is not a pass — see the fixture README). Regeneration is
+`npx tsx server/test/fixtures/age/regenerate.ts`, which refuses to run without the reference
+CLI and writes nothing unless both directions decrypt.
+
+Nothing about the wire format, the sealed body schema or the signature scheme changed.
+
 ### Decided — the house key does not rotate, and no body is ever re-encrypted (2026-11-08)
 
 `026_house_keys.sql` had said two incompatible things in one header: that the house key
