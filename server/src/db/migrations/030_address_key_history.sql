@@ -29,29 +29,30 @@
 --     which is precisely what the old primary key guaranteed. Safe to apply
 --     to a populated table (verified against a copy of a populated database).
 --
--- WHAT THIS MIGRATION DOES *NOT* DECIDE — the letter id under rotation.
+-- DECIDED 2026-11-08 (Chris) — the letter id WILL key on a rotation-stable
+-- identity (option (b)). `addresses.identity_id` is set once, at an address's
+-- FIRST key registration, to that key's ed25519 fingerprint, and never moves
+-- again; key rotation retires a key (this migration) but moves no letter id.
+-- The (a) machinery below stays as the compatibility path — verification still
+-- walks the sender's history, which is what keeps letters written before the
+-- pin verifiable. Implementation: card t_16629c23, not this migration.
 --
--- A letter's id resolves each handle to its ed25519 fingerprint
--- (`server/src/id.ts`) and a sealed letter's signature is over that id. When
--- the sender rotates, the same letter re-delivered would hash to a different
--- id while the signature still names the old one. Two options:
+-- Why (b). Under (a) a letter's identity depended on a THIRD PARTY's key
+-- state: if a recipient rotated, a pre-existing letter hashed to a different
+-- id, its re-delivery was rejected, and the sender re-sealed — putting a
+-- second copy in the archive under a new id. The archive is the unit; its ids
+-- should not move because someone else changed their keys.
 --
---   (a) Keep deriving the id from the CURRENT key, and recover the id the
---       signature was actually made over from the sender's key history at
---       verification time.  <-- implemented here
---   (b) Key the id on a rotation-stable identity (`addresses.identity_id`
---       pinned to the address's first key). That is a change to SPEC §19 and
---       to the OIDC binding, which §19 says re-establishes on the NEW key —
---       so it is Chris's decision, not this card's.
+-- Consequence, recorded rather than discovered. For an address that registered
+-- once and never rotated, `identity_id` already equals its first key, so
+-- nothing moves. For one that HAS rotated, stored ids predate the pin and
+-- cannot be moved: a sealed letter's id is what its signature covers and the
+-- house holds no key to re-sign. The archive is therefore pinned going forward
+-- and mixed for what is already written.
 --
--- (a) costs no protocol change: the id is still sha256 over the canonical
--- form with identities resolved, and verification walks the sender's key
--- history newest-first, keeping the id whose signature verifies. Its
--- consequence is recorded rather than hidden: if a party OTHER than the
--- sender has rotated since signing, no candidate id can be re-derived and the
--- letter is rejected. Such a letter was never stored, so nothing in the
--- archive is lost — re-seal and re-sign. (b) stays open; it is raised on the
--- card and in the changelog, not slipped in here.
+-- (a) cost no protocol change: the id is still sha256 over the canonical form
+-- with identities resolved, and verification walks the sender's key history
+-- newest-first, keeping the id whose signature verifies.
 --
 -- Verified behaviour after rotation: a pre-rotation sealed letter still
 -- verifies and re-delivers to its ORIGINAL id (no duplicate row); the retired

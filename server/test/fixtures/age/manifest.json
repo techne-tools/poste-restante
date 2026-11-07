@@ -1,0 +1,20 @@
+{
+  "generated_utc": "2026-11-07T20:39:50.309Z",
+  "spec": "C2SP age v1 — wire format `age-encryption.org/v1`, X25519 recipient stanza",
+  "recipient": "age1gdsvdwe879nlljg7qg093ay9s447z8y8ytm0c0pc7h8nceylhdvqkgepyp",
+  "reference": {
+    "implementation": "filippo.io/age (https://github.com/FiloSottile/age)",
+    "version": "v1.3.2",
+    "command": "age -r age1gdsvdwe879nlljg7qg093ay9s447z8y8ytm0c0pc7h8nceylhdvqkgepyp -a plaintext.txt > reference.age",
+    "file": "reference.age",
+    "sha256": "cd291f76aab3ee5d73458a4586461607d4c77012d806ec07c95e6d69ea6255cd"
+  },
+  "port": {
+    "package": "age-encryption",
+    "version": "0.3.1",
+    "command": "sealToRecipients(plaintext, [recipient]) — server/src/crypto/keys.ts",
+    "file": "port.age",
+    "sha256": "170d68c9668ab3276a4defb4804545308cc673e8680e63db715f1daba172f154",
+    "verified_by": "age -d -i identity.txt port.age"
+  }
+}

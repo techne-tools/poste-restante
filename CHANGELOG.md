@@ -42,6 +42,36 @@ client hashes `identityId ?? ed25519Public ?? handle`, in that order. Amended in
 dated: `SPEC.md` §5 #19 and §15, `CONTRACT.md`, and the `022`/`023` headers. Migration
 `033_identity_pin.sql` carries the transition rule and the mixed-archive consequence.
 
+### Changed — the library that makes every ciphertext is pinned, and now made to prove it interoperates (2026-11-08)
+
+`age-encryption` was `^0.3.1` in both `server/package.json` and
+`client/package.json`. A caret range was the wrong shape here: this one library produces
+every ciphertext the house stores, so a minor bump that changed header or stanza behaviour
+would not fail loudly at write time — it would leave letters already in the archive that no
+longer open. Both workspaces now pin **`0.3.1` exactly**, with the lockfile's tarball and
+integrity digest unchanged. Upgrading is a deliberate act: bump the pin, run the interop
+fixture against the new build, then commit.
+
+Every crypto test in the repo sealed and unsealed **within this port**
+(`server/test/unit/crypto-keys.test.ts`), which cannot see a port bug that is self-consistent
+— it would pass while producing ciphertext no other implementation can read. The header of
+`server/src/crypto/keys.ts` now records what "compatible" means — **C2SP `age` v1**, header
+line `age-encryption.org/v1`, `age-encryption.org/v1/X25519` stanza — and where the armouring
+boundary sits (`letters.body` is armoured text; object-store payloads are raw bytes and never
+armoured).
+
+New `server/test/unit/age-interop.test.ts` reads `server/test/fixtures/age/`: a fixture
+identity, one plaintext, a ciphertext sealed by **filippo.io/age v1.3.2** (the Go reference
+implementation), and one sealed by this port that the reference decrypted. Both directions
+are asserted, plus the digests in `manifest.json` so a fixture quietly regenerated from this
+port cannot pass as interop evidence. The reference direction runs in CI; the reverse runs
+there too from the frozen fixture, and against a freshly sealed ciphertext only where an
+`age` binary exists (a skip there is not a pass — see the fixture README). Regeneration is
+`npx tsx server/test/fixtures/age/regenerate.ts`, which refuses to run without the reference
+CLI and writes nothing unless both directions decrypt.
+
+Nothing about the wire format, the sealed body schema or the signature scheme changed.
+
 ### Decided — the house key does not rotate, and no body is ever re-encrypted (2026-11-08)
 
 `026_house_keys.sql` had said two incompatible things in one header: that the house key
@@ -63,7 +93,7 @@ Losing the key means collaborative letters sealed before the loss are unreadable
 re-encryption can rescue them; sealed letters are unaffected, because no house key of any
 kind ever opened one. Corrected in place: the `026` header, `SPEC.md` §5 #15, and this
 entry.
-||||||| 36d99f2
+
 ### Added — sealed letters keep their enclosures sealed too (2026-11-08)
 
 A sealed letter's **body** was age ciphertext the house could not read; its
@@ -154,6 +184,21 @@ a table that kept no history.
   `retired_at = now()` on the live row and appends the next, in one
   transaction. Re-registering the *same* key writes nothing, so idempotent
   registration stays true without minting phantom generations.
+- **Decision 2026-11-08 — the id will be pinned, not recovered (option (b)).**
+  `addresses.identity_id` is set once, at an address's **first** key
+  registration, and never moves again; rotation retires a key but moves no
+  letter id, so an id is stable against *any* party's rotation rather than only
+  the sender's. The history walk above stays as the compatibility path for
+  letters written before the pin. Why: under recovery-only, a letter's identity
+  depended on a third party's key state — a recipient rotating made a
+  pre-existing letter hash differently, its re-delivery was rejected, and
+  re-sealing put a second copy in the archive under a new id. Amends SPEC §19
+  (whose "re-establishes to the new key" sentence loses to "the key never
+  changes"): the identity is durable, keys are material it holds over time.
+  Stored sealed letters cannot be moved — their id is what the signature covers
+  and the house holds no key to re-sign — so the archive is pinned going
+  forward and mixed for what is already written. Implementation: card
+  `t_16629c23`.
 - **Verification walks the history.** A sealed letter's signature is over its
   id, and the id resolves each handle to its ed25519 fingerprint — so a
   rotation changes the id a re-delivered letter would hash to. `resolveSignedId`
@@ -190,6 +235,7 @@ Also fixed, unrelated to the above: `server/test/unit/config.test.ts` still
 asserted `nomic-embed-text` as the embedding default, which `9e5085a` had
 already moved to `embeddinggemma-2:740m` — the one stale expectation keeping
 `npm run test` red on the branch.
+
 ### Changed — the house's private key left the database (2026-11-08)
 
 - **`house@house`'s private halves moved out of Postgres, into the deployment
@@ -272,7 +318,7 @@ already moved to `embeddinggemma-2:740m` — the one stale expectation keeping
 - **`PLAN-crypto.md` replaced** with a delta plan: what is built, what is genuinely
   missing, and what must not be built (`seal_level` enum, body re-encryption). Process
   docs are local-only by `AGENTS.md`; the file had been committed, and is now untracked.
-||||||| c68135c
+
 ### Changed — the resident's keystore is sealed (2026-11-08)
 
 The client held every private key in `localStorage` as plain JSON
