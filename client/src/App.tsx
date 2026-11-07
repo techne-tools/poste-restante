@@ -255,7 +255,7 @@ export default function App() {
             }}
           </Route>
           <Route path="/addresses">
-            <AddressBook onError={setError} onCompose={composeToAddress} />
+            <AddressBook onError={setError} onCompose={composeToAddress} from={auth.address} />
           </Route>
           <Route path="/profile">
             <Profile

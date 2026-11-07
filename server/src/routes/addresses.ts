@@ -14,6 +14,8 @@ import type { BookService } from "../book/service.js";
 import { BOOK_ADDRESS } from "../book/service.js";
 import type { OidcPending } from "../server.js";
 import { MAX_LIMIT, DEFAULT_LIMIT } from "../server.js";
+import { addressTag } from "../pipeline/logger.js";
+import { mayAnswerKeyOffer } from "../keyletter.js";
 
 export function createAddressesRoutes(
   house: House,
@@ -144,6 +146,91 @@ export function createAddressesRoutes(
     const letters = await house.repo.listLettersForReview(address);
     return c.json({ address, letters: letters.map(toLetter) });
   });
+
+  // ── A keyletter's offered key change (SPEC §15, migration 034) ──────────
+  //
+  // A keyletter from an address whose live key DIFFERS does not overwrite the
+  // record: everyone who already sealed a letter to the old key needs to see
+  // that it moved. The change waits as one pending offer per address, and a
+  // human answers it here — accept (the offer becomes the live key) or
+  // decline (the record stands; the letter stays in the archive).
+  //
+  // Who may answer: the address itself, or anyone who can see the keyletter
+  // that carried the change. Visibility is derived, not granted — a resident
+  // who is not party to the letter is answered exactly as if no offer existed
+  // (AGENTS.md privacy checklist #2 and #8).
+  //
+  // Accepting does NOT move `identity_id`: the key arrived by TOFU and a human
+  // agreeing it is current does not make it the address's proven identity.
+  // That happens only when the address registers with proof of possession.
+  const answerOffer = async (c: any, answer: "accept" | "decline") => {
+    const who = await caller(c);
+    if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
+    const address = c.req.param("address");
+    const body = (await c.req.json().catch(() => null)) as { letterId?: string } | null;
+    const letterId = body?.letterId?.trim();
+    if (!letterId) {
+      return c.json(
+        { error: { code: "invalid_offer_answer", message: "say which keyletter you are answering" } },
+        400,
+      );
+    }
+    const offer = await house.repo.getKeyOffer(address);
+    if (!offer) {
+      return c.json({ error: { code: "not_found", message: "no such key change" } }, 404);
+    }
+    // Who is asking, before what they are asking about. A non-party must not be
+    // able to tell an offer apart from its absence — including by sending a
+    // letter id that does not match (which would otherwise answer 409 and say
+    // "an offer exists here"). Absence is silence, in every branch.
+    const party = await mayAnswerKeyOffer(house.repo, who.address, address, letterId);
+    if (!party) {
+      return c.json({ error: { code: "not_found", message: "no such key change" } }, 404);
+    }
+    if (offer.letter_id !== letterId) {
+      // The resident answered an offer that has since been replaced by a newer
+      // keyletter. Accepting the older keys would install what they did not
+      // just read, so the house says so instead.
+      return c.json(
+        {
+          error: {
+            code: "stale_offer",
+            message: "the key change has been replaced — read it again before answering",
+          },
+        },
+        409,
+      );
+    }
+    if (answer === "accept") {
+      await house.repo.setAddressKey(
+        address,
+        {
+          ageRecipient: offer.age_recipient,
+          ed25519Public: offer.ed25519_public,
+          recoveryAgeRecipient: offer.recovery_age_recipient,
+        },
+        "keyletter",
+        offer.letter_id,
+      );
+    }
+    await house.repo.resolveKeyOffer(address, answer === "accept" ? "accepted" : "declined");
+    // Log the decision, never the person: a hashed address tag and the letter
+    // id (a content hash).
+    house.log.info(answer === "accept" ? "keys:keyletter-accepted" : "keys:keyletter-declined", {
+      addressTag: addressTag(address),
+      letterId,
+      by: addressTag(who.address),
+    });
+    return c.json({
+      address,
+      letterId,
+      accepted: answer === "accept",
+      key: await house.repo.getAddressKey(address),
+    });
+  };
+
+  app.post("/v1/addresses/:address/keys/offer/accept", (c) => answerOffer(c, "accept"));
+  app.post("/v1/addresses/:address/keys/offer/decline", (c) => answerOffer(c, "decline"));
 
   return app;
 }

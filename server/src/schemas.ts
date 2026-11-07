@@ -10,6 +10,7 @@ import { LETTER_KINDS } from "./types.js";
 import { isEd25519PublicKey, isSealableRecipient } from "./crypto/keys.js";
 import { stripClauseFrontmatter } from "./book/frontmatter.js";
 import type { StoredLetterRow } from "./db/repository.js";
+import type { KeyFrameBody } from "./types.js";
 
 export const FrameSchema = z.object({
   frame: z.string().min(1).max(100),
@@ -68,13 +69,48 @@ export const SealedBodySchema = z.object({
   signature: z.string().min(1),
 });
 
+export const KeyFrameBodySchema = z.object({
+  format: z.literal("keyframe"),
+  /** The public key material — validated exactly as a registration's halves
+   *  are: a recipient the encrypter cannot parse is a correspondent no letter
+   *  can be sealed to, so it is refused at the door rather than installed. */
+  keys: z.object({
+    ageRecipient: z
+      .string()
+      .min(1)
+      .refine(isSealableRecipient, {
+        message: "ageRecipient must be a recipient a letter can be sealed to (age1…)",
+      }),
+    ed25519Public: z
+      .string()
+      .min(1)
+      .refine(isEd25519PublicKey, {
+        message: "ed25519Public must be a base64url SPKI ed25519 public key",
+      }),
+    recoveryAgeRecipient: z
+      .string()
+      .nullable()
+      .default(null)
+      .refine((value) => value === null || isSealableRecipient(value), {
+        message: "recoveryAgeRecipient must be a recipient a letter can be sealed to (age1…)",
+      }),
+  }),
+  /** The note that travels with the keys. Bounded — it is a sentence, not a
+   *  letter body; the keys are the content. */
+  content: z.string().max(4000).default(""),
+  /** Present but possibly empty: an unsigned keyletter is a fact the house
+   *  answers honestly ("the frame carries no signature"), not a schema
+   *  failure that cannot say which silence it is. */
+  signature: z.string().max(400).default(""),
+});
+
 export const LetterSchema = z.object({
   // The id is derived from the envelope+body. A caller-supplied id is
   // accepted for contract compatibility but ignored — the hash is the identity.
   id: z.string().optional(),
   envelope: EnvelopeSchema,
   time: TimeSchema,
-  body: z.union([BodySchema, SealedBodySchema]),
+  body: z.union([BodySchema, SealedBodySchema, KeyFrameBodySchema]),
 });
 
 export const AddressSchema = z.object({
@@ -208,6 +244,37 @@ export const ClauseActionSchema = z.object({
 
 export type LetterInput = z.infer<typeof LetterSchema>;
 
+/**
+ * The key frame a stored keyletter carries.
+ *
+ * A keyletter's row keeps the WHOLE body as JSON (the frame is what the
+ * signature covers, so the archive keeps what arrived — the same rule as a
+ * clause's frontmatter, which is stored in full and only stripped at this
+ * mapper). `body_text` carries the note alone, so a search finds the sentence
+ * and never a wall of base64 keys. Null when the row is not a readable frame —
+ * the caller then serves the body as plain text rather than inventing one.
+ */
+export function keyFrameBodyFromStored(stored: string): KeyFrameBody | null {
+  try {
+    const parsed = JSON.parse(stored) as Partial<KeyFrameBody>;
+    if (parsed?.format !== "keyframe" || !parsed.keys || typeof parsed.content !== "string") {
+      return null;
+    }
+    return {
+      format: "keyframe",
+      keys: {
+        ageRecipient: parsed.keys.ageRecipient,
+        ed25519Public: parsed.keys.ed25519Public,
+        recoveryAgeRecipient: parsed.keys.recoveryAgeRecipient ?? null,
+      },
+      content: parsed.content,
+      signature: typeof parsed.signature === "string" ? parsed.signature : "",
+    };
+  } catch {
+    return null;
+  }
+}
+
 /** Map a stored row back to the contract letter shape. Shared by the Hono
  * letter server and the MCP server so both protocol faces return the same
  * letter shape. */
@@ -239,16 +306,21 @@ export function toLetter(row: StoredLetterRow) {
           recipients: [],
           signature: row.signature ?? "",
         }
-      : {
-          format: "markdown" as const,
-          // A clause letter's body begins with the stated-will frontmatter
-          // (the role/continues block). The reading surface never shows it —
-          // the act is the letter, the text is the clause. Stripped here, at
-          // the shared mapper, so every protocol face (HTTP + MCP) returns
-          // letters that read as letters. Derivation keeps stripping for the
-          // engine's own use; the archive stores the full body.
-          content: row.kind === "clause" ? stripClauseFrontmatter(row.body) : row.body,
-        },
+      : row.kind === "keyletter"
+        ? (keyFrameBodyFromStored(row.body) ?? {
+            format: "markdown" as const,
+            content: row.body,
+          })
+        : {
+            format: "markdown" as const,
+            // A clause letter's body begins with the stated-will frontmatter
+            // (the role/continues block). The reading surface never shows it —
+            // the act is the letter, the text is the clause. Stripped here, at
+            // the shared mapper, so every protocol face (HTTP + MCP) returns
+            // letters that read as letters. Derivation keeps stripping for the
+            // engine's own use; the archive stores the full body.
+            content: row.kind === "clause" ? stripClauseFrontmatter(row.body) : row.body,
+          },
     receivedAt: row.received_at.toISOString(),
     pinnedAt: row.pinned_at?.toISOString() ?? null,
     pinnedBy: row.pinned_by ?? null,

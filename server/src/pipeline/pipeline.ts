@@ -11,18 +11,23 @@
  * Observable via structured logs (no telemetry — logs stay local).
  */
 import type { Logger } from "./logger.js";
-import type { Letter, LetterBody, SealedLetterBody, StoredLetter } from "../types.js";
+import type { KeyFrameBody, Letter, LetterBody, SealedLetterBody, StoredLetter } from "../types.js";
 import { letterIdFromCanonical, canonicaliseWith, resolvePinnedId, resolveSignedId } from "../id.js";
 import { markdownToText } from "./markdown.js";
 import { verifyLetterId } from "../crypto/keys.js";
+import { applyKeyFrame, verifyKeyFrame, type KeyLetter } from "../keyletter.js";
 import type { PostgresRepository } from "../db/repository.js";
 import type { SemanticStore } from "../qdrant/store.js";
 import type { Embedder } from "../embed/embedder.js";
 import type { PayloadStore } from "../minio/store.js";
 
+/** A body the house may read — the two readable shapes. A sealed body is
+ *  neither, and the type is what keeps it out of this method. */
+type ReadableBody = LetterBody | KeyFrameBody;
+
 /** A letter whose body the house may read. Only this shape reaches the
  *  embedder and the semantic store. */
-type OpenLetter = Letter & { body: LetterBody };
+type OpenLetter = Letter & { body: ReadableBody };
 
 /** A letter whose body is ciphertext. The house stores it and verifies the
  *  signature; it never reads it, so nothing here can index it. */
@@ -37,6 +42,18 @@ export interface IngestResult {
    *  house does not store what it cannot verify, and this is NOT a
    *  duplicate: it is a rejection. The route answers 400, never 200. */
   rejected?: boolean;
+  /** WHY it was rejected, when the reason is knowable. Three silences, told
+   *  apart so the door can answer truthfully instead of collapsing them:
+   *
+   *    unsigned        a key letter whose frame carries no signature at all.
+   *    bad_signature   a signature that verifies under no key that could have
+   *                    made it (a sealed letter's sender history, or the key
+   *                    a key letter publishes).
+   *    frame_mismatch  a `keyletter` whose body is not a key frame, or a key
+   *                    frame travelling as some other kind. The two markers
+   *                    must name the same thing.
+   */
+  rejectionReason?: "unsigned" | "bad_signature" | "frame_mismatch";
 }
 
 /** A hook fired after a leave/join letter is stored — the participation
@@ -80,18 +97,30 @@ export class IngestionPipeline {
     // earlier generation of their key (see resolveId). A caller-supplied id is
     // ignored: the hash is the identity, so two identical letters are the same
     // letter and a changed letter is a new one.
-    const { id, rejected, keyGeneration } = await this.resolveId(letter);
+    const { id, rejected, rejectionReason, keyGeneration } = await this.resolveId(letter);
     const existing = await this.repo.getLetter(id);
     if (existing) {
       this.log.info("ingest:duplicate", { letterId: id });
+      // A keyletter's EFFECT is idempotent, so a duplicate is also the retry
+      // path: if the first delivery stored the letter but its keys did not
+      // land (the two writes are separate transactions), re-delivery is the
+      // only way to finish. Applying again is a no-op when it did land.
+      if (letter.body.format === "keyframe" && !rejected) {
+        await this.applyKeyLetter({ ...letter, body: letter.body }, id);
+      }
       return { letterId: id, created: false };
     }
     // A signature that verifies under no key the sender has ever held is NOT
     // a duplicate: it is a rejection. The house does not store what it cannot
     // verify, and the route answers 400, never 200.
     if (rejected) {
-      this.log.warn("ingest:sealed-signature-invalid", { letterId: id });
-      return { letterId: id, created: false, rejected: true };
+      this.log.warn(
+        rejectionReason === "bad_signature" && letter.body.format === "keyframe"
+          ? "ingest:keyletter-signature-invalid"
+          : "ingest:sealed-signature-invalid",
+        { letterId: id, reason: rejectionReason ?? null },
+      );
+      return { letterId: id, created: false, rejected: true, rejectionReason };
     }
     // A sealed letter signed by a key the sender has RETIRED is accepted:
     // it may be a letter written before the rotation, arriving late — the
@@ -115,6 +144,15 @@ export class IngestionPipeline {
       body.format === "sealed"
         ? await this.storeSealed({ ...letter, body }, id)
         : await this.storeOpen({ ...letter, body }, id);
+
+    // 5b. A key frame's keys land AFTER the letter row exists, because the
+    //     offer it may raise names that letter (034's foreign key: an offer
+    //     without its letter is not explainable). A failure here is logged and
+    //     never loses the letter — and because the effect is idempotent, a
+    //     re-delivery finishes the job (see the duplicate branch above).
+    if (body.format === "keyframe") {
+      await this.applyKeyLetter({ ...letter, body }, id);
+    }
 
     // 6. A leave/join/shelve/unshelve letter updates the participation
     //    cache — the structural stop and the shelf are derived from the
@@ -168,14 +206,21 @@ export class IngestionPipeline {
     // content hash; the sealed flag is the one fact an operator needs.
     this.log.info("ingest:stored", { letterId: id, sealed: false });
 
-    // 2. Embed the plain-text body and index in Qdrant.
+    // 2. Embed the plain-text body and index in Qdrant. A body with no text
+    //    to read (a keyletter whose note is empty) has nothing to embed —
+    //    that is not a failure, and an embedder handed "" is a dependency's
+    //    problem, so the step is skipped rather than attempted.
     try {
-      const vector = await this.embedder.embed(bodyText);
-      this.log.info("ingest:embedded", { letterId: id, dimension: vector.length });
+      if (bodyText.trim().length === 0) {
+        this.log.info("ingest:not-indexed-empty", { letterId: id });
+      } else {
+        const vector = await this.embedder.embed(bodyText);
+        this.log.info("ingest:embedded", { letterId: id, dimension: vector.length });
 
-      // 3. Qdrant vector.
-      await this.semantic.upsert(id, vector);
-      this.log.info("ingest:indexed-semantic", { letterId: id });
+        // 3. Qdrant vector.
+        await this.semantic.upsert(id, vector);
+        this.log.info("ingest:indexed-semantic", { letterId: id });
+      }
     } catch (err) {
       this.log.error("ingest:semantic-index-failed", {
         letterId: id,
@@ -214,6 +259,25 @@ export class IngestionPipeline {
   }
 
   /**
+   * Land a verified keyletter's keys (SPEC §15, `keyletter.ts`).
+   *
+   * The letter is already stored when this runs — its row exists so an offer
+   * can name it. A failure is logged, never fatal (the letter is in the
+   * archive; the effect is idempotent and re-delivery retries it), which is
+   * the same rule the derived-view hooks follow.
+   */
+  private async applyKeyLetter(letter: KeyLetter, id: string): Promise<void> {
+    try {
+      await applyKeyFrame(this.repo, this.log, letter, id);
+    } catch (err) {
+      this.log.error("ingest:keyletter-apply-failed", {
+        letterId: id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  /**
    * Resolve a letter's id — and, for a sealed letter, verify its signature on
    * the way (SPEC §15). The id hashes the envelope+body with every handle
    * resolved to its DURABLE identity (SPEC §19, amended 2026-11-08), which is
@@ -241,9 +305,31 @@ export class IngestionPipeline {
    */
   private async resolveId(
     letter: Letter,
-  ): Promise<{ id: string; rejected?: boolean; keyGeneration?: "active" | "retired" }> {
+  ): Promise<{
+    id: string;
+    rejected?: boolean;
+    rejectionReason?: "unsigned" | "bad_signature" | "frame_mismatch";
+    keyGeneration?: "active" | "retired";
+  }> {
     const identities = await this.identityIds(letter);
     const id = letterIdFromCanonical(canonicaliseWith(letter, identities));
+
+    // The kind and the body must name the same thing (SPEC §15). A keyletter
+    // whose body is prose is not a keyletter, and a key frame travelling as an
+    // ordinary letter must not install anything — either way the letter is
+    // refused rather than half-understood. Checked here, in the single write
+    // path, so every face (HTTP, MCP, SMTP, the house's own services) obeys it.
+    const frame = letter.body.format === "keyframe";
+    if (frame !== (letter.envelope.kind === "keyletter")) {
+      return { id, rejected: true, rejectionReason: "frame_mismatch" };
+    }
+
+    if (letter.body.format === "keyframe") {
+      const verdict = verifyKeyFrame(id, letter.body);
+      if (!verdict.ok) return { id, rejected: true, rejectionReason: verdict.reason };
+      return { id };
+    }
+
     if (letter.body.format !== "sealed") return { id };
 
     const history = await this.repo.getAddressKeyHistory(letter.envelope.from);

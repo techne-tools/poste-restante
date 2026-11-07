@@ -70,8 +70,6 @@ const TRACKED = new Set([
   "invalid_redeem",
   "invalid_renew",
   "invalid_scrub",
-  "invalid_signature",
-  "not_found",
   "oidc_disabled",
   "out_of_reach",
 ]);

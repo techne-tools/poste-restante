@@ -21,6 +21,7 @@ export const LETTER_KINDS = [
   "rename",
   "shelve",
   "unshelve",
+  "keyletter",
 ] as const;
 
 export type LetterKind = (typeof LETTER_KINDS)[number];
@@ -85,7 +86,50 @@ export interface SealedLetterBody {
   signature: string;
 }
 
-export type LetterBodyUnion = LetterBody | SealedLetterBody;
+/**
+ * The key frame (SPEC §15, the keyletter) — a letter that carries a public
+ * key, so a correspondent with an address and no keys can be made reachable
+ * from inside the house rather than out of band.
+ *
+ * The frame is the BODY, not the envelope: the keys are content, they are
+ * covered by the letter's own signature, and the archive keeps what arrived.
+ * `kind: "keyletter"` is the marker a reader (and the retrieval filter) can
+ * trust without parsing; the schema refuses a mismatch between kind and
+ * format in either direction, so the two say the same thing or the letter is
+ * refused at the door.
+ *
+ * The signature is over the letter ID — the id the sender hashed, made with
+ * the private half of `keys.ed25519Public`. That is the whole authenticity
+ * story of a keyletter: it proves the sender HOLDS the key it publishes, and
+ * (because every letter face binds `from` to the authenticated caller) that
+ * the address's owner sent it. It does NOT prove the address — that is what a
+ * registration's challenge-response does, and why the two write paths are
+ * distinguished by `address_keys.origin` and why a keyletter never pins
+ * `identity_id`.
+ */
+export interface KeyFrameBody {
+  format: "keyframe";
+  /** The public key material the letter publishes. Public keys are public;
+   *  the private halves never leave the sender's device. */
+  keys: {
+    /** The age recipient a letter is sealed to (`age1…`). */
+    ageRecipient: string;
+    /** The ed25519 public key (base64url SPKI) — the letter-signing key, and
+     *  the one whose private half made this frame's signature. */
+    ed25519Public: string;
+    /** The recovery age recipient, when the sender minted one (§15 backstop). */
+    recoveryAgeRecipient: string | null;
+  };
+  /** The human sentence that travels with the keys — the letter's own text.
+   *  Readable, indexed, and the only part of a keyletter that is content. */
+  content: string;
+  /** ed25519 signature over the letter id, base64url. Excluded from the
+   *  canonical form (the id cannot hash its own signature), exactly as the
+   *  sealed body's signature is. */
+  signature: string;
+}
+
+export type LetterBodyUnion = LetterBody | SealedLetterBody | KeyFrameBody;
 
 /**
  * A letter as it arrives at the house. The id is derived from the envelope +

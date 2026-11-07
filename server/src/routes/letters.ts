@@ -4,7 +4,7 @@ import { secureHeaders } from "hono/secure-headers";
 import { createRateLimiter } from "../auth/rate-limiter.js";
 import { LETTER_KINDS } from "../types.js";
 import { AddressSchema, LetterSchema, RedeemSchema, ChangePasswordSchema, RegisterKeysSchema, ClauseActionSchema, DayCardSchema, InviteSchema, toLetter } from "../schemas.js";
-import { deliverLetter } from "../deliver.js";
+import { deliverLetter, rejectionAnswer } from "../deliver.js";
 import type { House } from "../house.js";
 import type { RetrievalQuery } from "../retrieval/retrieval.js";
 import type { AuthService, Authenticated } from "../auth/service.js";
@@ -81,12 +81,13 @@ export function createLettersRoutes(
     // The id is derived from the envelope+body; a caller-supplied id is
     // ignored (the hash is the identity). Deliver — ingest, surface house
     // letters in the whisper, mark whispered threads replied.
-    const { letterId, created, rejected } = await deliverLetter(house, parsed.data);
+    const { letterId, created, rejected, rejectionReason } = await deliverLetter(house, parsed.data);
     if (rejected) {
-      return c.json(
-        { error: { code: "invalid_signature", message: "the letter's signature does not verify" } },
-        400,
-      );
+      // The three silences are told apart by `rejectionAnswer` (deliver.ts):
+      // no signature at all, a signature that does not verify, and a kind that
+      // does not match its body are different facts, and the door says which.
+      const answer = rejectionAnswer(rejectionReason);
+      return c.json({ error: { code: answer.code, message: answer.message } }, answer.status);
     }
     return c.json({ id: letterId, created }, created ? 201 : 200);
   });

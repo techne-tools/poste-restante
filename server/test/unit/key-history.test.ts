@@ -217,24 +217,37 @@ describe("setAddressKey — close the live row, append the next", () => {
       "BEGIN",
       "SELECT id, age_recipient, ed25519_public, recovery_age_recipient",
       "UPDATE address_keys SET retired_at = now() WHERE id = $1",
-      "INSERT INTO address_keys (address, age_recipient, ed25519_public, recovery_age_recipient)",
+      "INSERT INTO address_keys",
+      "UPDATE addresses a SET identity_id = $2",
+      "UPDATE address_key_offers",
       "COMMIT",
     ]);
     // The retired generation is named by id — not by address, and not by a
     // rewrite of the key columns.
     expect(calls[2].params).toEqual(["7"]);
-    // The appended row is live by construction (no retired_at is written).
+    // The appended row is live by construction (no retired_at is written) and
+    // says HOW it arrived: this path is the proven one.
     expect(calls[3].sql).not.toContain("retired_at");
-    expect(calls[3].params).toEqual(["ben@house", "age-new", "ed-new", null]);
+    expect(calls[3].params).toEqual(["ben@house", "age-new", "ed-new", null, "registration", null]);
     // Nothing overwrites or reopens a retired row.
     expect(calls.some((c) => /DO UPDATE|ON CONFLICT/i.test(c.sql))).toBe(false);
-    // And a rotation never touches the identity: the pin is for the FIRST
-    // registration only (SPEC §19, amended 2026-11-08).
-    expect(calls.some((c) => c.sql.includes("UPDATE addresses"))).toBe(false);
+    // And a rotation never MOVES the identity: the pin statement still runs
+    // (it is the registration's act, not a first-time-only branch), but its
+    // predicate refuses to write while the identity is a key this address has
+    // held — so a rotation reaches it and it does nothing.
+    const pin = calls.find((c) => c.sql.includes("UPDATE addresses"));
+    expect(pin).toBeDefined();
+    expect(pin!.sql).toContain("NOT EXISTS");
     expect(released()).toBe(1);
   });
 
-  it("writes nothing when the same key is registered again", async () => {
+  it("asks to pin on a re-registration too, so a keyletter-installed key can be pinned", async () => {
+    // The unchanged path. Before 034 this wrote nothing at all, because a key
+    // could only arrive by registration, so "no new row" meant "nothing to
+    // pin". A keyletter changes that: it installs a key WITHOUT pinning
+    // (`origin = 'keyletter'`, the keyletter.ts rule), so the owner's later
+    // proven registration of that same key is the first and only chance to
+    // pin the identity. The pin's predicate makes it a no-op once pinned.
     const { repo, calls } = fakePool(live());
     await repo.setAddressKey("ben@house", {
       ageRecipient: "age-old",
@@ -244,8 +257,38 @@ describe("setAddressKey — close the live row, append the next", () => {
     expect(calls.map((c) => c.sql.split("\n")[0].trim())).toEqual([
       "BEGIN",
       "SELECT id, age_recipient, ed25519_public, recovery_age_recipient",
+      "UPDATE addresses a SET identity_id = $2",
+      "UPDATE address_key_offers",
       "COMMIT",
     ]);
+    expect(calls.some((c) => c.sql.startsWith("INSERT INTO address_keys"))).toBe(false);
+  });
+
+  it("a keyletter's keys are recorded with their origin and never pin the identity", async () => {
+    // TOFU (034): the letter's signature proves possession of the key it
+    // publishes, not the address. So the key row is written with
+    // `origin = 'keyletter'` and its provenance, and the identity spine is
+    // left exactly as it was.
+    const { repo, calls } = fakePool(null);
+    await repo.setAddressKey(
+      "you@house",
+      { ageRecipient: "age-1", ed25519Public: "ed-1", recoveryAgeRecipient: null },
+      "keyletter",
+      "letter-abc",
+    );
+    const insert = calls.find((c) => c.sql.startsWith("INSERT INTO address_keys"));
+    expect(insert!.params).toEqual([
+      "you@house",
+      "age-1",
+      "ed-1",
+      null,
+      "keyletter",
+      "letter-abc",
+    ]);
+    // No pin, and no offer settlement: a keyletter neither establishes an
+    // identity nor answers a question it did not ask.
+    expect(calls.some((c) => c.sql.includes("UPDATE addresses"))).toBe(false);
+    expect(calls.some((c) => c.sql.includes("UPDATE address_key_offers"))).toBe(false);
   });
 
   it("appends the first generation for a keyless address", async () => {
@@ -257,9 +300,16 @@ describe("setAddressKey — close the live row, append the next", () => {
     });
     const sqls = calls.map((c) => c.sql.split("\n")[0].trim());
     expect(sqls[0]).toBe("BEGIN");
-    expect(sqls).toContain("INSERT INTO address_keys (address, age_recipient, ed25519_public, recovery_age_recipient)");
+    expect(sqls).toContain("INSERT INTO address_keys");
     expect(sqls.some((s) => s.startsWith("UPDATE address_keys"))).toBe(false);
-    expect(calls[2].params).toEqual(["you@house", "age-1", "ed-1", "recovery-1"]);
+    expect(calls[2].params).toEqual([
+      "you@house",
+      "age-1",
+      "ed-1",
+      "recovery-1",
+      "registration",
+      null,
+    ]);
   });
 
   it("pins the identity at the first registration, in the same transaction", async () => {

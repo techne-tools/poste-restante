@@ -29,9 +29,10 @@ export interface Letter {
   pinnedBy: string | null;
 }
 
-/** The letter's body — markdown, or sealed ciphertext (SPEC §15). The
- *  house stores sealed bodies without reading them; the reader unseals
- *  with their own key. */
+/** The letter's body — markdown, sealed ciphertext (SPEC §15), or a key
+ *  frame (the keyletter, §15). The house stores sealed bodies without reading
+ *  them; the reader unseals with their own key. A key frame is public by
+ *  design: it carries the keys a correspondent seals to. */
 export type LetterBody =
   | {
       format: "markdown";
@@ -46,6 +47,20 @@ export type LetterBody =
        *  minimisation; the reader needs only their own key). */
       recipients: string[];
       /** ed25519 signature over the letter id, base64url. */
+      signature: string;
+    }
+  | {
+      format: "keyframe";
+      /** The public key material the letter publishes. */
+      keys: {
+        ageRecipient: string;
+        ed25519Public: string;
+        recoveryAgeRecipient: string | null;
+      };
+      /** The note that travels with the keys. */
+      content: string;
+      /** ed25519 signature over the letter id, base64url — made with the
+       *  private half of `keys.ed25519Public`. */
       signature: string;
     };
 
@@ -108,6 +123,16 @@ export interface Address {
   /** The desk's seal default — when this resident sits down to write, the
    *  seal is already on (absent = false, sealing stays per-letter). */
   sealDefault: boolean;
+  /** A key change this address published in a keyletter that no one has
+   *  answered yet (SPEC §15). Visible because the person it matters to is
+   *  whoever already sealed to the OLD key. Null when nothing is pending. */
+  keyOffer?: {
+    letterId: string;
+    ageRecipient: string;
+    ed25519Public: string;
+    recoveryAgeRecipient: string | null;
+    createdAt: string;
+  } | null;
 }
 
 /** The house book — the derived constitution (SPEC §5.8). */

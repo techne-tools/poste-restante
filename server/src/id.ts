@@ -73,11 +73,38 @@ export function canonicaliseWith(letter: Letter, identities: Map<string, string>
       gregorian: letter.time.gregorian,
       frames,
     },
-    body: {
-      format: letter.body.format,
-      content: letter.body.content,
-    },
+    body: canonicalBody(letter.body),
   });
+}
+
+/**
+ * The body's canonical form. Frozen for the two original shapes — every stored
+ * id was derived from them, so a new field appearing in their JSON would move
+ * the whole archive's ids.
+ *
+ * The key frame is the one shape that has more to hash than text: its KEYS are
+ * content (the signature is over the id, and the point of the signature is that
+ * it covers the key material it publishes), and its own signature is excluded —
+ * an id cannot hash the signature made over it. Fixed field order, so the
+ * sender's client and this resolver agree byte for byte.
+ */
+function canonicalBody(
+  body: Letter["body"],
+): { format: string; content: string } | {
+  format: "keyframe";
+  content: string;
+  keys: { ageRecipient: string; ed25519Public: string; recoveryAgeRecipient: string | null };
+} {
+  if (body.format !== "keyframe") return { format: body.format, content: body.content };
+  return {
+    format: "keyframe",
+    content: body.content,
+    keys: {
+      ageRecipient: body.keys.ageRecipient,
+      ed25519Public: body.keys.ed25519Public,
+      recoveryAgeRecipient: body.keys.recoveryAgeRecipient,
+    },
+  };
 }
 
 /** Derive the letter id: sha256 hex of the canonical serialisation. */

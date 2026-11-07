@@ -52,6 +52,29 @@ export interface AddressKeyRecord {
   recovery_age_recipient: string | null;
   created_at: Date;
   retired_at: Date | null;
+  /** HOW this record arrived (034): a challenge-proven registration by the
+   *  address itself, or a keyletter — TOFU on first sight, the sender's
+   *  authenticated word plus possession of the key it publishes. The two are
+   *  not equally proven, and the row says which. */
+  origin: KeyOrigin;
+  /** The keyletter that carried this record, when `origin` is 'keyletter' —
+   *  provenance, not an edge (no foreign key: a key record outlives the letter
+   *  that announced it). Null for a registration. */
+  source_letter_id: string | null;
+}
+
+/** How a key record arrived. See migration 034 and `setAddressKey`. */
+export type KeyOrigin = "registration" | "keyletter";
+
+/** A key an address published in a keyletter that does NOT match its live
+ *  record — the change a human must see before it takes effect (034). */
+export interface AddressKeyOfferRecord {
+  address: string;
+  letter_id: string;
+  age_recipient: string;
+  ed25519_public: string;
+  recovery_age_recipient: string | null;
+  created_at: Date;
 }
 
 export class PostgresRepository {
@@ -118,6 +141,18 @@ export class PostgresRepository {
 
       // The letter row.
       const sealed = body.format === "sealed";
+      // A key frame is stored whole (JSON), because its keys are what the
+      // signature covers and the archive keeps what arrived; `body_text` still
+      // carries the note alone, so search finds the sentence, never base64.
+      const storedBody =
+        body.format === "keyframe"
+          ? JSON.stringify({
+              format: body.format,
+              content: body.content,
+              keys: body.keys,
+              signature: body.signature,
+            })
+          : body.content;
       await client.query(
         `INSERT INTO letters
           (id, from_addr, to_addrs, cc_addrs, thread_id, kind, lang, subject,
@@ -133,7 +168,7 @@ export class PostgresRepository {
           envelope.kind,
           envelope.lang,
           envelope.subject,
-          body.content,
+          storedBody,
           bodyText,
           receivedAt,
           sealed,
@@ -294,6 +329,18 @@ export class PostgresRepository {
       recoveryAgeRecipient: string | null;
       isAgent: boolean;
       sealDefault: boolean;
+      /** The key change this address has published and no one has answered
+       *  yet (034). Visible in the book because the person it matters to is
+       *  whoever already sealed to the OLD key — who may not have been on the
+       *  keyletter's envelope at all. It is the same class of fact as the keys
+       *  themselves, which the book already carries. */
+      keyOffer: {
+        letterId: string;
+        ageRecipient: string;
+        ed25519Public: string;
+        recoveryAgeRecipient: string | null;
+        createdAt: string;
+      } | null;
     }[]
   > {
     const { rows } = await this.pool.query(
@@ -301,6 +348,14 @@ export class PostgresRepository {
               COALESCE(a.identity_id, a.id) AS "identityId",
               ak.age_recipient AS "ageRecipient", ak.ed25519_public AS "ed25519Public",
               ak.recovery_age_recipient AS "recoveryAgeRecipient",
+              (SELECT json_build_object(
+                        'letterId', o.letter_id,
+                        'ageRecipient', o.age_recipient,
+                        'ed25519Public', o.ed25519_public,
+                        'recoveryAgeRecipient', o.recovery_age_recipient,
+                        'createdAt', o.created_at)
+                 FROM address_key_offers o
+                WHERE o.address = a.id AND o.resolved_at IS NULL) AS "keyOffer",
               EXISTS (SELECT 1 FROM agents ag WHERE ag.address = a.id AND ag.died_at IS NULL) AS "isAgent"
        FROM addresses a
        LEFT JOIN address_keys ak ON ak.address = a.id AND ak.retired_at IS NULL
@@ -325,12 +380,29 @@ export class PostgresRepository {
     recoveryAgeRecipient: string | null;
     isAgent: boolean;
     sealDefault: boolean;
+    /** A key change this address published that no one has answered yet (034)
+     *  — served to the address itself and to the book, same fact, same shape. */
+    keyOffer: {
+      letterId: string;
+      ageRecipient: string;
+      ed25519Public: string;
+      recoveryAgeRecipient: string | null;
+      createdAt: string;
+    } | null;
   } | null> {
     const { rows } = await this.pool.query(
       `SELECT a.id, a.names, a.pronouns, a.is_public, a.seal_default AS "sealDefault",
               COALESCE(a.identity_id, a.id) AS "identityId",
               ak.age_recipient AS "ageRecipient", ak.ed25519_public AS "ed25519Public",
               ak.recovery_age_recipient AS "recoveryAgeRecipient",
+              (SELECT json_build_object(
+                        'letterId', o.letter_id,
+                        'ageRecipient', o.age_recipient,
+                        'ed25519Public', o.ed25519_public,
+                        'recoveryAgeRecipient', o.recovery_age_recipient,
+                        'createdAt', o.created_at)
+                 FROM address_key_offers o
+                WHERE o.address = a.id AND o.resolved_at IS NULL) AS "keyOffer",
               EXISTS (SELECT 1 FROM agents ag WHERE ag.address = a.id AND ag.died_at IS NULL) AS "isAgent"
        FROM addresses a
        LEFT JOIN address_keys ak ON ak.address = a.id AND ak.retired_at IS NULL
@@ -421,7 +493,7 @@ export class PostgresRepository {
   async getAddressKeyHistory(address: string): Promise<AddressKeyRecord[]> {
     const { rows } = await this.pool.query<AddressKeyRecord>(
       `SELECT id, address, age_recipient, ed25519_public, recovery_age_recipient,
-              created_at, retired_at
+              created_at, retired_at, origin, source_letter_id
        FROM address_keys
        WHERE address = $1
        ORDER BY created_at DESC, id DESC`,
@@ -458,10 +530,40 @@ export class PostgresRepository {
    *  exist yet, so the partial unique index breaks the tie — the loser's
    *  INSERT fails and its transaction rolls back rather than forking the
    *  history (and with it, the pin).
+   *
+   *  ── `origin`, and the pin it gates (034) ──────────────────────────────
+   *
+   *  This is still the ONE path that writes a key record, but it now takes
+   *  two kinds of caller, because a keyletter is a second way a key arrives.
+   *  `origin` names which, and the row keeps it:
+   *
+   *    'registration'  the address itself, having signed a house-issued
+   *                    challenge with the new key (auth/key-proof.ts). This
+   *                    is what pins the identity — the trust spine — and it
+   *                    settles any pending keyletter offer: an address that
+   *                    has spoken with proof has answered the question the
+   *                    offer was asking.
+   *
+   *    'keyletter'     TOFU: the letter's ed25519 signature proves possession
+   *                    of the key it publishes, and the door proved the sender
+   *                    owns the `from` address — but nothing here proves the
+   *                    ADDRESS, because there was no challenge. So this path
+   *                    never touches `addresses.identity_id`. A keyletter can
+   *                    make an address reachable for sealing; only a proven
+   *                    registration establishes who it is.
+   *
+   *  The pin therefore runs when, and only when, `origin` is 'registration'.
+   *  It is idempotent by predicate (the UPDATE writes only while the identity
+   *  is still a handle), so it is safe to run on an unchanged registration —
+   *  which is exactly the case a keyletter creates: keys installed by TOFU,
+   *  then the owner registers the same key with proof. The pin must land then
+   *  or never.
    */
   async setAddressKey(
     address: string,
     keys: { ageRecipient: string; ed25519Public: string; recoveryAgeRecipient: string | null },
+    origin: KeyOrigin = "registration",
+    sourceLetterId: string | null = null,
   ): Promise<void> {
     const client = await this.pool.connect();
     try {
@@ -486,7 +588,6 @@ export class PostgresRepository {
         live.recovery_age_recipient === keys.recoveryAgeRecipient;
 
       if (!unchanged) {
-        const first = live === undefined;
         if (live) {
           await client.query(
             `UPDATE address_keys SET retired_at = now() WHERE id = $1`,
@@ -494,27 +595,42 @@ export class PostgresRepository {
           );
         }
         await client.query(
-          `INSERT INTO address_keys (address, age_recipient, ed25519_public, recovery_age_recipient)
-           VALUES ($1, $2, $3, $4)`,
-          [address, keys.ageRecipient, keys.ed25519Public, keys.recoveryAgeRecipient],
+          `INSERT INTO address_keys
+             (address, age_recipient, ed25519_public, recovery_age_recipient, origin, source_letter_id)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [address, keys.ageRecipient, keys.ed25519Public, keys.recoveryAgeRecipient, origin, sourceLetterId],
         );
-        if (first) {
-          // Pin, once. The predicate is the belt on the `first` gate: it writes
-          // only while the identity is not one of the keys the address holds —
-          // i.e. while it is still just a handle (the address's own, or an old
-          // one it was relabelled from). An identity that is already a
-          // fingerprint is never the same string as the key being registered,
-          // so a rotation leaves it alone by construction as well as by gate.
-          await client.query(
-            `UPDATE addresses a SET identity_id = $2
-              WHERE a.id = $1
-                AND NOT EXISTS (
-                  SELECT 1 FROM address_keys k
-                   WHERE k.address = $1 AND k.ed25519_public = a.identity_id
-                )`,
-            [address, keys.ed25519Public],
-          );
-        }
+      }
+      if (origin === "registration") {
+        // Pin, once, and only for a PROVEN registration (034): a keyletter's
+        // key is not proof of the address, so it never reaches this block.
+        // The predicate is the belt on that gate: it writes only while the
+        // identity is not one of the keys the address holds — i.e. while it is
+        // still just a handle (the address's own, or an old one it was
+        // relabelled from). An identity that is already a fingerprint is never
+        // the same string as the key being registered, so a rotation leaves it
+        // alone by construction as well as by gate. Running it on an unchanged
+        // registration is what lets a key installed by keyletter be pinned
+        // when its owner later registers it with proof.
+        await client.query(
+          `UPDATE addresses a SET identity_id = $2
+            WHERE a.id = $1
+              AND NOT EXISTS (
+                SELECT 1 FROM address_keys k
+                 WHERE k.address = $1 AND k.ed25519_public = a.identity_id
+              )`,
+          [address, keys.ed25519Public],
+        );
+        // The address has spoken for itself. A pending keyletter offer is
+        // settled by it: satisfied when the proven key is the offered one,
+        // superseded when the address chose a different key.
+        await client.query(
+          `UPDATE address_key_offers
+              SET resolved_at = now(),
+                  resolution = CASE WHEN ed25519_public = $2 THEN 'accepted' ELSE 'superseded' END
+            WHERE address = $1 AND resolved_at IS NULL`,
+          [address, keys.ed25519Public],
+        );
       }
       await client.query("COMMIT");
     } catch (err) {
@@ -523,6 +639,55 @@ export class PostgresRepository {
     } finally {
       client.release();
     }
+  }
+
+  /** The key change an address has published and no human has answered yet
+   *  (034). Null when there is nothing pending — the common case. */
+  async getKeyOffer(address: string): Promise<AddressKeyOfferRecord | null> {
+    const { rows } = await this.pool.query<AddressKeyOfferRecord>(
+      `SELECT address, letter_id, age_recipient, ed25519_public,
+              recovery_age_recipient, created_at
+       FROM address_key_offers
+       WHERE address = $1 AND resolved_at IS NULL`,
+      [address],
+    );
+    return rows[0] ?? null;
+  }
+
+  /** Record (or replace) the pending key change an address published in a
+   *  keyletter. One pending offer per address — a newer disagreement replaces
+   *  the older one rather than stacking, because the offer is a QUESTION, and
+   *  the newest keyletter is the question being asked. Resolved rows stay as
+   *  the record of what was offered and what the house did with it. */
+  async saveKeyOffer(
+    address: string,
+    letterId: string,
+    keys: { ageRecipient: string; ed25519Public: string; recoveryAgeRecipient: string | null },
+  ): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO address_key_offers
+         (address, letter_id, age_recipient, ed25519_public, recovery_age_recipient)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (address) WHERE resolved_at IS NULL
+       DO UPDATE SET letter_id = EXCLUDED.letter_id,
+                     age_recipient = EXCLUDED.age_recipient,
+                     ed25519_public = EXCLUDED.ed25519_public,
+                     recovery_age_recipient = EXCLUDED.recovery_age_recipient,
+                     created_at = now()`,
+      [address, letterId, keys.ageRecipient, keys.ed25519Public, keys.recoveryAgeRecipient],
+    );
+  }
+
+  /** Close the pending offer. `accepted` and `declined` are a human's answers;
+   *  `superseded` is the address registering keys with proof of possession
+   *  (set inside `setAddressKey`'s transaction, never by a caller). */
+  async resolveKeyOffer(address: string, resolution: "accepted" | "declined" | "superseded"): Promise<boolean> {
+    const res = await this.pool.query(
+      `UPDATE address_key_offers SET resolved_at = now(), resolution = $2
+        WHERE address = $1 AND resolved_at IS NULL`,
+      [address, resolution],
+    );
+    return (res.rowCount ?? 0) > 0;
   }
 
   /** Open or close an address's door. The house's visibility law reads this. */

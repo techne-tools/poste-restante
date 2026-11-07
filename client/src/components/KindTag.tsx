@@ -21,6 +21,10 @@ const KIND_META: Record<string, { glyph: string }> = {
   // two kinds that had drifted out of the client's kind identity.
   agent: { glyph: "g" },
   rename: { glyph: "r" },
+  // A letter that carries a public key (SPEC §15) — the keyletter. Its own
+  // mark, because a letter whose content is a key should be recognisable in
+  // the row before anything is read.
+  keyletter: { glyph: "k" },
 };
 
 export default function KindTag({ kind }: { kind: string }) {

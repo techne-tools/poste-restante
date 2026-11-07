@@ -290,6 +290,17 @@ export default function LetterView({ letter, onBack, actions }: Props) {
               </button>
             )}
           </div>
+        ) : body.format === "keyframe" ? (
+          // A keyletter's content is a public key. The note reads as the
+          // letter; the keys are the fact, and the sentence says where they
+          // went so a reader is not left looking for them in the text.
+          <div className="body keyframe-body">
+            {renderMarkdown(body.content)}
+            <p className="keyframe-say">
+              These are {envelope.from}'s keys. The house holds them against the address, and a
+              letter sealed from here will reach them.
+            </p>
+          </div>
         ) : (
           <div className="body">{renderMarkdown(body.content)}</div>
         )}
