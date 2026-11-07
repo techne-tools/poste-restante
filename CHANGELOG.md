@@ -118,6 +118,21 @@ a table that kept no history.
   `retired_at = now()` on the live row and appends the next, in one
   transaction. Re-registering the *same* key writes nothing, so idempotent
   registration stays true without minting phantom generations.
+- **Decision 2026-11-08 — the id will be pinned, not recovered (option (b)).**
+  `addresses.identity_id` is set once, at an address's **first** key
+  registration, and never moves again; rotation retires a key but moves no
+  letter id, so an id is stable against *any* party's rotation rather than only
+  the sender's. The history walk above stays as the compatibility path for
+  letters written before the pin. Why: under recovery-only, a letter's identity
+  depended on a third party's key state — a recipient rotating made a
+  pre-existing letter hash differently, its re-delivery was rejected, and
+  re-sealing put a second copy in the archive under a new id. Amends SPEC §19
+  (whose "re-establishes to the new key" sentence loses to "the key never
+  changes"): the identity is durable, keys are material it holds over time.
+  Stored sealed letters cannot be moved — their id is what the signature covers
+  and the house holds no key to re-sign — so the archive is pinned going
+  forward and mixed for what is already written. Implementation: card
+  `t_16629c23`.
 - **Verification walks the history.** A sealed letter's signature is over its
   id, and the id resolves each handle to its ed25519 fingerprint — so a
   rotation changes the id a re-delivered letter would hash to. `resolveSignedId`
