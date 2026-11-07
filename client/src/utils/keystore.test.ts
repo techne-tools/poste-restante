@@ -280,7 +280,10 @@ describe("export → wipe → import", () => {
 
     // A sealed letter, stored while the resident held their key.
     const stored = await sealToRecipients("the archive remembers", [keys.ageRecipient]);
-    expect(await unsealWithIdentity(stored, keys.ageIdentity)).toBe("the archive remembers");
+    expect(await unsealWithIdentity(stored, keys.ageIdentity)).toEqual({
+      ok: true,
+      plaintext: "the archive remembers",
+    });
 
     const backup = await exportBackup(ADDRESS, PASSPHRASE);
     expect(backup.filename).toBe("poste-restante-chris@house-keystore.age");
@@ -293,7 +296,10 @@ describe("export → wipe → import", () => {
     await wipeKeystore(ADDRESS);
     expect(hasKeystore(ADDRESS)).toBe(false);
     expect(isKeystoreUnlocked(ADDRESS)).toBe(false);
-    expect(await unsealLetterBody(ADDRESS, stored)).toBeNull();
+    expect(await unsealLetterBody(ADDRESS, stored)).toEqual({
+      ok: false,
+      reason: "no_keys",
+    });
 
     // The resident restores from the file.
     const restored = await importBackup(backup.contents, PASSPHRASE);
@@ -301,7 +307,10 @@ describe("export → wipe → import", () => {
     expect(restored.keys.ageIdentity).toBe(keys.ageIdentity);
 
     // The letter stored before the wipe opens again.
-    expect(await unsealLetterBody(ADDRESS, stored)).toBe("the archive remembers");
+    expect(await unsealLetterBody(ADDRESS, stored)).toEqual({
+      ok: true,
+      plaintext: "the archive remembers",
+    });
   });
 
   it("carries the recovery identity into the backup", async () => {
@@ -319,7 +328,7 @@ describe("export → wipe → import", () => {
     // And the recovery recipient still opens a letter sealed to it — the
     // §15 backstop survives the round-trip.
     const sealed = await sealToRecipients("backstop", [restored.keys.recoveryAgeRecipient!]);
-    expect(await unsealLetterBody(ADDRESS, sealed)).toBe("backstop");
+    expect(await unsealLetterBody(ADDRESS, sealed)).toEqual({ ok: true, plaintext: "backstop" });
   });
 
   it("refuses a backup opened with the wrong passphrase", async () => {

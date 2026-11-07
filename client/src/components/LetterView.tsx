@@ -4,7 +4,7 @@ import { house, loadAuth } from "../api";
 import type { Letter, PayloadMeta } from "../api";
 import KindTag from "./KindTag";
 import { renderMarkdown } from "./markdown";
-import { isKeystoreUnlocked, unsealLetterBody, unsealPayload } from "../utils/crypto";
+import { unsealLetterBody, unsealPayload } from "../utils/crypto";
 import Enclosures, { isRenderable } from "./Enclosures";
 
 interface Props {
@@ -61,7 +61,9 @@ export default function LetterView({ letter, onBack, actions }: Props) {
   const [plaintext, setPlaintext] = useState<string | null>(
     sealed ? null : body.content,
   );
-  const [unsealFailure, setUnsealFailure] = useState<"locked" | "no-key" | null>(null);
+  const [unsealFailure, setUnsealFailure] = useState<
+    "locked" | "no-key" | "tampered" | null
+  >(null);
   const [unsealing, setUnsealing] = useState(false);
   // Sealed letters carry no plaintext subject — the first line of the
   // unsealed body is the title. Until then, a quiet placeholder (SPEC
@@ -168,28 +170,36 @@ export default function LetterView({ letter, onBack, actions }: Props) {
       const auth = loadAuth();
       const resident = auth?.address ?? envelope.from;
       const opened = await unsealLetterBody(resident, body.content);
-      if (opened === null) {
-        // Two different silences: the keys are sealed (open them and the
-        // letter opens), or they are open and this letter was not sealed
-        // to them. Say which — a resident should not go hunting for a
-        // lost key when the door is only shut.
-        setUnsealFailure(isKeystoreUnlocked(resident) ? "no-key" : "locked");
+      if (!opened.ok) {
+        // Three different silences, said as three different things. The
+        // keystore's state is not consulted: the unseal already knows,
+        // because it had to try the key to find out.
+        setUnsealFailure(
+          opened.reason === "no_keys"
+            ? "locked"
+            : opened.reason === "not_recipient"
+              ? "no-key"
+              : "tampered",
+        );
         return;
       }
+      const plaintext = opened.plaintext;
       // The first line of the plaintext is the subject; the body is the
       // rest (SPEC §15 — the subject moves into the body for sealed
       // letters).
-      const nl = opened.indexOf("\n");
+      const nl = plaintext.indexOf("\n");
       if (nl >= 0) {
-        setSubjectLabel(opened.slice(0, nl).trim() || "sealed letter");
-        setPlaintext(opened.slice(nl).replace(/^\n+/, ""));
+        setSubjectLabel(plaintext.slice(0, nl).trim() || "sealed letter");
+        setPlaintext(plaintext.slice(nl).replace(/^\n+/, ""));
       } else {
         setSubjectLabel("sealed letter");
-        setPlaintext(opened);
+        setPlaintext(plaintext);
       }
       setUnsealFailure(null);
     } catch {
-      setUnsealFailure("no-key");
+      // A throw here is the keystore's or the armour's, not a verdict on
+      // the letter: report the one thing we can stand behind.
+      setUnsealFailure("tampered");
     } finally {
       setUnsealing(false);
     }
@@ -268,7 +278,9 @@ export default function LetterView({ letter, onBack, actions }: Props) {
               <p className="sealed-hint">
                 {unsealFailure === "locked"
                   ? "This letter is sealed, and your keys are sealed too. Open your keys in your record and it will open for you."
-                  : "This letter is sealed — the house cannot open it. It was sealed to you; if it is not readable with your key, you may not be a recipient."}
+                  : unsealFailure === "no-key"
+                    ? "This letter is sealed — the house cannot open it. It was sealed to somebody else, not to the keys this browser holds for you."
+                    : "This letter is sealed to you, and it will not open. Its seal does not hold — the letter may have been damaged or altered in transit. Nothing was decrypted. If you kept a recovery key, open your keys with it and try again."}
               </p>
             ) : plaintext !== null ? (
               renderMarkdown(plaintext)

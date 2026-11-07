@@ -184,9 +184,11 @@ export class IntegrationService {
     const key = await this.houseKeys?.get();
     if (!key) return null;
     const plain = await unsealWithIdentity(enc, key.ageIdentity);
-    if (!plain) return null;
+    // Fail closed. The reason (`not_recipient` vs `failed`) is available to
+    // a caller that wants to say more; this one only needs the refusal.
+    if (!plain.ok) return null;
     try {
-      return JSON.parse(plain) as Record<string, string>;
+      return JSON.parse(plain.plaintext) as Record<string, string>;
     } catch {
       return null;
     }

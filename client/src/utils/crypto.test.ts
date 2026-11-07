@@ -28,6 +28,7 @@ import {
   registerKeysWithProof,
 } from "./crypto";
 import type { KeyRegistrationProof } from "./crypto";
+import { armor } from "age-encryption";
 
 /** A passphrase long enough for the keystore's floor. */
 const PASSPHRASE = "the light in the rehearsal room";
@@ -152,10 +153,13 @@ describe("seal/unseal round-trip", () => {
       b.ageRecipient,
     ]);
     const plain = await unsealWithIdentity(cipher, a.ageIdentity);
-    expect(plain).toBe("the storm is coming");
-    // A non-recipient cannot open it.
+    expect(plain).toEqual({ ok: true, plaintext: "the storm is coming" });
+    // A non-recipient cannot open it — and is told that, not "tampered".
     const c = await generateKeys();
-    expect(await unsealWithIdentity(cipher, c.ageIdentity)).toBeNull();
+    expect(await unsealWithIdentity(cipher, c.ageIdentity)).toEqual({
+      ok: false,
+      reason: "not_recipient",
+    });
   });
 });
 
@@ -230,7 +234,7 @@ describe("sealDraft — the resident's half of the flow", () => {
 
     // The recipient can open it and reads the subject-line + body.
     const opened = await unsealWithIdentity(result.letter.body.content, recipient.ageIdentity);
-    expect(opened).toBe("a secret plan\n\nstep one\nthen step two");
+    expect(opened).toEqual({ ok: true, plaintext: "a secret plan\n\nstep one\nthen step two" });
 
     // The signature is the sign of the stored-form id — the same id the
     // server re-derives from the delivered letter. We can verify with
@@ -349,7 +353,7 @@ describe("recovery identity — the §15 backstop", () => {
     // Primary key is lost: unsealLetterBody must fall back to the
     // recovery identity and still open the letter.
     const opened = await unsealLetterBody("chris@house", result.letter.body.content);
-    expect(opened).toBe("lost key drill\n\nrecover me");
+    expect(opened).toEqual({ ok: true, plaintext: "lost key drill\n\nrecover me" });
   });
 });
 
@@ -412,11 +416,12 @@ describe("the sealed subject — the title moves into the body", () => {
     expect(result.letter.envelope.subject).toBe("");
 
     const opened = await unsealWithIdentity(result.letter.body.content, recipient.ageIdentity);
-    expect(opened).not.toBeNull();
+    expect(opened.ok).toBe(true);
+    if (!opened.ok) return;
     // The reader lifts the trimmed first line back out as the subject.
-    const nl = opened!.indexOf("\n");
-    expect(opened!.slice(0, nl)).toBe("the winter of the show");
-    expect(opened!.slice(nl).replace(/^\n+/, "")).toBe("first line of the letter");
+    const nl = opened.plaintext.indexOf("\n");
+    expect(opened.plaintext.slice(0, nl)).toBe("the winter of the show");
+    expect(opened.plaintext.slice(nl).replace(/^\n+/, "")).toBe("first line of the letter");
   });
 
   it("seals body-only when the subject is blank — no stray title line", async () => {
@@ -446,7 +451,7 @@ describe("the sealed subject — the title moves into the body", () => {
       },
     );
     const opened = await unsealWithIdentity(result.letter.body.content, recipient.ageIdentity);
-    expect(opened).toBe("the letter's own first line");
+    expect(opened).toEqual({ ok: true, plaintext: "the letter's own first line" });
   });
 });
 
@@ -744,5 +749,59 @@ describe("proof of possession — registering keys proves the key", () => {
       }),
     ).rejects.toBeInstanceOf(KeystoreLockedError);
     expect(posted).toBe(false);
+  });
+});
+
+/* ── The reader's three silences — item 4, client half ──────────────────── */
+
+describe("unsealLetterBody — a tampered letter is not 'not yours'", () => {
+  let saved: Storage | undefined;
+
+  beforeEach(() => {
+    lockAllKeystores();
+    saved = KEYSTORE ?? undefined;
+    Object.defineProperty(globalThis, "localStorage", {
+      value: fakeLocalStorage(),
+      configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    lockAllKeystores();
+    if (saved !== undefined) {
+      Object.defineProperty(globalThis, "localStorage", { value: saved, configurable: true });
+    } else {
+      delete (globalThis as Record<string, unknown>).localStorage;
+    }
+  });
+
+  it("separates 'sealed to you and altered' from 'sealed to somebody else'", async () => {
+    await createKeystore("chris@house", PASSPHRASE);
+    const keys = ensureKeys("chris@house");
+    const theirs = await generateKeys();
+
+    const mine = await sealToRecipients("a letter for chris", [keys.ageRecipient]);
+    const notMine = await sealToRecipients("a letter for sam", [theirs.ageRecipient]);
+
+    // Theirs: open keys, no matching stanza — a fact about addressing.
+    expect(await unsealLetterBody("chris@house", notMine)).toEqual({
+      ok: false,
+      reason: "not_recipient",
+    });
+
+    // Mine, altered: the seal does not hold. Reporting this as "not yours"
+    // would send the reader hunting for a key they already have.
+    const raw = new Uint8Array(armor.decode(mine));
+    raw[raw.length - 1] ^= 0xff;
+    expect(await unsealLetterBody("chris@house", armor.encode(raw))).toEqual({
+      ok: false,
+      reason: "failed",
+    });
+
+    // And the untouched one still opens.
+    expect(await unsealLetterBody("chris@house", mine)).toEqual({
+      ok: true,
+      plaintext: "a letter for chris",
+    });
   });
 });

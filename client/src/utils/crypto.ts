@@ -407,33 +407,53 @@ export async function sealDraft(
   };
 }
 
+/* The primitive's outcome, re-exported: the letter reader's failure copy
+ * branches on it. */
+export type { UnsealOutcome } from "./keys";
+
 /**
- * Decrypt a sealed letter's body with the resident's own keys. Returns
- * null when the keystore is sealed, when the resident is not a recipient
- * (wrong key), or when the armor is malformed. The envelope is always
- * visible; the body waits.
+ * Decrypt a sealed letter's body with the resident's own keys.
  *
- * Fallback: when the primary age identity fails (lost — the §15 case),
- * the resident's recovery identity is tried. The house never holds the
- * recovery private half; it lives with the resident, off-box, and in
- * this keystore so a lost session can be recovered.
+ * Three answers, not one, because they mean different things to the
+ * reader:
  *
- * A null return does not say why — callers that want to distinguish
- * "sealed keystore" from "not a recipient" check `isKeystoreUnlocked`.
+ *   no_keys        the keystore is sealed or absent — open it and retry.
+ *   not_recipient  the keys are open and the letter was sealed to somebody
+ *                  else. age's own distinction; nothing was tampered with.
+ *   failed         the keys are open and the letter addressed them, but the
+ *                  seal would not open. Damaged or altered — NOT "not
+ *                  yours". Saying otherwise sends the reader hunting for a
+ *                  key they already have.
+ *
+ * Fallback: when the primary age identity is not a recipient (lost — the
+ * §15 case), the resident's recovery identity is tried. The house never
+ * holds the recovery private half; it lives with the resident, off-box, and
+ * in this keystore so a lost session can be recovered.
  */
+export type UnsealedLetter =
+  | { ok: true; plaintext: string }
+  | { ok: false; reason: "no_keys" | "not_recipient" | "failed" };
+
 export async function unsealLetterBody(
   address: string,
   ciphertext: string,
-): Promise<string | null> {
+): Promise<UnsealedLetter> {
   const keys = loadKeys(address);
-  if (!keys) return null;
-  const primary = await unsealWithIdentity(ciphertext, keys.ageIdentity);
-  if (primary !== null) return primary;
-  if (keys.recoveryAgeIdentity) {
-    const recovered = await unsealWithIdentity(ciphertext, keys.recoveryAgeIdentity);
-    if (recovered !== null) return recovered;
+  if (!keys) return { ok: false, reason: "no_keys" };
+
+  const identities = [keys.ageIdentity, keys.recoveryAgeIdentity].filter(
+    (identity): identity is string => Boolean(identity),
+  );
+  let tampered = false;
+  for (const identity of identities) {
+    const opened = await unsealWithIdentity(ciphertext, identity);
+    if (opened.ok) return opened;
+    if (opened.reason === "failed") tampered = true;
   }
-  return null;
+  // A seal that would not open outranks "not a recipient": if any key could
+  // not get past the seal at all, the honest answer is 'failed', not
+  // 'somebody else's letter'.
+  return { ok: false, reason: tampered ? "failed" : "not_recipient" };
 }
 
 /* ── Sealed payloads — the enclosure's own seal (PLAN-crypto.md C1) ─────── */

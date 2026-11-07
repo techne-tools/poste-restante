@@ -240,17 +240,58 @@ export async function sealToRecipients(plaintext: string, recipients: string[]):
   return armor.encode(raw);
 }
 
-/** Unseal armored ciphertext with an age identity. Returns plaintext, or null on failure. Async. */
+/**
+ * What an unseal attempt can say.
+ *
+ * The old signature returned `null` for three different facts — "not a
+ * recipient", "tampered", "malformed armour" — so a caller could only
+ * report "no", and a reader was told a tampered letter was not theirs.
+ *
+ * age itself draws exactly one of those lines, and we keep exactly that
+ * one: when NO stanza unwraps with the identity, the ciphertext is not
+ * addressed to it (`not_recipient`). Everything else — armour that will
+ * not decode, a header MAC that does not hold, a payload stream that fails
+ * its tag — collapses to `failed`, which is the honest word: age cannot
+ * say *why*, and pretending to would be a claim the cipher does not make.
+ *
+ * A malformed IDENTITY is not an outcome of the ciphertext at all: it is a
+ * caller bug or a broken configuration, and it throws rather than being
+ * reported as a fact about the letter.
+ */
+export type UnsealOutcome =
+  | { ok: true; plaintext: string }
+  | { ok: false; reason: "not_recipient" | "failed" };
+
+/** age's own answer when no stanza unwraps: "no identity matched any of
+ *  the file's recipients". The library exposes no distinct error type, so
+ *  the message is the only signal the wire gives us. The test suite locks
+ *  it with a real wrong-identity ciphertext, so a library upgrade that
+ *  reworded it would fail a test rather than silently reclassify a
+ *  tampered letter as "not yours". */
+const AGE_NO_RECIPIENT = /no identity matched/i;
+
+/** Unseal armored ciphertext with an age identity. Async. */
 export async function unsealWithIdentity(
   ciphertext: string,
   identity: string,
-): Promise<string | null> {
+): Promise<UnsealOutcome> {
+  let raw: Uint8Array;
   try {
-    const decrypter = new Decrypter();
-    decrypter.addIdentity(identity);
-    const raw = armor.decode(ciphertext);
-    return await decrypter.decrypt(raw, "text");
+    raw = armor.decode(ciphertext);
   } catch {
-    return null;
+    // Not age armour at all. There is nothing here to be a recipient of.
+    return { ok: false, reason: "failed" };
+  }
+  // Outside the try: an identity that will not parse is the caller's
+  // problem, not a verdict on the letter.
+  const decrypter = new Decrypter();
+  decrypter.addIdentity(identity);
+  try {
+    return { ok: true, plaintext: await decrypter.decrypt(raw, "text") };
+  } catch (err) {
+    return {
+      ok: false,
+      reason: AGE_NO_RECIPIENT.test(err instanceof Error ? err.message : "") ? "not_recipient" : "failed",
+    };
   }
 }

@@ -187,18 +187,47 @@ export async function sealToPassphrase(
   return armor.encode(await encrypter.encrypt(plaintext));
 }
 
-/** Unseal an armored ciphertext with the resident's age identity.
- *  Returns null on failure (wrong key, tamper, malformed armor). */
+/**
+ * Unseal an armoured age file with an identity.
+ *
+ * The outcome keeps the one distinction age itself makes: no stanza
+ * unwraps with this identity (`not_recipient`) versus everything else
+ * (`failed` — malformed armour, a broken header MAC, a payload that does
+ * not tag). A tampered letter must never be reported as "not yours": that
+ * sends the reader looking for a key they already have.
+ *
+ * A malformed identity is not an outcome of the ciphertext — it throws.
+ */
+export type UnsealOutcome =
+  | { ok: true; plaintext: string }
+  | { ok: false; reason: "not_recipient" | "failed" };
+
+/** age's own words when no stanza unwraps. The library exposes no distinct
+ *  error type, so the message is the signal; the test suite locks it with
+ *  a real wrong-identity ciphertext. */
+const AGE_NO_RECIPIENT = /no identity matched/i;
+
 export async function unsealWithIdentity(
   ciphertext: string,
   ageIdentity: string,
-): Promise<string | null> {
+): Promise<UnsealOutcome> {
+  let raw: Uint8Array;
   try {
-    const decrypter = new Decrypter();
-    decrypter.addIdentity(ageIdentity);
-    return await decrypter.decrypt(armor.decode(ciphertext), "text");
+    raw = armor.decode(ciphertext);
   } catch {
-    return null;
+    return { ok: false, reason: "failed" };
+  }
+  const decrypter = new Decrypter();
+  decrypter.addIdentity(ageIdentity);
+  try {
+    return { ok: true, plaintext: await decrypter.decrypt(raw, "text") };
+  } catch (err) {
+    return {
+      ok: false,
+      reason: AGE_NO_RECIPIENT.test(err instanceof Error ? err.message : "")
+        ? "not_recipient"
+        : "failed",
+    };
   }
 }
 
