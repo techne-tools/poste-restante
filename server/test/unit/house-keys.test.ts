@@ -20,7 +20,9 @@ import {
   HOUSE_ED25519_PRIVATE_ENV,
   HouseKeyMissingError,
   HouseKeyMismatchError,
+  HouseKeyUnreadableError,
 } from "../../src/house/keys.js";
+import { armor } from "age-encryption";
 import {
   ed25519PublicOf,
   generateHouseKeypair,
@@ -315,18 +317,47 @@ describe("HouseKeysService — a restored database without the secret", () => {
     // degraded": the failure is named, so an operator learns the archive has
     // lost its collaborative layer instead of seeing empty strings forever.
     await expect(s.unsealBody(collaborative)).rejects.toBeInstanceOf(HouseKeyMissingError);
-    // The ciphertext is still there and still undecryptable by the house.
-    expect(await unsealWithIdentity(collaborative, "")).toBeNull();
+    // The ciphertext is still there and still closed: any identity but the
+    // intended pair is simply not a recipient of it.
+    const stranger = await generateResidentKeypair("stranger@house");
+    expect(await unsealWithIdentity(collaborative, stranger.ageIdentity)).toEqual({
+      ok: false,
+      reason: "not_recipient",
+    });
 
     // (c) The sealed letter is unaffected: it never depended on the house key,
     // so in that same state the resident opens it with their own identity.
-    expect(await unsealWithIdentity(sealed, resident.ageIdentity)).toBe(sealedText);
+    expect(await unsealWithIdentity(sealed, resident.ageIdentity)).toEqual({
+      ok: true,
+      plaintext: sealedText,
+    });
 
     // The contrast that makes it a test rather than an accident: put the
     // secret back and the same database opens the same collaborative letter.
     const restored = new HouseKeysService(pool, noopLog, envOf(house));
     expect(await restored.unsealBody(collaborative)).toBe(collaborativeText);
     expect(await restored.unsealBody(sealed)).toBeNull(); // still not the house's to read
+  });
+
+  it("raises when the house IS a recipient and the body will not open — a tamper is not a private letter", async () => {
+    const house = await generateHouseKeypair();
+    const resident = await generateResidentKeypair("you@house");
+    const { pool } = fakePool(restoredRow(house));
+    const s = new HouseKeysService(pool, noopLog, envOf(house));
+
+    const collaborative = await sealToRecipients("the house is party to this", [
+      resident.public.ageRecipient,
+      house.ageRecipient,
+    ]);
+    // Flip a byte deep in the payload: the stream's final tag fails.
+    const raw = new Uint8Array(armor.decode(collaborative));
+    raw[raw.length - 1] ^= 0xff;
+    const tampered = armor.encode(raw);
+
+    // Not null (which would mean "not ours") and not a silent empty string:
+    // the house should have been able to read this and could not.
+    await expect(s.unsealBody(tampered)).rejects.toBeInstanceOf(HouseKeyUnreadableError);
+    await expect(s.unsealBody(tampered)).rejects.not.toBeInstanceOf(HouseKeyMissingError);
   });
 });
 

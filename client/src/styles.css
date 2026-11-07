@@ -719,6 +719,18 @@ a:hover {
   margin: 0;
 }
 
+/* Sealed, but the letter cannot reach everyone it names: a state, not an
+   error. The copy already offers the way out ("they can make keys… this
+   letter can travel unsealed meanwhile"), so the rule only has to make it
+   legible — stronger than a hint, no accent, no red, sitting where the
+   decision is made. */
+.compose-hint.seal-keyless {
+  color: var(--ink);
+  border-left: 2px solid var(--border);
+  padding-left: var(--space-2);
+  margin-top: var(--space-2);
+}
+
 .compose-field select {
   font-family: var(--font-mono);
   font-size: 13px;
@@ -908,6 +920,19 @@ a:hover {
   border: var(--rule);
   border-radius: 999px;
   padding: 2px 8px;
+}
+
+/* An address with no keys yet: a state, not a warning. It cannot take a
+   sealed letter (SPEC §15) — the mark says so before a letter is written,
+   and the row still opens for correspondence that travels unsealed. */
+.keyless-tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  border: var(--rule);
+  border-radius: 3px;
+  padding: 2px 6px;
 }
 
 /* The address and its instrument mark travel together — one group, so the

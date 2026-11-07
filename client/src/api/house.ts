@@ -102,13 +102,33 @@ export const house = {
     });
   },
 
+  /** Ask for the challenge a key registration must sign (SPEC §15).
+   *  Registering writes the address's identity spine, so the house will not
+   *  take it on the strength of the session alone: it issues a nonce, and
+   *  the resident signs the nonce plus the whole key record with the private
+   *  half of the key being registered. Self-only. */
+  requestKeyChallenge(id: string) {
+    return request<{ nonce: string; expiresAt: string }>(
+      `/addresses/${encodeURIComponent(id)}/keys/challenge`,
+      { method: "POST" },
+    );
+  },
+
   /** Register the public halves of a resident's keypairs (SPEC §15). The
    *  private halves are client-held — the house never holds a private
    *  key. Public keys are public; from this moment the ed25519
-   *  fingerprint is the identity the letter id resolver uses. */
+   *  fingerprint is the identity the letter id resolver uses. The body
+   *  carries the challenge and its signature: `registerKeysWithProof`
+   *  (utils/crypto.ts) builds it. */
   registerKeys(
     id: string,
-    keys: { ageRecipient: string; ed25519Public: string; recoveryAgeRecipient?: string | null },
+    keys: {
+      ageRecipient: string;
+      ed25519Public: string;
+      recoveryAgeRecipient?: string | null;
+      nonce: string;
+      signature: string;
+    },
   ) {
     return request<{
       address?: string;

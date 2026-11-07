@@ -7,6 +7,55 @@ interface Props {
   onCompose: (address: string) => void;
 }
 
+/**
+ * One line of the address book. Exported because its two states matter and
+ * are cheap to render: an address WITH keys, and one with none yet — which
+ * can still receive a letter, but not a sealed one (SPEC §15). The state is
+ * visible here rather than only at a refused send.
+ */
+export function AddressRow({
+  address: a,
+  onCompose,
+}: {
+  address: Address;
+  onCompose: (address: string) => void;
+}) {
+  const keyless = !a.ageRecipient;
+  return (
+    <button
+      className="address-row"
+      onClick={() => onCompose(a.id)}
+      title={
+        a.isAgent
+          ? `${a.id} — an instrument of the house`
+          : keyless
+            ? `${a.id} has no keys yet — write now; a sealed letter can reach them once they make theirs`
+            : `Write to ${a.id}`
+      }
+      aria-label={
+        a.isAgent
+          ? `${a.id} — an instrument of the house; open a letter`
+          : keyless
+            ? `${a.id} — no keys yet; a sealed letter cannot reach them`
+            : `Write to ${a.id}`
+      }
+    >
+      <span className="address-who">
+        <span className="addr">{a.id}</span>
+        {a.isAgent && <span className="instrument-tag">instrument</span>}
+        {/* Visible, not a warning: an address with no keys cannot take a
+            sealed letter, and the resident should know that from the book
+            rather than from a refused send. The row still opens a letter —
+            unsealed correspondence is fine. */}
+        {keyless && <span className="keyless-tag">no keys yet</span>}
+      </span>
+      <span className="names">
+        {a.names.length > 0 ? a.names.join(", ") : a.pronouns ?? ""}
+      </span>
+    </button>
+  );
+}
+
 export default function AddressBook({ onError, onCompose }: Props) {
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [loading, setLoading] = useState(true);
@@ -56,25 +105,7 @@ export default function AddressBook({ onError, onCompose }: Props) {
           <p className="empty">The address book is empty — the house knows no one yet.</p>
         )}
         {addresses.map((a) => (
-          <button
-            key={a.id}
-            className="address-row"
-            onClick={() => onCompose(a.id)}
-            title={a.isAgent ? `${a.id} — an instrument of the house` : `Write to ${a.id}`}
-            aria-label={
-              a.isAgent
-                ? `${a.id} — an instrument of the house; open a letter`
-                : `Write to ${a.id}`
-            }
-          >
-            <span className="address-who">
-              <span className="addr">{a.id}</span>
-              {a.isAgent && <span className="instrument-tag">instrument</span>}
-            </span>
-            <span className="names">
-              {a.names.length > 0 ? a.names.join(", ") : a.pronouns ?? ""}
-            </span>
-          </button>
+          <AddressRow key={a.id} address={a} onCompose={onCompose} />
         ))}
       </div>
 

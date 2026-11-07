@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { house } from "../api";
-import { isKeystoreUnlocked, sealDraft, sealPayload } from "../utils/crypto";
+import {
+  isKeystoreUnlocked,
+  KeylessAddresseesError,
+  keylessRecipients,
+  sealDraft,
+  sealPayload,
+} from "../utils/crypto";
 import type { Address } from "../api";
 import WhyNote from "../components/WhyNote";
 
@@ -45,10 +51,27 @@ export default function Compose({ onError, onDelivered, initialTo, initialThread
   const [sealing, setSealing] = useState(false);
   const [files, setFiles] = useState<PendingFile[]>([]);
   const [sending, setSending] = useState(false);
+  /** Who a sealed letter cannot reach right now — named in the desk so the
+   *  refusal is a state the resident can act on, not a banner after send. */
+  const [keyless, setKeyless] = useState<string[]>([]);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const canSend =
     (body.trim().length > 0 || files.length > 0) && to.trim().length > 0 && !sending;
+
+  // The addressees this letter could not be sealed to, asked of the same
+  // address book the seal itself will use. An empty book is "not asked
+  // yet", not "everyone is keyless", so it says nothing until it has read
+  // one — the refusal at send time is the backstop.
+  const namedRecipients = [
+    to.trim() || "you@house",
+    ...(withHouse && houseAddress ? [houseAddress] : []),
+  ];
+  const keylessNow =
+    addresses.length > 0 ? keylessRecipients(namedRecipients, addresses, from) : [];
+  /** What the desk says: the live answer when it has one, else the refusal
+   *  the seal gave (the book may have changed under the composer). */
+  const keylessShown = keyless.length > 0 ? keyless : keylessNow;
 
   const addFiles = (list: FileList | null) => {
     if (!list) return;
@@ -167,6 +190,7 @@ export default function Compose({ onError, onDelivered, initialTo, initialThread
                   },
                   sealedBook,
                   {
+                    requestKeyChallenge: (id) => house.requestKeyChallenge(id),
                     registerKeys: (id, keys) => house.registerKeys(id, keys),
                   },
                 );
@@ -212,8 +236,17 @@ export default function Compose({ onError, onDelivered, initialTo, initialThread
       setBody("");
       setSubject("");
       setFiles([]);
+      setKeyless([]);
       onDelivered();
     } catch (err) {
+      if (err instanceof KeylessAddresseesError) {
+        // A refusal the desk can explain: name who cannot receive a sealed
+        // letter and leave the letter as it was written. The notice below
+        // is the same one the pre-flight uses — not a thrown string in a
+        // banner.
+        setKeyless(err.addresses);
+        return;
+      }
       onError(err instanceof Error ? err.message : "the letter was not delivered");
     } finally {
       setSending(false);
@@ -297,6 +330,7 @@ export default function Compose({ onError, onDelivered, initialTo, initialThread
             onChange={(e) => {
               setSealed(e.target.checked);
               if (!e.target.checked) setWithHouse(false);
+              else void loadAddressBook();
             }}
           />
           <span>Seal this letter — only {to.trim() || "the recipient"} and I can read it; the house holds it without reading</span>
@@ -308,6 +342,16 @@ export default function Compose({ onError, onDelivered, initialTo, initialThread
         {sealed && !isKeystoreUnlocked(from) && (
           <p className="compose-hint">
             Your keys are sealed — open them in your record before sealing this letter.
+          </p>
+        )}
+        {/* "No keys yet" is a state of the address book, said here rather
+            than at the send button: a sealed letter must reach everyone it
+            names, and this says who it cannot reach and what to do. */}
+        {sealed && keylessShown.length > 0 && (
+          <p className="compose-hint seal-keyless" role="status">
+            {keylessShown.join(", ")} {keylessShown.length === 1 ? "has" : "have"} no keys yet —
+            a sealed letter must reach everyone it names, so it cannot be sealed to them.
+            They can make keys in their record, and this letter can travel unsealed meanwhile.
           </p>
         )}
         {/* Seal WITH the house (SPEC §15, second model): house@house

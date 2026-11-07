@@ -2,6 +2,8 @@
  * Structured logger. The house is observable via logs that stay local — no
  * telemetry, no analytics, no phone-home. Logs are the only signal.
  */
+import { createHash } from "node:crypto";
+
 export interface Logger {
   info(event: string, fields?: Record<string, unknown>): void;
   warn(event: string, fields?: Record<string, unknown>): void;
@@ -43,4 +45,17 @@ export function createStderrLogger(): Logger {
 /** A silent logger for tests. */
 export function silentLogger(): Logger {
   return { info: () => {}, warn: () => {}, error: () => {} };
+}
+
+/**
+ * A stable, non-reversible tag for an address, for logs.
+ *
+ * AGENTS.md privacy checklist #6: an address in a log names a person and
+ * the relationships it holds. Logs stay local, but they are still data — so
+ * an address travels as a truncated hash. Two lines about the same address
+ * can be joined by an operator who already holds the address; nothing in
+ * the log can be read back into one.
+ */
+export function addressTag(address: string): string {
+  return createHash("sha256").update(address).digest("hex").slice(0, 12);
 }

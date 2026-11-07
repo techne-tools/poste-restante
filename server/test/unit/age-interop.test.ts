@@ -180,16 +180,27 @@ describe("interop: the two implementations read each other", () => {
     // age-encryption build stops parsing the age v1 header or the X25519
     // stanza — i.e. if every sealed letter already in the database would
     // become unreadable.
-    expect(await unsealWithIdentity(referenceCiphertext, identity)).toBe(plaintext);
+    expect(await unsealWithIdentity(referenceCiphertext, identity)).toEqual({
+      ok: true,
+      plaintext,
+    });
   });
 
   it("the frozen ciphertext this port sealed still decrypts", async () => {
-    expect(await unsealWithIdentity(portCiphertext, identity)).toBe(plaintext);
+    expect(await unsealWithIdentity(portCiphertext, identity)).toEqual({
+      ok: true,
+      plaintext,
+    });
   });
 
   it("a different identity cannot open the reference ciphertext", async () => {
     const stranger = await generateAgeIdentity();
-    expect(await unsealWithIdentity(referenceCiphertext, stranger)).toBeNull();
+    // No stanza unwraps for this identity: a fact about addressing, not
+    // integrity — the discriminated result the sweep introduced says which.
+    expect(await unsealWithIdentity(referenceCiphertext, stranger)).toEqual({
+      ok: false,
+      reason: "not_recipient",
+    });
   });
 
   it("a tampered reference ciphertext does not decrypt", async () => {
@@ -200,7 +211,10 @@ describe("interop: the two implementations read each other", () => {
     const at = Math.floor(body.length / 2);
     const swapped = body[at] === "A" ? "B" : "A";
     lines[2] = body.slice(0, at) + swapped + body.slice(at + 1);
-    expect(await unsealWithIdentity(lines.join("\n"), identity)).toBeNull();
+    expect(await unsealWithIdentity(lines.join("\n"), identity)).toEqual({
+      ok: false,
+      reason: "failed",
+    });
   });
 });
 

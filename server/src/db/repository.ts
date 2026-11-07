@@ -356,6 +356,24 @@ export class PostgresRepository {
     return rows[0]?.identity_id ?? null;
   }
 
+  /** The durable identities for a set of addresses, in one query
+   *  (PLAN-crypto.md E2): the pin made `addresses.identity_id` the id
+   *  resolver's read, so the batch belongs with it. An address with no row
+   *  is absent from the map, and `canonicaliseWith` keeps the handle as
+   *  typed — the same fact a handle-valued identity states. */
+  async getIdentityIds(addresses: string[]): Promise<Map<string, string>> {
+    const resolved = new Map<string, string>();
+    if (addresses.length === 0) return resolved;
+    const { rows } = await this.pool.query<{ id: string; identity_id: string | null }>(
+      `SELECT id, identity_id FROM addresses WHERE id = ANY($1)`,
+      [addresses],
+    );
+    for (const row of rows) {
+      if (row.identity_id) resolved.set(row.id, row.identity_id);
+    }
+    return resolved;
+  }
+
   /** Get an address's current public key record (SPEC §15). Public keys
    *  are public — verification needs them; they are not secrets. Returns
    *  the LIVE key (the one `address_keys_one_active_idx` proves unique),
@@ -373,6 +391,26 @@ export class PostgresRepository {
       [address],
     );
     return rows[0] ?? null;
+  }
+
+  /** The LIVE ed25519 identities for a set of addresses, in one query —
+   *  the ingest resolver's map (PLAN-crypto.md E2). The id resolver takes
+   *  a set of handles, so the lookup takes the set too: one round trip per
+   *  letter, not one per handle. Addresses with no live key are simply
+   *  absent from the map (they resolve to their handle — SPEC §19), so the
+   *  caller does not need a second pass to tell "no key" from "no row".
+   *  Public keys are public. */
+  async getAddressKeys(addresses: string[]): Promise<Map<string, string>> {
+    const resolved = new Map<string, string>();
+    if (addresses.length === 0) return resolved;
+    const { rows } = await this.pool.query<{ address: string; ed25519_public: string }>(
+      `SELECT address, ed25519_public
+       FROM address_keys
+       WHERE address = ANY($1) AND retired_at IS NULL`,
+      [addresses],
+    );
+    for (const row of rows) resolved.set(row.address, row.ed25519_public);
+    return resolved;
   }
 
   /** Every key record an address has ever registered, newest first — the

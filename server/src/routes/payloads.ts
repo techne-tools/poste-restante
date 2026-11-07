@@ -19,6 +19,37 @@ import { MAX_LIMIT, DEFAULT_LIMIT } from "../server.js";
  *  ciphertext sealed to the letter's participants. */
 const SEALED_HEADER = "X-Payload-Sealed";
 
+/**
+ * Why this payload name is not usable, or null when it is.
+ *
+ * The name comes from a request header or an uploaded filename, and it
+ * becomes an object key (`letters/<id>/<name>`) and part of a
+ * `Content-Disposition` header. Both make an unconstrained name a real
+ * problem rather than an untidy one:
+ *
+ *   * `/` and `\` — the name would address a different object, outside
+ *     this letter's prefix;
+ *   * `..` — the same, by traversal;
+ *   * `"` and the control characters — the name is interpolated into
+ *     `filename="…"` on download, so a quote or a newline is header
+ *     injection;
+ *   * a leading `.` or `-` — a hidden object or a name that reads as a
+ *     flag to whatever consumes it next.
+ *
+ * A conservative allow-list, not a deny-list: letters, numbers, spaces and
+ * `. _ ( ) -`, from a letter or number, capped at 200 characters. Anything
+ * outside it can be renamed by the client; the house will not guess.
+ */
+export function payloadNameProblem(name: string): string | null {
+  if (name.length === 0) return "the enclosure needs a name";
+  if (name.length > 200) return "the enclosure's name is longer than 200 characters";
+  if (!/^[\p{L}\p{N}][\p{L}\p{N} ._()-]*$/u.test(name)) {
+    return "the enclosure's name may use letters, numbers, spaces and . _ ( ) - only, and must start with a letter or number";
+  }
+  if (name.includes("..")) return "the enclosure's name may not contain '..'";
+  return null;
+}
+
 /** What a sealed enclosure's stored content type says. The real type rides
  *  inside the ciphertext — a content type is content ("a recording of the
  *  read-through"), so it must not reach the catalog. */
@@ -174,6 +205,10 @@ export function createPayloadsRoutes(
         return c.json({ error: { code: "invalid_payload", message: "expected multipart file field 'file'" } }, 400);
       }
       name = name || (file as File).name || "payload.bin";
+      const nameProblem = payloadNameProblem(name);
+      if (nameProblem) {
+        return c.json({ error: { code: "invalid_payload_name", message: nameProblem } }, 400);
+      }
       contentType = (file as File).type || contentType;
       const data = new Uint8Array(await (file as File).arrayBuffer());
       if (data.length === 0) {
@@ -189,6 +224,12 @@ export function createPayloadsRoutes(
       stored = { key, size: data.length };
     } else {
       name = name || "payload.bin";
+      // Validate before a byte is stored: the object key is built from the
+      // name, so an unusable name must not create an object at all.
+      const nameProblem = payloadNameProblem(name);
+      if (nameProblem) {
+        return c.json({ error: { code: "invalid_payload_name", message: nameProblem } }, 400);
+      }
       const raw = c.req.raw.body;
       if (!raw) {
         return c.json({ error: { code: "empty_payload", message: "payload data is empty" } }, 400);
@@ -298,6 +339,11 @@ export function createPayloadsRoutes(
     }
 
     const key = `letters/${id}/${name}`;
+    if (payloadNameProblem(name)) {
+      // A name the house would never catalogue cannot name an object. 404,
+      // like every other absence: nothing is confirmed to the caller.
+      return c.json({ error: { code: "not_found", message: "payload not found" } }, 404);
+    }
     const data = await house.payloads?.get(key);
     if (!data) {
       return c.json({ error: { code: "not_found", message: "payload not found" } }, 404);
@@ -337,6 +383,9 @@ export function createPayloadsRoutes(
     }
 
     const key = `letters/${id}/${name}`;
+    if (payloadNameProblem(name)) {
+      return c.json({ error: { code: "not_found", message: "payload not found" } }, 404);
+    }
     if (key) await house.payloads?.delete(key);
     // The catalog dies with the bytes — no orphaned pointer.
     await house.repo.deletePayload(id, name);

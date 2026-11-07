@@ -6,6 +6,7 @@
  * the keypair generation shapes.
  */
 import { describe, it, expect } from "vitest";
+import { armor } from "age-encryption";
 import {
   ed25519PublicOf,
   generateEd25519Keypair,
@@ -49,16 +50,22 @@ describe("age sealing", () => {
     const you = await generateResidentKeypair("you@house");
     const ct = await sealToRecipients("the storm is coming", [you.public.ageRecipient]);
     expect(ct.startsWith("-----BEGIN AGE ENCRYPTED FILE-----")).toBe(true);
-    const pt = await unsealWithIdentity(ct, you.ageIdentity);
-    expect(pt).toBe("the storm is coming");
+    expect(await unsealWithIdentity(ct, you.ageIdentity)).toEqual({
+      ok: true,
+      plaintext: "the storm is coming",
+    });
   });
 
-  it("cannot unseal with the wrong identity", async () => {
+  it("says 'not_recipient' with the wrong identity — a fact about addressing", async () => {
     const you = await generateResidentKeypair("you@house");
     const ben = await generateResidentKeypair("ben@house");
     const ct = await sealToRecipients("for your eyes only", [you.public.ageRecipient]);
-    const pt = await unsealWithIdentity(ct, ben.ageIdentity);
-    expect(pt).toBeNull();
+    // The one distinction age itself draws: no stanza unwraps. It is not a
+    // verdict on the letter's integrity, and the reader is told so.
+    expect(await unsealWithIdentity(ct, ben.ageIdentity)).toEqual({
+      ok: false,
+      reason: "not_recipient",
+    });
   });
 
   it("seals to multiple recipients — any one can unseal", async () => {
@@ -68,13 +75,61 @@ describe("age sealing", () => {
       you.public.ageRecipient,
       house.ageRecipient,
     ]);
-    expect(await unsealWithIdentity(ct, you.ageIdentity)).toBe("collaborative");
-    expect(await unsealWithIdentity(ct, house.ageIdentity)).toBe("collaborative");
+    expect(await unsealWithIdentity(ct, you.ageIdentity)).toEqual({
+      ok: true,
+      plaintext: "collaborative",
+    });
+    expect(await unsealWithIdentity(ct, house.ageIdentity)).toEqual({
+      ok: true,
+      plaintext: "collaborative",
+    });
   });
 
-  it("returns null for garbage ciphertext", async () => {
+  it("says 'failed' for garbage — malformed armour is not a verdict on addressing", async () => {
     const you = await generateResidentKeypair("you@house");
-    expect(await unsealWithIdentity("not age ciphertext", you.ageIdentity)).toBeNull();
+    expect(await unsealWithIdentity("not age ciphertext", you.ageIdentity)).toEqual({
+      ok: false,
+      reason: "failed",
+    });
+  });
+
+  it("says 'failed', not 'not_recipient', when a letter addressed to you has been tampered with", async () => {
+    const you = await generateResidentKeypair("you@house");
+    const plaintext = "the storm is coming, read at the tech";
+    // Long enough that the last byte is payload, not header.
+    const ct = await sealToRecipients(plaintext, [you.public.ageRecipient]);
+    const raw = new Uint8Array(armor.decode(ct));
+    raw[raw.length - 1] ^= 0xff;
+    const tampered = armor.encode(raw);
+
+    // This is the whole point of the item: a recipient told "not yours" about
+    // their own letter goes looking for the wrong problem.
+    expect(await unsealWithIdentity(tampered, you.ageIdentity)).toEqual({
+      ok: false,
+      reason: "failed",
+    });
+  });
+
+  it("says 'failed' when the header itself was altered", async () => {
+    const you = await generateResidentKeypair("you@house");
+    const ct = await sealToRecipients("header integrity", [you.public.ageRecipient]);
+    // The header is the first line of age's binary form; the MAC covers it.
+    const raw = new Uint8Array(armor.decode(ct));
+    const at = raw.indexOf(0x2d /* '-' */) + 4;
+    raw[at] ^= 0x01;
+    expect(await unsealWithIdentity(armor.encode(raw), you.ageIdentity)).toEqual({
+      ok: false,
+      reason: "failed",
+    });
+  });
+
+  it("throws on a malformed identity rather than blaming the letter", async () => {
+    const you = await generateResidentKeypair("you@house");
+    const ct = await sealToRecipients("the storm is coming", [you.public.ageRecipient]);
+    // A broken KEY is the caller's problem (a misconfiguration), not an
+    // outcome of the ciphertext. Saying 'failed' would hide a bad secret
+    // behind a verdict about the letter.
+    await expect(unsealWithIdentity(ct, "not-an-age-identity")).rejects.toThrow();
   });
 });
 

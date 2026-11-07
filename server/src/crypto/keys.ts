@@ -61,7 +61,7 @@
  * The rule: armour at the text boundary; never inside a byte column or an object
  * store, and never re-armour bytes that are already ciphertext.
  */
-import { createPrivateKey, createPublicKey, generateKeyPairSync, sign, verify } from "node:crypto";
+import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, sign, verify } from "node:crypto";
 import {
   Decrypter,
   Encrypter,
@@ -98,6 +98,63 @@ export interface HouseKeypair {
   ed25519Private: string;
   ageRecipient: string;
   ed25519Public: string;
+}
+
+/**
+ * Can the house actually seal to this recipient string?
+ *
+ * The question a registration must answer before it is stored: a recipient
+ * the encrypter cannot parse is a recipient a letter cannot be sealed to,
+ * and today that is discovered only when a letter fails to seal — or worse,
+ * when a correspondent seals to a typo and the letter is unopenable.
+ *
+ * Defined by the encrypter itself rather than by a hand-rolled bech32
+ * check, so the test of validity is exactly the operation that will use
+ * it. Accepts every recipient form age's `addRecipient` accepts (X25519
+ * `age1…`, and the hybrid/tag forms), which is the honest boundary: if
+ * sealing would take it, registration should.
+ */
+export function isSealableRecipient(recipient: string): boolean {
+  if (typeof recipient !== "string" || !recipient.startsWith("age1")) return false;
+  try {
+    // No cryptographic work happens here — addRecipient only parses the
+    // recipient (bech32 decode + length) and builds a wrapper.
+    new Encrypter().addRecipient(recipient);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The SPKI SubjectPublicKeyInfo header for an ed25519 key: the 12 fixed
+ *  bytes every ed25519 public key in the house's encoding begins with. */
+const ED25519_SPKI_HEADER = Buffer.from("302a300506032b6570032100", "hex");
+
+/**
+ * Is this the house's ed25519 public-key encoding — base64url of a DER
+ * SubjectPublicKeyInfo whose one key is 32 bytes and whose algorithm is
+ * ed25519?
+ *
+ * The encoding is the one `generateEd25519Keypair` produces and the client
+ * produces (`exportBase64url("spki", …)`), so a registration carrying
+ * anything else — a raw 32-byte key, a truncated DER, a different
+ * algorithm, a standard-base64 string — is a key the letter-id resolver
+ * cannot use, and the identity spine would be silently wrong.
+ */
+export function isEd25519PublicKey(publicKey: string): boolean {
+  // base64url, unpadded. Node's decoder is lenient, so the alphabet is
+  // checked before decoding rather than after.
+  if (typeof publicKey !== "string" || !/^[A-Za-z0-9_-]+$/.test(publicKey)) return false;
+  const der = Buffer.from(publicKey, "base64url");
+  // 12 header bytes + the 32-byte key. Exact, so no trailing bytes.
+  if (der.length !== 44) return false;
+  if (!der.subarray(0, ED25519_SPKI_HEADER.length).equals(ED25519_SPKI_HEADER)) return false;
+  try {
+    const key = createPublicKey({ key: der, format: "der", type: "spki" });
+    return key.asymmetricKeyType === "ed25519";
+  } catch {
+    return false;
+  }
 }
 
 /** Generate a fresh ed25519 keypair. Returns base64url-encoded keys. */
@@ -173,9 +230,9 @@ export function signLetterId(letterId: string, ed25519Private: string): string {
   return sign(null, Buffer.from(letterId, "utf8"), privateKey).toString("base64url");
 }
 
-/** Verify a letter id signature against an ed25519 public key. */
-export function verifyLetterId(
-  letterId: string,
+/** Verify an ed25519 signature over arbitrary UTF-8 text. */
+export function verifySignedText(
+  text: string,
   signature: string,
   ed25519Public: string,
 ): boolean {
@@ -184,13 +241,33 @@ export function verifyLetterId(
     const publicKey = { key, type: "spki", format: "der" } as const;
     return verify(
       null,
-      Buffer.from(letterId, "utf8"),
+      Buffer.from(text, "utf8"),
       publicKey,
       Buffer.from(signature, "base64url"),
     );
   } catch {
     return false;
   }
+}
+
+/** Verify a letter id signature against an ed25519 public key. */
+export function verifyLetterId(
+  letterId: string,
+  signature: string,
+  ed25519Public: string,
+): boolean {
+  return verifySignedText(letterId, signature, ed25519Public);
+}
+
+/**
+ * A public key's fingerprint — sha256 of the key as registered, hex.
+ *
+ * Public keys are public, so this is not a secret; it is a stable, short
+ * name for a key that can go in a log without the key itself (or the
+ * address that holds it) travelling with it.
+ */
+export function keyFingerprint(ed25519Public: string): string {
+  return createHash("sha256").update(ed25519Public).digest("hex");
 }
 
 /** Seal a plaintext body to a set of age recipients. Returns armored ciphertext. Async. */
@@ -203,17 +280,58 @@ export async function sealToRecipients(plaintext: string, recipients: string[]):
   return armor.encode(raw);
 }
 
-/** Unseal armored ciphertext with an age identity. Returns plaintext, or null on failure. Async. */
+/**
+ * What an unseal attempt can say.
+ *
+ * The old signature returned `null` for three different facts — "not a
+ * recipient", "tampered", "malformed armour" — so a caller could only
+ * report "no", and a reader was told a tampered letter was not theirs.
+ *
+ * age itself draws exactly one of those lines, and we keep exactly that
+ * one: when NO stanza unwraps with the identity, the ciphertext is not
+ * addressed to it (`not_recipient`). Everything else — armour that will
+ * not decode, a header MAC that does not hold, a payload stream that fails
+ * its tag — collapses to `failed`, which is the honest word: age cannot
+ * say *why*, and pretending to would be a claim the cipher does not make.
+ *
+ * A malformed IDENTITY is not an outcome of the ciphertext at all: it is a
+ * caller bug or a broken configuration, and it throws rather than being
+ * reported as a fact about the letter.
+ */
+export type UnsealOutcome =
+  | { ok: true; plaintext: string }
+  | { ok: false; reason: "not_recipient" | "failed" };
+
+/** age's own answer when no stanza unwraps: "no identity matched any of
+ *  the file's recipients". The library exposes no distinct error type, so
+ *  the message is the only signal the wire gives us. The test suite locks
+ *  it with a real wrong-identity ciphertext, so a library upgrade that
+ *  reworded it would fail a test rather than silently reclassify a
+ *  tampered letter as "not yours". */
+const AGE_NO_RECIPIENT = /no identity matched/i;
+
+/** Unseal armored ciphertext with an age identity. Async. */
 export async function unsealWithIdentity(
   ciphertext: string,
   identity: string,
-): Promise<string | null> {
+): Promise<UnsealOutcome> {
+  let raw: Uint8Array;
   try {
-    const decrypter = new Decrypter();
-    decrypter.addIdentity(identity);
-    const raw = armor.decode(ciphertext);
-    return await decrypter.decrypt(raw, "text");
+    raw = armor.decode(ciphertext);
   } catch {
-    return null;
+    // Not age armour at all. There is nothing here to be a recipient of.
+    return { ok: false, reason: "failed" };
+  }
+  // Outside the try: an identity that will not parse is the caller's
+  // problem, not a verdict on the letter.
+  const decrypter = new Decrypter();
+  decrypter.addIdentity(identity);
+  try {
+    return { ok: true, plaintext: await decrypter.decrypt(raw, "text") };
+  } catch (err) {
+    return {
+      ok: false,
+      reason: AGE_NO_RECIPIENT.test(err instanceof Error ? err.message : "") ? "not_recipient" : "failed",
+    };
   }
 }

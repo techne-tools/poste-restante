@@ -22,6 +22,7 @@ import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { secureHeaders } from "hono/secure-headers";
 import { createRateLimiter } from "./auth/rate-limiter.js";
+import { KeyProofService } from "./auth/key-proof.js";
 import { LETTER_KINDS } from "./types.js";
 import { AddressSchema, LetterSchema, RedeemSchema, ChangePasswordSchema, RegisterKeysSchema, ClauseActionSchema, DayCardSchema, InviteSchema, toLetter } from "./schemas.js";
 import { deliverLetter } from "./deliver.js";
@@ -53,6 +54,9 @@ export interface LetterServerOptions {
   invites?: InviteService;
   /** The house book — the commons made structural. When omitted, the book is unavailable. */
   book?: BookService;
+  /** The key-registration proof service. Minted per process when omitted;
+   *  injectable so a test can fix the secret and the clock. */
+  keyProof?: KeyProofService;
 }
 
 /** The OIDC PKCE verifier + state, held in memory for the callback. */
@@ -66,6 +70,7 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
   const auth = options.auth;
   const invites = options.invites;
   const book = options.book;
+  const keyProof = options.keyProof ?? new KeyProofService();
   const app = new Hono();
   const oidcPending = new Map<string, OidcPending>();
   const OIDC_TTL_MS = 10 * 60 * 1000;
@@ -152,7 +157,7 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
   app.route('/', createPayloadsRoutes(house, caller, auth, invites, book, { oidcLimiter, redeemLimiter, pwLimiter, whisperLimiter, oidcPending, OIDC_TTL_MS }));
   app.route('/', createAddressesRoutes(house, caller, auth, invites, book, { oidcLimiter, redeemLimiter, pwLimiter, whisperLimiter, oidcPending, OIDC_TTL_MS }));
   app.route('/', createThreadsRoutes(house, caller, auth, invites, book, { oidcLimiter, redeemLimiter, pwLimiter, whisperLimiter, oidcPending, OIDC_TTL_MS }));
-  app.route('/', createAgentsRoutes(house, caller, auth, invites, book, { oidcLimiter, redeemLimiter, pwLimiter, whisperLimiter, oidcPending, OIDC_TTL_MS }));
+  app.route('/', createAgentsRoutes(house, caller, auth, invites, book, { oidcLimiter, redeemLimiter, pwLimiter, whisperLimiter, oidcPending, OIDC_TTL_MS }, keyProof));
   app.route('/', createWhisperRoutes(house, caller, auth, invites, book, { oidcLimiter, redeemLimiter, pwLimiter, whisperLimiter, oidcPending, OIDC_TTL_MS }));
   app.route('/', createHouseWordsRoutes(house, caller, auth, invites, book, { oidcLimiter, redeemLimiter, pwLimiter, whisperLimiter, oidcPending, OIDC_TTL_MS }));
   app.route('/', createBookRoutes(house, caller, auth, invites, book, { oidcLimiter, redeemLimiter, pwLimiter, whisperLimiter, oidcPending, OIDC_TTL_MS }));

@@ -30,12 +30,11 @@
  * the circulation, not the pooled content.
  */
 
-import { sealToRecipients, signLetterIdWithKey, importSigningKey, unsealWithIdentity } from "./keys";
-// The enclosure seal builds its own stream encrypter/decrypter — a payload
-// is binary and never armoured, so it does not go through keys.ts's
-// string-oriented helpers. (These two were dropped by the keystore rewiring
-// of crypto.ts and restored on merge; the payload tests caught it.)
 import { Decrypter, Encrypter } from "age-encryption";
+// The enclosure seal builds its own stream encrypter/decrypter — a payload is
+// binary and never armoured, so it does not go through keys.ts's
+// string-oriented helpers. `signWithKey` is the keystore merge's arrival.
+import { sealToRecipients, signLetterIdWithKey, signWithKey, importSigningKey, unsealWithIdentity } from "./keys";
 import {
   KeystoreAbsentError,
   KeystoreLockedError,
@@ -45,6 +44,11 @@ import {
   unlockedKeys,
 } from "./keystore";
 import type { ResidentKeys } from "./keys";
+import {
+  cacheUnseal,
+  cachedUnseal,
+  type UnsealedResult,
+} from "./unsealedCache";
 
 /* The primitives are re-exported here so the module stays the single
  * import for letter crypto; the definitions live in keys.ts. */
@@ -191,6 +195,79 @@ export async function letterIdFromCanonical(canonical: string): Promise<string> 
     .join("");
 }
 
+/* ── Proof of possession — registering the public halves (SPEC §15) ─────── */
+
+/**
+ * The bytes a key registration signs.
+ *
+ * The mirror of the server's `auth/key-proof.ts::keyProofMessage`: six
+ * lines, fixed order, no escaping — every field is charset-constrained by
+ * the registration schema (bech32 and base64url carry no newlines), and an
+ * absent recovery recipient is the empty line. Both sides assert the same
+ * literal in their tests, because a drift here does not fail quietly: every
+ * registration would fail its proof.
+ */
+export const KEY_PROOF_VERSION = "poste-restante:key-proof:v1";
+
+export function keyProofMessage(input: {
+  address: string;
+  nonce: string;
+  ageRecipient: string;
+  ed25519Public: string;
+  recoveryAgeRecipient: string | null;
+}): string {
+  return [
+    KEY_PROOF_VERSION,
+    input.address,
+    input.nonce,
+    input.ageRecipient,
+    input.ed25519Public,
+    input.recoveryAgeRecipient ?? "",
+  ].join("\n");
+}
+
+/** The body a registration posts: the halves plus the proof. */
+export interface KeyRegistrationProof {
+  ageRecipient: string;
+  ed25519Public: string;
+  recoveryAgeRecipient: string | null;
+  nonce: string;
+  signature: string;
+}
+
+/**
+ * Register the public halves, proving possession of the signing key.
+ *
+ * A registration writes `identity_id` — the address's identity spine — so
+ * the house will not take it on the strength of the session alone. It issues
+ * a challenge; the resident signs the challenge and the whole key record
+ * with the private half of the key being registered. The private half never
+ * leaves this device; only the signature does, and it is worthless to anyone
+ * who does not already hold the key.
+ *
+ * The keystore must be open: this is a signing act, and a signing key that
+ * answers without a passphrase is a signing key anyone can use.
+ */
+export async function registerKeysWithProof(
+  address: string,
+  halves: {
+    ageRecipient: string;
+    ed25519Public: string;
+    recoveryAgeRecipient: string | null;
+  },
+  io: {
+    requestKeyChallenge: (id: string) => Promise<{ nonce: string }>;
+    registerKeys: (id: string, body: KeyRegistrationProof) => Promise<unknown>;
+  },
+): Promise<void> {
+  const keys = ensureKeys(address);
+  const { nonce } = await io.requestKeyChallenge(address);
+  const message = keyProofMessage({ address, nonce, ...halves });
+  const signing = signingKeyOf(address) ?? (await importSigningKey(keys.ed25519Private));
+  const signature = await signWithKey(message, signing);
+  await io.registerKeys(address, { ...halves, nonce, signature });
+}
+
 /* ── The seal — turning a draft into a delivered sealed letter ──────────── */
 
 /** A participant's public halves, from the address book. */
@@ -232,6 +309,49 @@ export function identityOf(address: {
   ed25519Public?: string | null;
 }): string {
   return address.identityId || address.ed25519Public || address.id;
+}
+
+/**
+ * The participants a sealed letter cannot reach: no live age recipient or
+ * no ed25519 identity registered yet (SPEC §15). `self` is excluded — the
+ * writer's own keys exist by construction.
+ *
+ * Exported because the composer asks the same question the seal asks, and
+ * asks it BEFORE the letter is written: a resident should learn that a
+ * correspondent has no keys while choosing to seal, not from a refused send.
+ */
+export function keylessRecipients(
+  handles: Iterable<string>,
+  addressBook: ParticipantKeys[],
+  self: string,
+): string[] {
+  const byAddress = new Map(addressBook.map((a) => [a.id, a]));
+  const keyless: string[] = [];
+  for (const handle of handles) {
+    if (handle === self) continue;
+    const rec = byAddress.get(handle);
+    if (!rec || !rec.ed25519Public || !rec.ageRecipient) keyless.push(handle);
+  }
+  return keyless.sort();
+}
+
+/**
+ * A sealed letter that would exclude someone it is addressed to.
+ *
+ * v1 refuses to seal to a participant without keys, and that refusal is
+ * correct: a letter sealed to fewer people than its envelope names has
+ * silently decided, on the writer's behalf, who may read it. The refusal
+ * carries the addresses so the composer can name them and offer the two
+ * honest moves — write unsealed, or wait for their keys.
+ */
+export class KeylessAddresseesError extends Error {
+  constructor(readonly addresses: string[]) {
+    super(
+      `${addresses.join(", ")} ${addresses.length === 1 ? "has" : "have"} no keys registered — ` +
+        "a sealed letter must reach everyone it is addressed to, so it cannot be sealed yet",
+    );
+    this.name = "KeylessAddresseesError";
+  }
 }
 
 /**
@@ -280,13 +400,13 @@ export async function sealDraft(
   draft: LetterForCanonical,
   addressBook: ParticipantKeys[],
   opts: {
+    /** Ask the house for the challenge a registration must sign. The
+     *  callback is injected so this module stays a leaf — no dependence on
+     *  the fetch client; the caller supplies it. */
+    requestKeyChallenge: (id: string) => Promise<{ nonce: string }>;
     /** Register the public halves with the house (self-only, idempotent
-     *  upsert). The callback is injected so this module stays a leaf —
-     *  no dependence on the fetch client; the caller supplies it. */
-    registerKeys: (
-      id: string,
-      keys: { ageRecipient: string; ed25519Public: string; recoveryAgeRecipient?: string | null },
-    ) => Promise<unknown>;
+     *  upsert), carrying the proof of possession of the signing key. */
+    registerKeys: (id: string, body: KeyRegistrationProof) => Promise<unknown>;
   },
 ): Promise<SealResult> {
   const keys = ensureKeys(draft.envelope.from);
@@ -294,11 +414,15 @@ export async function sealDraft(
   const minted = !own || own.ed25519Public !== keys.ed25519Public;
 
   if (minted) {
-    await opts.registerKeys(draft.envelope.from, {
-      ageRecipient: keys.ageRecipient,
-      ed25519Public: keys.ed25519Public,
-      recoveryAgeRecipient: keys.recoveryAgeRecipient,
-    });
+    await registerKeysWithProof(
+      draft.envelope.from,
+      {
+        ageRecipient: keys.ageRecipient,
+        ed25519Public: keys.ed25519Public,
+        recoveryAgeRecipient: keys.recoveryAgeRecipient,
+      },
+      opts,
+    );
   }
 
   // The identity map the id hashes (SPEC §19, amended 2026-11-08): each handle
@@ -322,6 +446,12 @@ export async function sealDraft(
   const recipients: string[] = [];
   const identities = new Map<string, string>();
 
+  // One refusal that names everyone, before any sealing work: a letter
+  // sealed to fewer people than it is addressed to would silently decide
+  // who reads it. The composer catches this and says it in the desk.
+  const keyless = keylessRecipients(participants, addressBook, draft.envelope.from);
+  if (keyless.length > 0) throw new KeylessAddresseesError(keyless);
+
   for (const handle of participants) {
     const rec = byAddress.get(handle);
     if (handle === draft.envelope.from) {
@@ -330,11 +460,10 @@ export async function sealDraft(
       if (keys.recoveryAgeRecipient) recipients.push(keys.recoveryAgeRecipient);
       continue;
     }
-    if (!rec || !rec.ed25519Public || !rec.ageRecipient) {
-      throw new Error(
-        `${handle} has no keys registered — seal to ${handle} once they register theirs`,
-      );
-    }
+    // Unreachable: the guard above refused every keyless participant. Kept as
+    // a `continue` so a caller that skips that guard cannot build a map with a
+    // hole in it — and the identity, not the live key, is what the id hashes.
+    if (!rec || !rec.ed25519Public || !rec.ageRecipient) continue;
     identities.set(handle, identityOf(rec));
     recipients.push(rec.ageRecipient);
     if (rec.recoveryAgeRecipient) recipients.push(rec.recoveryAgeRecipient);
@@ -375,33 +504,75 @@ export async function sealDraft(
   };
 }
 
+/* The primitive's outcome, re-exported: the letter reader's failure copy
+ * branches on it. */
+export type { UnsealOutcome } from "./keys";
+
 /**
- * Decrypt a sealed letter's body with the resident's own keys. Returns
- * null when the keystore is sealed, when the resident is not a recipient
- * (wrong key), or when the armor is malformed. The envelope is always
- * visible; the body waits.
+ * Decrypt a sealed letter's body with the resident's own keys.
  *
- * Fallback: when the primary age identity fails (lost — the §15 case),
- * the resident's recovery identity is tried. The house never holds the
- * recovery private half; it lives with the resident, off-box, and in
- * this keystore so a lost session can be recovered.
+ * Three answers, not one, because they mean different things to the
+ * reader:
  *
- * A null return does not say why — callers that want to distinguish
- * "sealed keystore" from "not a recipient" check `isKeystoreUnlocked`.
+ *   no_keys        the keystore is sealed or absent — open it and retry.
+ *   not_recipient  the keys are open and the letter was sealed to somebody
+ *                  else. age's own distinction; nothing was tampered with.
+ *   failed         the keys are open and the letter addressed them, but the
+ *                  seal would not open. Damaged or altered — NOT "not
+ *                  yours". Saying otherwise sends the reader hunting for a
+ *                  key they already have.
+ *
+ * Fallback: when the primary age identity is not a recipient (lost — the
+ * §15 case), the resident's recovery identity is tried. The house never
+ * holds the recovery private half; it lives with the resident, off-box, and
+ * in this keystore so a lost session can be recovered.
+ */
+export type UnsealedLetter = UnsealedResult;
+
+/**
+ * Decrypt a sealed letter's body with the resident's own keys.
+ *
+ * Memoised per (letter id, resident key fingerprint) for the session
+ * (PLAN-crypto.md E4): a thread view re-renders, and decrypting the same
+ * immutable letter again each time is work with one answer. `keystore.ts`
+ * empties the cache on every lock and wipe, so nothing survives the keys
+ * closing. Callers that omit `letterId` get no caching — the id is what says
+ * the letter cannot have changed.
  */
 export async function unsealLetterBody(
   address: string,
   ciphertext: string,
-): Promise<string | null> {
+  letterId?: string,
+): Promise<UnsealedLetter> {
   const keys = loadKeys(address);
-  if (!keys) return null;
-  const primary = await unsealWithIdentity(ciphertext, keys.ageIdentity);
-  if (primary !== null) return primary;
-  if (keys.recoveryAgeIdentity) {
-    const recovered = await unsealWithIdentity(ciphertext, keys.recoveryAgeIdentity);
-    if (recovered !== null) return recovered;
+  if (!keys) return { ok: false, reason: "no_keys" };
+
+  // The resident's CURRENT key generation — a re-keyed resident is never
+  // served an answer their old key produced.
+  const fingerprint = keys.ed25519Public;
+  if (letterId) {
+    const remembered = cachedUnseal(letterId, fingerprint);
+    if (remembered) return remembered;
   }
-  return null;
+
+  const remember = (outcome: UnsealedLetter): UnsealedLetter => {
+    if (letterId) cacheUnseal(letterId, fingerprint, outcome);
+    return outcome;
+  };
+
+  const identities = [keys.ageIdentity, keys.recoveryAgeIdentity].filter(
+    (identity): identity is string => Boolean(identity),
+  );
+  let tampered = false;
+  for (const identity of identities) {
+    const opened = await unsealWithIdentity(ciphertext, identity);
+    if (opened.ok) return remember(opened);
+    if (opened.reason === "failed") tampered = true;
+  }
+  // A seal that would not open outranks "not a recipient": if any key could
+  // not get past the seal at all, the honest answer is 'failed', not
+  // 'somebody else's letter'.
+  return remember({ ok: false, reason: tampered ? "failed" : "not_recipient" });
 }
 
 /* ── Sealed payloads — the enclosure's own seal (PLAN-crypto.md C1) ─────── */

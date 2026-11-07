@@ -25,7 +25,13 @@ import {
   lockAllKeystores,
   KeystoreLockedError,
   KeystoreAbsentError,
+  keyProofMessage,
+  registerKeysWithProof,
+  keylessRecipients,
+  KeylessAddresseesError,
 } from "./crypto";
+import type { KeyRegistrationProof } from "./crypto";
+import { armor } from "age-encryption";
 
 /** A passphrase long enough for the keystore's floor. */
 const PASSPHRASE = "the light in the rehearsal room";
@@ -150,10 +156,13 @@ describe("seal/unseal round-trip", () => {
       b.ageRecipient,
     ]);
     const plain = await unsealWithIdentity(cipher, a.ageIdentity);
-    expect(plain).toBe("the storm is coming");
-    // A non-recipient cannot open it.
+    expect(plain).toEqual({ ok: true, plaintext: "the storm is coming" });
+    // A non-recipient cannot open it — and is told that, not "tampered".
     const c = await generateKeys();
-    expect(await unsealWithIdentity(cipher, c.ageIdentity)).toBeNull();
+    expect(await unsealWithIdentity(cipher, c.ageIdentity)).toEqual({
+      ok: false,
+      reason: "not_recipient",
+    });
   });
 });
 
@@ -209,6 +218,7 @@ describe("sealDraft — the resident's half of the flow", () => {
       },
       addressBook,
       {
+        requestKeyChallenge: async () => ({ nonce: "1700000000.a-test-nonce" }),
         registerKeys: async (id, keys) => {
           registered.push({ id, keys });
           return { ok: true };
@@ -227,7 +237,7 @@ describe("sealDraft — the resident's half of the flow", () => {
 
     // The recipient can open it and reads the subject-line + body.
     const opened = await unsealWithIdentity(result.letter.body.content, recipient.ageIdentity);
-    expect(opened).toBe("a secret plan\n\nstep one\nthen step two");
+    expect(opened).toEqual({ ok: true, plaintext: "a secret plan\n\nstep one\nthen step two" });
 
     // The signature is the sign of the stored-form id — the same id the
     // server re-derives from the delivered letter. We can verify with
@@ -268,9 +278,66 @@ describe("sealDraft — the resident's half of the flow", () => {
           body: { format: "markdown", content: "hello" },
         },
         addressBook,
-        { registerKeys: async () => ({ ok: true }) },
+        {
+          requestKeyChallenge: async () => ({ nonce: "1700000000.a-test-nonce" }),
+          registerKeys: async () => ({ ok: true }),
+        },
       ),
     ).rejects.toThrow(/no keys registered/);
+  });
+
+  it("names every keyless addressee in one refusal, not one throw at a time", async () => {
+    await createKeystore("chris@house", PASSPHRASE);
+    const writer = await generateKeys();
+    const addressBook = [
+      { id: "chris@house", ageRecipient: writer.ageRecipient, ed25519Public: writer.ed25519Public, recoveryAgeRecipient: null },
+      // Keyed, so not named.
+      { id: "bo@house", ageRecipient: writer.ageRecipient, ed25519Public: writer.ed25519Public, recoveryAgeRecipient: null },
+    ];
+
+    const attempt = sealDraft(
+      {
+        envelope: {
+          from: "chris@house",
+          to: ["bo@house", "ghost@house"],
+          cc: ["shade@house"],
+          thread: "th_sealed_3",
+          kind: "letter",
+          lang: "en-AU",
+          subject: "",
+        },
+        time: { gregorian: "2026-08-29T14:00:00+04:00", frames: [] },
+        body: { format: "markdown", content: "hello" },
+      },
+      addressBook,
+      {
+        requestKeyChallenge: async () => ({ nonce: "1700000000.a-test-nonce" }),
+        registerKeys: async () => ({ ok: true }),
+      },
+    );
+
+    await expect(attempt).rejects.toBeInstanceOf(KeylessAddresseesError);
+    await expect(attempt).rejects.toMatchObject({
+      addresses: ["ghost@house", "shade@house"],
+    });
+  });
+});
+
+describe("keylessRecipients — who a sealed letter cannot reach", () => {
+  const book = [
+    { id: "bo@house", ageRecipient: "age1bo", ed25519Public: "pub-bo", recoveryAgeRecipient: null },
+    { id: "half@house", ageRecipient: null, ed25519Public: "pub-half", recoveryAgeRecipient: null },
+  ];
+
+  it("names an address with no age recipient, and one the book has never heard of", () => {
+    expect(keylessRecipients(["bo@house", "half@house", "ghost@house"], book, "chris@house")).toEqual([
+      "ghost@house",
+      "half@house",
+    ]);
+  });
+
+  it("never counts the writer — their keys exist by construction", () => {
+    expect(keylessRecipients(["chris@house"], book, "chris@house")).toEqual([]);
   });
 });
 
@@ -331,7 +398,10 @@ describe("recovery identity — the §15 backstop", () => {
         body: { format: "markdown", content: "recover me" },
       },
       addressBook,
-      { registerKeys: async () => ({ ok: true }) },
+      {
+        requestKeyChallenge: async () => ({ nonce: "1700000000.a-test-nonce" }),
+        registerKeys: async () => ({ ok: true }),
+      },
     );
 
     // The recipient set includes the recovery recipient (the backstop).
@@ -340,7 +410,7 @@ describe("recovery identity — the §15 backstop", () => {
     // Primary key is lost: unsealLetterBody must fall back to the
     // recovery identity and still open the letter.
     const opened = await unsealLetterBody("chris@house", result.letter.body.content);
-    expect(opened).toBe("lost key drill\n\nrecover me");
+    expect(opened).toEqual({ ok: true, plaintext: "lost key drill\n\nrecover me" });
   });
 });
 
@@ -392,7 +462,10 @@ describe("the sealed subject — the title moves into the body", () => {
         body: { format: "markdown", content: "first line of the letter" },
       },
       addressBook,
-      { registerKeys: async () => ({ ok: true }) },
+      {
+        requestKeyChallenge: async () => ({ nonce: "1700000000.a-test-nonce" }),
+        registerKeys: async () => ({ ok: true }),
+      },
     );
 
     // The stored form hashes an empty envelope subject — the house shows
@@ -400,11 +473,12 @@ describe("the sealed subject — the title moves into the body", () => {
     expect(result.letter.envelope.subject).toBe("");
 
     const opened = await unsealWithIdentity(result.letter.body.content, recipient.ageIdentity);
-    expect(opened).not.toBeNull();
+    expect(opened.ok).toBe(true);
+    if (!opened.ok) return;
     // The reader lifts the trimmed first line back out as the subject.
-    const nl = opened!.indexOf("\n");
-    expect(opened!.slice(0, nl)).toBe("the winter of the show");
-    expect(opened!.slice(nl).replace(/^\n+/, "")).toBe("first line of the letter");
+    const nl = opened.plaintext.indexOf("\n");
+    expect(opened.plaintext.slice(0, nl)).toBe("the winter of the show");
+    expect(opened.plaintext.slice(nl).replace(/^\n+/, "")).toBe("first line of the letter");
   });
 
   it("seals body-only when the subject is blank — no stray title line", async () => {
@@ -428,10 +502,13 @@ describe("the sealed subject — the title moves into the body", () => {
         body: { format: "markdown", content: "the letter's own first line" },
       },
       addressBook,
-      { registerKeys: async () => ({ ok: true }) },
+      {
+        requestKeyChallenge: async () => ({ nonce: "1700000000.a-test-nonce" }),
+        registerKeys: async () => ({ ok: true }),
+      },
     );
     const opened = await unsealWithIdentity(result.letter.body.content, recipient.ageIdentity);
-    expect(opened).toBe("the letter's own first line");
+    expect(opened).toEqual({ ok: true, plaintext: "the letter's own first line" });
   });
 });
 
@@ -480,7 +557,10 @@ describe("a sealed keystore refuses to seal", () => {
           body: { format: "markdown", content: "hello" },
         },
         [],
-        { registerKeys: async () => ({ ok: true }) },
+        {
+          requestKeyChallenge: async () => ({ nonce: "1700000000.a-test-nonce" }),
+          registerKeys: async () => ({ ok: true }),
+        },
       ),
     ).rejects.toBeInstanceOf(KeystoreLockedError);
 
@@ -510,6 +590,7 @@ describe("sealed payloads — the enclosure's own seal", () => {
   let saved: Storage | undefined;
 
   beforeEach(() => {
+    lockAllKeystores();
     saved = KEYSTORE ?? undefined;
     Object.defineProperty(globalThis, "localStorage", {
       value: fakeLocalStorage(),
@@ -518,6 +599,7 @@ describe("sealed payloads — the enclosure's own seal", () => {
   });
 
   afterEach(() => {
+    lockAllKeystores();
     if (saved !== undefined) {
       Object.defineProperty(globalThis, "localStorage", {
         value: saved,
@@ -680,6 +762,7 @@ describe("the canonical map — identity first, key second, handle last", () => 
       },
     ];
     const result = await sealDraft(draft("chris@house", ["sam@house"]), addressBook, {
+      requestKeyChallenge: async () => ({ nonce: "1700000000.abc" }),
       registerKeys: async () => ({ ok: true }),
     });
 
@@ -708,6 +791,7 @@ describe("the canonical map — identity first, key second, handle last", () => 
       },
     ];
     const result = await sealDraft(draft("chris@house", ["sam@house"]), addressBook, {
+      requestKeyChallenge: async () => ({ nonce: "1700000000.abc" }),
       registerKeys: async () => ({ ok: true }),
     });
 
@@ -750,7 +834,7 @@ describe("the canonical map — identity first, key second, handle last", () => 
     const result = await sealDraft(
       draft("chris@house", ["sam@house"]),
       addressBook,
-      { registerKeys: async () => ({ ok: true }) },
+      { requestKeyChallenge: async () => ({ nonce: "1700000000.abc" }), registerKeys: async () => ({ ok: true }) },
     );
 
     // The id is the PINNED identity's…
@@ -797,5 +881,170 @@ describe("the canonical map — identity first, key second, handle last", () => 
       "legacy@house",
     );
     expect(identityOf({ id: "legacy@house" })).toBe("legacy@house");
+  });
+});
+
+/* ── Proof of possession — the resident's half of a key registration ────── */
+
+describe("proof of possession — registering keys proves the key", () => {
+  let saved: Storage | undefined;
+
+  beforeEach(() => {
+    lockAllKeystores();
+    saved = KEYSTORE ?? undefined;
+    Object.defineProperty(globalThis, "localStorage", {
+      value: fakeLocalStorage(),
+      configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    lockAllKeystores();
+    if (saved !== undefined) {
+      Object.defineProperty(globalThis, "localStorage", {
+        value: saved,
+        configurable: true,
+      });
+    } else {
+      delete (globalThis as Record<string, unknown>).localStorage;
+    }
+  });
+
+  it("builds the exact message the server checks — the mirror is a literal", () => {
+    // The same literal is asserted in
+    // server/test/unit/key-proof.test.ts. If either side drifts, its own
+    // test fails rather than every registration failing in the field.
+    expect(
+      keyProofMessage({
+        address: "chris@house",
+        nonce: "1700000000.abc",
+        ageRecipient: "age1qqq",
+        ed25519Public: "AAAA",
+        recoveryAgeRecipient: null,
+      }),
+    ).toBe("poste-restante:key-proof:v1\nchris@house\n1700000000.abc\nage1qqq\nAAAA\n");
+  });
+
+  it("asks for a challenge, signs it with the resident's key, and posts the halves with the proof", async () => {
+    await createKeystore("chris@house", PASSPHRASE);
+    const keys = ensureKeys("chris@house");
+    const halves = {
+      ageRecipient: keys.ageRecipient,
+      ed25519Public: keys.ed25519Public,
+      recoveryAgeRecipient: null,
+    };
+
+    let asked: string | null = null;
+    let posted: KeyRegistrationProof | null = null;
+    await registerKeysWithProof("chris@house", halves, {
+      requestKeyChallenge: async (id) => {
+        asked = id;
+        return { nonce: "1700000000.abc" };
+      },
+      registerKeys: async (_id, body) => {
+        posted = body;
+        return { ok: true };
+      },
+    });
+
+    expect(asked).toBe("chris@house");
+    expect(posted).not.toBeNull();
+    expect(posted).toMatchObject({ ...halves, nonce: "1700000000.abc" });
+
+    // The signature verifies with the public half being registered, over
+    // the exact message the server will rebuild. Nothing else could.
+    const verifyKey = await crypto.subtle.importKey(
+      "spki",
+      new Uint8Array(fromBase64url(keys.ed25519Public)),
+      { name: "Ed25519" },
+      false,
+      ["verify"],
+    );
+    const ok = await crypto.subtle.verify(
+      "Ed25519",
+      verifyKey,
+      new Uint8Array(fromBase64url(posted!.signature)),
+      new TextEncoder().encode(
+        keyProofMessage({ address: "chris@house", nonce: "1700000000.abc", ...halves }),
+      ),
+    );
+    expect(ok).toBe(true);
+  });
+
+  it("refuses to register while the keystore is sealed — proof needs the key open", async () => {
+    await createKeystore("chris@house", PASSPHRASE);
+    const keys = ensureKeys("chris@house");
+    const halves = {
+      ageRecipient: keys.ageRecipient,
+      ed25519Public: keys.ed25519Public,
+      recoveryAgeRecipient: null,
+    };
+    lockAllKeystores();
+
+    let posted = false;
+    await expect(
+      registerKeysWithProof("chris@house", halves, {
+        requestKeyChallenge: async () => ({ nonce: "1700000000.abc" }),
+        registerKeys: async () => {
+          posted = true;
+          return { ok: true };
+        },
+      }),
+    ).rejects.toBeInstanceOf(KeystoreLockedError);
+    expect(posted).toBe(false);
+  });
+});
+
+/* ── The reader's three silences — item 4, client half ──────────────────── */
+
+describe("unsealLetterBody — a tampered letter is not 'not yours'", () => {
+  let saved: Storage | undefined;
+
+  beforeEach(() => {
+    lockAllKeystores();
+    saved = KEYSTORE ?? undefined;
+    Object.defineProperty(globalThis, "localStorage", {
+      value: fakeLocalStorage(),
+      configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    lockAllKeystores();
+    if (saved !== undefined) {
+      Object.defineProperty(globalThis, "localStorage", { value: saved, configurable: true });
+    } else {
+      delete (globalThis as Record<string, unknown>).localStorage;
+    }
+  });
+
+  it("separates 'sealed to you and altered' from 'sealed to somebody else'", async () => {
+    await createKeystore("chris@house", PASSPHRASE);
+    const keys = ensureKeys("chris@house");
+    const theirs = await generateKeys();
+
+    const mine = await sealToRecipients("a letter for chris", [keys.ageRecipient]);
+    const notMine = await sealToRecipients("a letter for sam", [theirs.ageRecipient]);
+
+    // Theirs: open keys, no matching stanza — a fact about addressing.
+    expect(await unsealLetterBody("chris@house", notMine)).toEqual({
+      ok: false,
+      reason: "not_recipient",
+    });
+
+    // Mine, altered: the seal does not hold. Reporting this as "not yours"
+    // would send the reader hunting for a key they already have.
+    const raw = new Uint8Array(armor.decode(mine));
+    raw[raw.length - 1] ^= 0xff;
+    expect(await unsealLetterBody("chris@house", armor.encode(raw))).toEqual({
+      ok: false,
+      reason: "failed",
+    });
+
+    // And the untouched one still opens.
+    expect(await unsealLetterBody("chris@house", mine)).toEqual({
+      ok: true,
+      plaintext: "a letter for chris",
+    });
   });
 });

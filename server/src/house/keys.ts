@@ -92,6 +92,27 @@ export class HouseKeyMissingError extends Error {
 }
 
 /**
+ * Thrown when the house HAS a key and the ciphertext still would not open.
+ *
+ * Distinct from `HouseKeyMissingError` on purpose: a letter the house was
+ * addressed in and cannot read is not a private letter, it is a damaged or
+ * altered one. Reporting it as "not ours" would bury a tamper signal under
+ * the expected quiet of a letter that was never ours to read.
+ *
+ * The message carries no key material and no ciphertext.
+ */
+export class HouseKeyUnreadableError extends Error {
+  constructor() {
+    super(
+      "the house's key is present, but this body would not open with it. The " +
+        "letter was addressed to the house and did not verify — it may be damaged " +
+        "or tampered with. Nothing was decrypted and nothing was stored.",
+    );
+    this.name = "HouseKeyUnreadableError";
+  }
+}
+
+/**
  * Thrown when the secret in the environment does not derive the public halves
  * stored in `house_keys`. That pair is not a house: acting on it would either
  * mirror a recipient nobody can seal to, or try to unseal with an identity
@@ -388,12 +409,19 @@ export class HouseKeysService {
    * Returns null when the ciphertext is not addressed to the house (a
    * sealed-only letter), and raises when the house has no usable key: "not for
    * us" and "we lost our key" are different facts and must not look alike.
+   * A body that WAS addressed to the house and cannot be opened — tampered,
+   * or malformed — also raises, for the same reason: it is not a private
+   * letter, it is a letter the house should have been able to read and
+   * could not. Swallowing that would look like "not ours".
    * v1 proves the capability; its consumer (the whisper and gap engine reading
    * collaborative bodies) is the recorded follow-on.
    */
   async unsealBody(ciphertext: string): Promise<string | null> {
     const key = await this.get();
     if (!key) throw new HouseKeyMissingError("unprovisioned");
-    return unsealWithIdentity(ciphertext, key.ageIdentity);
+    const opened = await unsealWithIdentity(ciphertext, key.ageIdentity);
+    if (opened.ok) return opened.plaintext;
+    if (opened.reason === "not_recipient") return null;
+    throw new HouseKeyUnreadableError();
   }
 }
