@@ -4,7 +4,7 @@ import { house, loadAuth } from "../api";
 import type { Letter, PayloadMeta } from "../api";
 import KindTag from "./KindTag";
 import { renderMarkdown } from "./markdown";
-import { unsealLetterBody, unsealPayload } from "../utils/crypto";
+import { isKeystoreUnlocked, unsealLetterBody, unsealPayload } from "../utils/crypto";
 import Enclosures, { isRenderable } from "./Enclosures";
 
 interface Props {
@@ -61,7 +61,7 @@ export default function LetterView({ letter, onBack, actions }: Props) {
   const [plaintext, setPlaintext] = useState<string | null>(
     sealed ? null : body.content,
   );
-  const [unsealFailed, setUnsealFailed] = useState(false);
+  const [unsealFailure, setUnsealFailure] = useState<"locked" | "no-key" | null>(null);
   const [unsealing, setUnsealing] = useState(false);
   // Sealed letters carry no plaintext subject — the first line of the
   // unsealed body is the title. Until then, a quiet placeholder (SPEC
@@ -169,7 +169,11 @@ export default function LetterView({ letter, onBack, actions }: Props) {
       const resident = auth?.address ?? envelope.from;
       const opened = await unsealLetterBody(resident, body.content);
       if (opened === null) {
-        setUnsealFailed(true);
+        // Two different silences: the keys are sealed (open them and the
+        // letter opens), or they are open and this letter was not sealed
+        // to them. Say which — a resident should not go hunting for a
+        // lost key when the door is only shut.
+        setUnsealFailure(isKeystoreUnlocked(resident) ? "no-key" : "locked");
         return;
       }
       // The first line of the plaintext is the subject; the body is the
@@ -183,9 +187,9 @@ export default function LetterView({ letter, onBack, actions }: Props) {
         setSubjectLabel("sealed letter");
         setPlaintext(opened);
       }
-      setUnsealFailed(false);
+      setUnsealFailure(null);
     } catch {
-      setUnsealFailed(true);
+      setUnsealFailure("no-key");
     } finally {
       setUnsealing(false);
     }
@@ -260,10 +264,11 @@ export default function LetterView({ letter, onBack, actions }: Props) {
 
         {body.format === "sealed" ? (
           <div className="body sealed-body">
-            {unsealFailed ? (
+            {unsealFailure ? (
               <p className="sealed-hint">
-                This letter is sealed — the house cannot open it. It was sealed to you; if it
-                is not readable with your key, you may not be a recipient.
+                {unsealFailure === "locked"
+                  ? "This letter is sealed, and your keys are sealed too. Open your keys in your record and it will open for you."
+                  : "This letter is sealed — the house cannot open it. It was sealed to you; if it is not readable with your key, you may not be a recipient."}
               </p>
             ) : plaintext !== null ? (
               renderMarkdown(plaintext)

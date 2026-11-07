@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { house } from "../api";
-import { sealDraft, sealPayload } from "../utils/crypto";
+import { isKeystoreUnlocked, sealDraft, sealPayload } from "../utils/crypto";
 import type { Address } from "../api";
 import WhyNote from "../components/WhyNote";
 
@@ -301,6 +301,15 @@ export default function Compose({ onError, onDelivered, initialTo, initialThread
           />
           <span>Seal this letter — only {to.trim() || "the recipient"} and I can read it; the house holds it without reading</span>
         </label>
+        {/* Sealing is a signing act, so it needs the session's open keys.
+            Read at render: the composer remounts on navigation, so the
+            state is as fresh as the desk. Say it here rather than at the
+            send button — the resident should know before writing. */}
+        {sealed && !isKeystoreUnlocked(from) && (
+          <p className="compose-hint">
+            Your keys are sealed — open them in your record before sealing this letter.
+          </p>
+        )}
         {/* Seal WITH the house (SPEC §15, second model): house@house
             joins the recipients — a collaborative letter the house
             holds a key to. The house opens it in memory only, exactly

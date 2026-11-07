@@ -236,6 +236,68 @@ already moved to `embeddinggemma-2:740m` — the one stale expectation keeping
 - **`PLAN-crypto.md` replaced** with a delta plan: what is built, what is genuinely
   missing, and what must not be built (`seal_level` enum, body re-encryption). Process
   docs are local-only by `AGENTS.md`; the file had been committed, and is now untracked.
+||||||| c68135c
+### Changed — the resident's keystore is sealed (2026-11-08)
+
+The client held every private key in `localStorage` as plain JSON
+(`poste-restante.keys`): the age identity, the ed25519 pkcs8, and — once
+minted — the recovery identity that was supposed to be the backstop against
+losing them. Any script on the page could read all three. A sealed letter is
+only as private as the weakest script on the page, and the recovery identity
+was stored in the same place it was meant to back up (C5).
+
+- **The record.** `poste-restante.keystore` holds one sealed record per
+  address: Argon2id (WASM, 64 MiB, t=3) stretching the passphrase to a key,
+  PBKDF2-SHA256 at 600k iterations as the documented fallback where the WASM
+  build cannot run, AES-KW wrapping the record's 256-bit data key, and
+  AES-GCM over the key material with the version, address and KDF parameters
+  bound in as AAD. AES-KW wraps the data key rather than the secrets
+  directly because WebCrypto's AES-KW is RFC 3394 — no padding, and it wraps
+  CryptoKeys only; an age identity is a 74-byte string. No secret is at rest
+  outside ciphertext.
+- **Unlock once per session.** The unwrapped material and the data key live
+  in memory only; the passphrase is never stored. Locking, signing out, and a
+  fresh page load all clear the session. Sealing a letter now requires an open
+  keystore, and the client says so at the writing desk instead of failing at
+  the send button.
+- **The two halves are not equal, and the code says so.** The ed25519
+  signing key's working copy is imported **non-extractable** into IndexedDB:
+  scripts can ask the browser to sign but cannot read the key out. The age
+  identity cannot be a `CryptoKey` at all (the age library needs the string),
+  so wrapping is its only protection. A wrapped pkcs8 copy is kept in the
+  record because the signing key *is* the identity (§19) — a key that can
+  never be exported can never be backed up, which is the loss this change
+  exists to prevent.
+- **First-class export/import.** A backup is a standard passphrase-sealed age
+  file (scrypt recipient) holding the age identity, the recovery identity and
+  the signing key — openable with `age -d`, so the resident is never
+  dependent on this client to read their own backup. Import refuses to
+  overwrite keys the browser already holds.
+- **The resident-facing truth.** Until a backup exists, the record says
+  plainly that this browser holds the only copy. The recovery reveal cannot
+  be closed without an explicit acknowledgement that the identity is out of
+  the browser. A sealed letter now says whether it is unreadable because the
+  keys are sealed or because the resident is not a recipient — two different
+  silences.
+- **Migration.** Keys from the old plaintext store are adopted on request:
+  sealed under a passphrase and the plaintext removed. `createKeystore`
+  refuses to mint a second keypair while unsealed keys are present.
+
+Not claimed: an XSS that runs *while the keystore is open* can read what is
+open, and can use the non-extractable signing key. There is no in-page
+defence against a script running with your session; what changes is that a
+closed keystore yields ciphertext only, nothing plaintext sits in
+`localStorage`, and the key material cannot be lifted out of the browser. No
+server route, no server-side decryption path, and nothing here changes the
+rule that the house never holds a private key.
+
+Tests (client, vitest): wrap/unwrap round-trip; wrong passphrase, tampered
+payload, a salt edit and a wrapped key lifted from another address all fail
+closed; `localStorage` holds no parseable age identity; the plaintext store
+is migrated and removed; export → wipe → import unseals a letter sealed
+before the wipe; the non-extractable key signs, cannot be exported, persists
+in IndexedDB, and is purged on lock. 185 client tests pass; `typecheck` and
+`build` green.
 
 ### Removed — the mailbox read-side, backed out (2026-09-16)
 
