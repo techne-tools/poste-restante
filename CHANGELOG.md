@@ -27,6 +27,73 @@ Losing the key means collaborative letters sealed before the loss are unreadable
 re-encryption can rescue them; sealed letters are unaffected, because no house key of any
 kind ever opened one. Corrected in place: the `026` header, `SPEC.md` §5 #15, and this
 entry.
+||||||| 36d99f2
+### Added — sealed letters keep their enclosures sealed too (2026-11-08)
+
+A sealed letter's **body** was age ciphertext the house could not read; its
+**enclosures** were not. `POST /v1/letters/:id/payloads` had no sealed branch
+and `server/src/minio/*` does no encryption at all, so any participant could
+attach raw bytes to a sealed letter and the house could read them. The
+reference client avoided the leak by refusing to attach — a convention, not a
+guarantee, and the weakest kind. The SPEC's promise ("the house cannot read
+what it sealed") was false for anything attached.
+
+- **Migration `031_sealed_payloads.sql`** (030 was taken by the key-history
+  card) adds `letter_payloads.sealed boolean NOT NULL DEFAULT false`. Applied
+  against a populated database at 030: column added, the one legacy plaintext
+  payload on a sealed letter preserved as `sealed = false` — the house holds no
+  key that could re-seal it, and marking it sealed would silently make it
+  unopenable — and a second run is a no-op.
+- **The client seals the enclosure before it uploads.** `sealPayload()`
+  encrypts to *exactly* the recipients `sealDraft()` sealed the body to
+  (primary + recovery for every participant), streaming the file through age
+  rather than holding plaintext in one JS buffer. The sealed plaintext is a
+  one-line JSON header (`name`, `contentType`) followed by the bytes: raw age,
+  not armoured, so a binary enclosure does not pay +33% base64. The upload
+  carries `X-Payload-Sealed: 1` and `Content-Type: application/octet-stream`.
+- **The house refuses a mismatch in both directions (422).** Plaintext to a
+  sealed letter would let the house read what it sealed; ciphertext to an
+  unsealed letter would be an enclosure the recipient cannot open. A sealed
+  upload wrapped in `multipart/form-data` is refused too — the envelope is
+  plaintext metadata.
+- **List and download serve ciphertext unchanged**, marked with
+  `sealed: true` / `X-Payload-Sealed: 1`; the client unseals in memory. There
+  is no server-side decryption path — not behind a flag, not for
+  transcription, not for thumbnails — and a test reads the route and store
+  sources to keep it that way. Sealed raw audio stays untranscribed.
+- **The upload streams.** `bodyLimit` is skipped for this route (hono buffers
+  a chunked body to measure it) and the cap is enforced while streaming
+  (`PAYLOAD_MAX_BYTES`, default 512 MiB), so the ceiling is the disk, not the
+  heap. `S3PayloadStore.putStream()` streams straight through when the client
+  declared a length, and spools to a temp file when it did not (S3 needs a
+  `ContentLength` for a streamed body). Multi-megabyte rehearsal recordings
+  stop being an edge case.
+- **The composer carries attachments on sealed letters again**, and the reader
+  unseals a sealed enclosure to reveal its real type. If this device holds no
+  key for the resident the enclosure says so in place — it is never silently
+  dropped.
+
+Metadata that stays visible, recorded rather than hidden: a sealed payload's
+**name and size** remain in the catalogue (a pointer, not content), and the
+catalogue's `content_type` is `application/octet-stream` for a sealed row so
+the real type cannot leak through it. The payload ciphertext is left **unbound**
+to the letter id (the simpler of the two choices PLAN-crypto.md M5 names): the
+route already checks participation, and binding buys a proof nobody asked for
+in v1.
+
+Known limits: no live MinIO in this environment, so the two `putStream` paths
+are proved against a mocked S3 client (bytes and `ContentLength` both
+asserted), not against a bucket; client-side unsealing materialises the opened
+file as a Blob, which is browser-managed storage rather than a JS buffer.
+
+Tests: `server/test/unit/payloads-api.test.ts` (both 422 directions, sealed
+round trip, per-participant 404s through a real auth stub, the 413, rollback,
+and the no-decryption-path guard), `server/test/unit/s3-store.test.ts` (both
+streaming paths), `server/test/integration/sealed-payloads.test.ts` (postgres:
+the raw object and the catalogue row both searched for the plaintext and
+neither contains it), `client/src/utils/crypto.test.ts` (seal/unseal round
+trip, wrong key, no key, tamper, recovery-key fallback),
+`client/src/components/LetterView.test.tsx` (the sealed enclosure's states).
 
 ### Added — key history, actually kept (2026-11-08)
 

@@ -18,6 +18,8 @@ import {
   unsealWithIdentity,
   unsealLetterBody,
   sealDraft,
+  sealPayload,
+  unsealPayload,
 } from "./crypto";
 
 /** The localStorage the keystore writes to. */
@@ -420,3 +422,114 @@ function fromBase64url(s: string): Uint8Array {
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
   return out;
 }
+
+/* ── Sealed payloads — C1: the enclosure sealed like the body ───────────── */
+
+describe("sealed payloads — the enclosure's own seal", () => {
+  let saved: Storage | undefined;
+
+  beforeEach(() => {
+    saved = KEYSTORE ?? undefined;
+    Object.defineProperty(globalThis, "localStorage", {
+      value: fakeLocalStorage(),
+      configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    if (saved !== undefined) {
+      Object.defineProperty(globalThis, "localStorage", {
+        value: saved,
+        configurable: true,
+      });
+    } else {
+      delete (globalThis as Record<string, unknown>).localStorage;
+    }
+  });
+
+  it("seals a file to a recipient and opens it again with name, type and bytes intact", async () => {
+    const keys = await ensureKeys("chris@house");
+    const bytes = new TextEncoder().encode("REHEARSAL TAKE THREE — storm cue at 47");
+    const file = new Blob([bytes], { type: "audio/wav" });
+
+    const sealed = await sealPayload(file, [keys.ageRecipient], {
+      name: "take-3.wav",
+      contentType: "audio/wav",
+    });
+
+    // The ciphertext carries none of the plaintext and none of the name's
+    // content: what the house stores is opaque.
+    const raw = new Uint8Array(await sealed.arrayBuffer());
+    const rawText = new TextDecoder().decode(raw);
+    expect(rawText).not.toContain("REHEARSAL TAKE THREE");
+    expect(rawText).not.toContain("storm cue");
+    // Raw age, not armoured — an enclosure is binary.
+    expect(rawText).not.toContain("BEGIN AGE ENCRYPTED FILE");
+
+    const opened = await unsealPayload("chris@house", sealed);
+    expect(opened.ok).toBe(true);
+    if (!opened.ok) return;
+    expect(opened.name).toBe("take-3.wav");
+    expect(opened.contentType).toBe("audio/wav");
+    expect(new Uint8Array(await opened.blob.arrayBuffer())).toEqual(bytes);
+  });
+
+  it("refuses to open an enclosure sealed to somebody else", async () => {
+    const mine = await ensureKeys("chris@house");
+    const theirs = await generateKeys();
+    const sealed = await sealPayload(new Blob([new Uint8Array([1, 2, 3])]), [theirs.ageRecipient], {
+      name: "theirs.bin",
+      contentType: "application/octet-stream",
+    });
+
+    // chris's own key is in the keystore, but the enclosure was not sealed
+    // to it. Honest failure, not a silent drop.
+    expect(mine.ageRecipient).not.toBe(theirs.ageRecipient);
+    const opened = await unsealPayload("chris@house", sealed);
+    expect(opened).toEqual({ ok: false, reason: "failed" });
+  });
+
+  it("fails honestly when the ciphertext was tampered with, rather than hanging", async () => {
+    const keys = await ensureKeys("chris@house");
+    const sealed = await sealPayload(new Blob([new TextEncoder().encode("x".repeat(4096))]), [keys.ageRecipient], {
+      name: "tampered.bin",
+      contentType: "application/octet-stream",
+    });
+    const bytes = new Uint8Array(await sealed.arrayBuffer());
+    // Flip a byte deep in the body: the MAC fails at the end of the stream.
+    bytes[bytes.length - 10] ^= 0xff;
+    const opened = await unsealPayload("chris@house", new Blob([bytes]));
+    expect(opened).toEqual({ ok: false, reason: "failed" });
+  });
+
+  it("says 'no_keys' when this device holds no key for the address", async () => {
+    const keys = await generateKeys();
+    const sealed = await sealPayload(new Blob([new Uint8Array([1])]), [keys.ageRecipient], {
+      name: "x.bin",
+      contentType: "application/octet-stream",
+    });
+    const opened = await unsealPayload("nobody@house", sealed);
+    expect(opened).toEqual({ ok: false, reason: "no_keys" });
+  });
+
+  it("will not seal to an empty recipient set — an unopenable enclosure is not an enclosure", async () => {
+    await expect(
+      sealPayload(new Blob([new Uint8Array([1])]), [], { name: "x.bin", contentType: "text/plain" }),
+    ).rejects.toThrow(/at least one recipient/);
+  });
+
+  it("seals to the recovery recipient too, so a lost primary key still opens it", async () => {
+    const minted = await mintRecoveryIdentity("chris@house");
+    const bytes = new TextEncoder().encode("recovered");
+    // Sealed ONLY to the recovery recipient — the primary key is gone, and
+    // the reader's keystore must fall back to the off-box recovery identity.
+    const sealed = await sealPayload(new Blob([bytes]), [minted.keys.recoveryAgeRecipient!], {
+      name: "recovered.bin",
+      contentType: "application/octet-stream",
+    });
+    const opened = await unsealPayload("chris@house", sealed);
+    expect(opened.ok).toBe(true);
+    if (!opened.ok) return;
+    expect(new Uint8Array(await opened.blob.arrayBuffer())).toEqual(bytes);
+  });
+});

@@ -446,3 +446,170 @@ export async function unsealLetterBody(
   }
   return null;
 }
+
+/* ── Sealed payloads — the enclosure's own seal (PLAN-crypto.md C1) ─────── */
+
+/**
+ * A sealed enclosure is one age file whose plaintext is a one-line JSON
+ * header followed by the file's bytes:
+ *
+ *     {"v":1,"name":"take-3.wav","contentType":"audio/wav"}\n<bytes>
+ *
+ * RAW age, not armoured: an enclosure is binary and armour would inflate
+ * it by a third for nobody's benefit. The header carries the real name and
+ * type because both are content — the catalog only ever sees
+ * `application/octet-stream` and the size (a pointer, not content).
+ */
+interface SealedPayloadHeader {
+  v: 1;
+  name: string;
+  contentType: string;
+}
+
+/** The header value the server takes as the seal marker. */
+export const SEALED_PAYLOAD_HEADER = "X-Payload-Sealed";
+export const SEALED_PAYLOAD_MARKER = "1";
+/** What a sealed enclosure's Content-Type says — the real type is inside. */
+export const SEALED_PAYLOAD_CONTENT_TYPE = "application/octet-stream";
+
+function encodePayloadHeader(name: string, contentType: string): Uint8Array<ArrayBuffer> {
+  const header: SealedPayloadHeader = { v: 1, name, contentType };
+  // A fresh ArrayBuffer: BlobPart wants ArrayBuffer, not ArrayBufferLike.
+  return new Uint8Array(new TextEncoder().encode(`${JSON.stringify(header)}\n`));
+}
+
+/**
+ * Seal an enclosure to the same recipient set as the letter body.
+ *
+ * The seal STREAMS: the header and the file become one Blob stream, age
+ * encrypts it as a stream, and the result is collected into a Blob — so
+ * the plaintext is never held as one JS buffer, and a rehearsal recording
+ * costs the browser's blob storage rather than the heap.
+ *
+ * (The upload itself is a Blob rather than a ReadableStream because
+ * WebKit — the Tauri client's engine — cannot send a streaming request
+ * body. The server still receives and stores it as a stream.)
+ */
+export async function sealPayload(
+  file: Blob,
+  recipients: string[],
+  meta: { name: string; contentType: string },
+): Promise<Blob> {
+  if (recipients.length === 0) {
+    throw new Error("a sealed enclosure needs at least one recipient");
+  }
+  const encrypter = new Encrypter();
+  for (const recipient of recipients) encrypter.addRecipient(recipient);
+  const framed = new Blob([encodePayloadHeader(meta.name, meta.contentType), file]);
+  const sealed = await encrypter.encrypt(framed.stream());
+  return new Response(sealed).blob();
+}
+
+/** Why an enclosure could not be opened, said plainly. */
+export type UnsealedPayload =
+  | { ok: true; name: string; contentType: string; blob: Blob }
+  | { ok: false; reason: "no_keys" | "failed" };
+
+/** Read the header line off the front of a decrypted stream, keeping the
+ *  rest for the body. Bounded: a header that never ends is malformed. The
+ *  reader is returned locked to the same stream, ready for the body. */
+async function splitPayloadHeader(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+): Promise<{ header: SealedPayloadHeader; rest: Uint8Array[] }> {
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) throw new Error("the sealed enclosure is empty");
+    const nl = value.indexOf(0x0a);
+    if (nl >= 0) {
+      const headParts = [...chunks, value.subarray(0, nl)];
+      const headLen = headParts.reduce((n, c) => n + c.byteLength, 0);
+      const head = new Uint8Array(headLen);
+      let off = 0;
+      for (const c of headParts) {
+        head.set(c, off);
+        off += c.byteLength;
+      }
+      const rest: Uint8Array[] = [];
+      const tail = value.subarray(nl + 1);
+      if (tail.byteLength > 0) rest.push(tail);
+      return {
+        header: JSON.parse(new TextDecoder().decode(head)) as SealedPayloadHeader,
+        rest,
+      };
+    }
+    chunks.push(value);
+    total += value.byteLength;
+    if (total > 8192) throw new Error("the sealed enclosure could not be read");
+  }
+}
+
+/** Wrap a decrypted stream minus its header as a body stream. */
+function bodyStream(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  rest: Uint8Array[],
+): ReadableStream<Uint8Array> {
+  let primed = false;
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      if (!primed) {
+        primed = true;
+        for (const chunk of rest) controller.enqueue(chunk);
+        return;
+      }
+      try {
+        const { done, value } = await reader.read();
+        if (done) controller.close();
+        else controller.enqueue(value);
+      } catch (err) {
+        // age fails the MAC at the end of the file: a tampered enclosure
+        // must end this stream in error, or the reader would wait forever.
+        controller.error(err);
+      }
+    },
+    cancel(reason) {
+      void reader.cancel(reason).catch(() => {});
+    },
+  });
+}
+
+/**
+ * Open a sealed enclosure with the resident's keys, in memory on this side
+ * of the wire. The house never sees the plaintext and has no key for it.
+ *
+ * `no_keys` and `failed` are kept apart because they mean different things
+ * to the reader: the first says "bring your key to this device", the
+ * second says "this was not sealed to you, or it was tampered with". age
+ * itself cannot tell tamper from wrong-key; we do not pretend otherwise.
+ */
+export async function unsealPayload(
+  address: string,
+  sealed: Blob,
+): Promise<UnsealedPayload> {
+  const keys = loadKeys(address);
+  if (!keys) return { ok: false, reason: "no_keys" };
+
+  const identities = [keys.ageIdentity, keys.recoveryAgeIdentity].filter(
+    (k): k is string => Boolean(k),
+  );
+  for (const identity of identities) {
+    try {
+      const decrypter = new Decrypter();
+      decrypter.addIdentity(identity);
+      const plain = await decrypter.decrypt(sealed.stream());
+      const reader = plain.getReader();
+      const { header, rest } = await splitPayloadHeader(reader);
+      if (header?.v !== 1 || typeof header.name !== "string") {
+        return { ok: false, reason: "failed" };
+      }
+      const blob = await new Response(bodyStream(reader, rest), {
+        headers: { "Content-Type": header.contentType || "application/octet-stream" },
+      }).blob();
+      return { ok: true, name: header.name, contentType: header.contentType, blob };
+    } catch {
+      // Try the next identity (the recovery key), then fail honestly.
+    }
+  }
+  return { ok: false, reason: "failed" };
+}

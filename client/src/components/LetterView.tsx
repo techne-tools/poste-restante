@@ -4,7 +4,7 @@ import { house, loadAuth } from "../api";
 import type { Letter, PayloadMeta } from "../api";
 import KindTag from "./KindTag";
 import { renderMarkdown } from "./markdown";
-import { unsealLetterBody } from "../utils/crypto";
+import { unsealLetterBody, unsealPayload } from "../utils/crypto";
 import Enclosures, { isRenderable } from "./Enclosures";
 
 interface Props {
@@ -48,6 +48,9 @@ export default function LetterView({ letter, onBack, actions }: Props) {
   const [payloads, setPayloads] = useState<PayloadMeta[]>([]);
   const [blobs, setBlobs] = useState<Record<string, string>>({});
   const [failed, setFailed] = useState<Record<string, string>>({});
+  // A sealed enclosure's real content type, learned by unsealing it. The
+  // catalog only ever says application/octet-stream for a sealed payload.
+  const [types, setTypes] = useState<Record<string, string>>({});
   // Removing a delivered enclosure deletes its bytes for everyone the letter
   // was addressed to — irreversible, so it is confirmed. The composer's `×`
   // only drops a pending file; this one deletes from the house.
@@ -82,20 +85,45 @@ export default function LetterView({ letter, onBack, actions }: Props) {
     };
   }, [letter.id]);
 
-  // Fetch the bytes for renderable enclosures only — a file that merely
-  // downloads never occupies the view until the reader asks.
+  // Fetch the bytes for enclosures that will be rendered in place — a file
+  // that merely downloads never occupies the view until the reader asks.
+  // A SEALED enclosure is always fetched: its catalog type is
+  // octet-stream by design, so the client has to unseal it to learn what
+  // it really is. If this device holds no key for the resident, the
+  // enclosure says so in place — it is never silently dropped.
   useEffect(() => {
     const urls: string[] = [];
     let cancelled = false;
+    const resident = loadAuth()?.address ?? envelope.from;
     for (const p of payloads) {
-      const kind = isRenderable(p);
-      if (kind === "file") continue;
+      if (!p.sealed && isRenderable(p) === "file") continue;
       const name = p.name;
       house
         .payloadBlob(letter.id, name)
-        .then((blob) => {
+        .then(async (blob) => {
           if (cancelled) return;
-          const url = URL.createObjectURL(blob);
+          let opened = blob;
+          if (p.sealed) {
+            const unsealed = await unsealPayload(resident, blob);
+            if (cancelled) return;
+            if (!unsealed.ok) {
+              setFailed((prev) => ({
+                ...prev,
+                [name]:
+                  unsealed.reason === "no_keys"
+                    ? "sealed — it opens with your key, and this browser holds none for you"
+                    : "sealed — it could not be opened with your key",
+              }));
+              return;
+            }
+            opened = unsealed.blob;
+            setTypes((prev) =>
+              prev[name] === unsealed.contentType
+                ? prev
+                : { ...prev, [name]: unsealed.contentType },
+            );
+          }
+          const url = URL.createObjectURL(opened);
           urls.push(url);
           setBlobs((prev) => (prev[name] === url ? prev : { ...prev, [name]: url }));
         })
@@ -112,7 +140,7 @@ export default function LetterView({ letter, onBack, actions }: Props) {
       cancelled = true;
       for (const url of urls) URL.revokeObjectURL(url);
     };
-  }, [payloads, letter.id]);
+  }, [payloads, letter.id, envelope.from]);
 
   const removePayload = useCallback(
     async (name: string) => {
@@ -166,7 +194,25 @@ export default function LetterView({ letter, onBack, actions }: Props) {
   const downloadPayload = useCallback(
     async (name: string) => {
       try {
-        const blob = await house.payloadBlob(letter.id, name);
+        const meta = payloads.find((p) => p.name === name);
+        let blob = await house.payloadBlob(letter.id, name);
+        if (meta?.sealed) {
+          // The file the reader asked for is the plaintext, not the
+          // ciphertext the house serves. Unseal it here, in this tab.
+          const resident = loadAuth()?.address ?? envelope.from;
+          const unsealed = await unsealPayload(resident, blob);
+          if (!unsealed.ok) {
+            setFailed((prev) => ({
+              ...prev,
+              [name]:
+                unsealed.reason === "no_keys"
+                  ? "sealed — it opens with your key, and this browser holds none for you"
+                  : "sealed — it could not be opened with your key",
+            }));
+            return;
+          }
+          blob = unsealed.blob;
+        }
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
@@ -180,7 +226,7 @@ export default function LetterView({ letter, onBack, actions }: Props) {
         }));
       }
     },
-    [letter.id],
+    [letter.id, payloads, envelope.from],
   );
 
   return (
@@ -235,6 +281,7 @@ export default function LetterView({ letter, onBack, actions }: Props) {
           payloads={payloads}
           blobs={blobs}
           failed={failed}
+          types={types}
           confirmRemove={confirmRemove}
           onAskRemove={setConfirmRemove}
           onCancelRemove={() => setConfirmRemove(null)}

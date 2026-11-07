@@ -52,7 +52,6 @@ for (const file of files(testRoot)) {
  * `out_of_reach`). Shrink this list by adding assertions.
  */
 const TRACKED = new Set([
-  "empty_payload",
   "invalid_card",
   "invalid_invite",
   "invalid_keys",
@@ -65,7 +64,6 @@ const TRACKED = new Set([
   "not_found",
   "oidc_disabled",
   "out_of_reach",
-  "payload_too_large",
 ]);
 
 describe("every error code has a matching test", () => {

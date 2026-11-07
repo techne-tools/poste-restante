@@ -1,8 +1,10 @@
 import type { PayloadMeta } from "../api";
 
-/** Is this payload an image or audio the house can render in place? */
-export function isRenderable(meta: PayloadMeta): "image" | "audio" | "file" {
-  const type = meta.contentType.split(";")[0]?.trim().toLowerCase() ?? "";
+/** Is this payload an image or audio the house can render in place?
+ *  A sealed enclosure's catalog type is `application/octet-stream`; once
+ *  the client has unsealed it, `overrideType` carries the real type. */
+export function isRenderable(meta: PayloadMeta, overrideType?: string): "image" | "audio" | "file" {
+  const type = (overrideType ?? meta.contentType).split(";")[0]?.trim().toLowerCase() ?? "";
   if (type.startsWith("image/")) return "image";
   if (type.startsWith("audio/")) return "audio";
   return "file";
@@ -20,6 +22,9 @@ interface Props {
   blobs: Record<string, string>;
   /** A quiet failure per enclosure — shown in place of the media. */
   failed: Record<string, string>;
+  /** The real content type per enclosure, learned by unsealing a sealed
+   *  one. Absent for a plain enclosure (the catalog already knows its type). */
+  types?: Record<string, string>;
   /** The name whose removal is being confirmed (the two-step). */
   confirmRemove: string | null;
   onAskRemove: (name: string) => void;
@@ -42,6 +47,7 @@ export default function Enclosures({
   payloads,
   blobs,
   failed,
+  types,
   confirmRemove,
   onAskRemove,
   onCancelRemove,
@@ -53,14 +59,18 @@ export default function Enclosures({
     <div className="enclosures">
       <div className="enclosures-label">enclosures</div>
       {payloads.map((p) => {
-        const kind = isRenderable(p);
+        const kind = isRenderable(p, types?.[p.name]);
         const url = blobs[p.name];
         const failure = failed[p.name];
+        // A sealed enclosure's real type is unknown until it is opened, so
+        // it is not a "file" yet — it is a thing being opened.
+        const opening = p.sealed && !types?.[p.name] && !failure && !url;
         return (
           <div className="enclosure" key={p.name}>
             <div className="enclosure-meta">
               <span className="enclosure-name">{p.name}</span>
               <span className="enclosure-size">{formatBytes(p.size)}</span>
+              {p.sealed && <span className="enclosure-size">sealed</span>}
               {confirmRemove === p.name ? (
                 <span className="scrub-confirm">
                   <span className="scrub-question">Remove {p.name}? It goes for everyone addressed.</span>
@@ -82,18 +92,25 @@ export default function Enclosures({
                 </button>
               )}
             </div>
-            {kind === "image" ? (
+            {failure ? (
+              // Any quiet failure is shown in place of the enclosure,
+              // whatever its type: a sealed thing that will not open must
+              // say so rather than vanish from the letter.
+              <span className="enclosure-pending">{failure}</span>
+            ) : kind === "image" ? (
               url ? (
                 <img className="enclosure-image" src={url} alt={p.name} />
               ) : (
-                <span className="enclosure-pending">{failure ?? "opening…"}</span>
+                <span className="enclosure-pending">opening…</span>
               )
             ) : kind === "audio" ? (
               url ? (
                 <audio className="enclosure-audio" controls preload="metadata" src={url} />
               ) : (
-                <span className="enclosure-pending">{failure ?? "opening…"}</span>
+                <span className="enclosure-pending">opening…</span>
               )
+            ) : opening ? (
+              <span className="enclosure-pending">opening…</span>
             ) : (
               <a
                 className="enclosure-download"
