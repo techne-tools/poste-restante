@@ -528,7 +528,7 @@ describe("sealed payloads — the enclosure's own seal", () => {
   });
 
   it("seals a file to a recipient and opens it again with name, type and bytes intact", async () => {
-    const keys = await ensureKeys("chris@house");
+    const keys = await createKeystore("chris@house", PASSPHRASE);
     const bytes = new TextEncoder().encode("REHEARSAL TAKE THREE — storm cue at 47");
     const file = new Blob([bytes], { type: "audio/wav" });
 
@@ -555,7 +555,7 @@ describe("sealed payloads — the enclosure's own seal", () => {
   });
 
   it("refuses to open an enclosure sealed to somebody else", async () => {
-    const mine = await ensureKeys("chris@house");
+    const mine = await createKeystore("chris@house", PASSPHRASE);
     const theirs = await generateKeys();
     const sealed = await sealPayload(new Blob([new Uint8Array([1, 2, 3])]), [theirs.ageRecipient], {
       name: "theirs.bin",
@@ -570,7 +570,7 @@ describe("sealed payloads — the enclosure's own seal", () => {
   });
 
   it("fails honestly when the ciphertext was tampered with, rather than hanging", async () => {
-    const keys = await ensureKeys("chris@house");
+    const keys = await createKeystore("chris@house", PASSPHRASE);
     const sealed = await sealPayload(new Blob([new TextEncoder().encode("x".repeat(4096))]), [keys.ageRecipient], {
       name: "tampered.bin",
       contentType: "application/octet-stream",
@@ -599,6 +599,7 @@ describe("sealed payloads — the enclosure's own seal", () => {
   });
 
   it("seals to the recovery recipient too, so a lost primary key still opens it", async () => {
+    await createKeystore("chris@house", PASSPHRASE);
     const minted = await mintRecoveryIdentity("chris@house");
     const bytes = new TextEncoder().encode("recovered");
     // Sealed ONLY to the recovery recipient — the primary key is gone, and

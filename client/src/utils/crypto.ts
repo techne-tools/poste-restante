@@ -29,6 +29,11 @@
  */
 
 import { sealToRecipients, signLetterIdWithKey, importSigningKey, unsealWithIdentity } from "./keys";
+// The enclosure seal builds its own stream encrypter/decrypter — a payload
+// is binary and never armoured, so it does not go through keys.ts's
+// string-oriented helpers. (These two were dropped by the keystore rewiring
+// of crypto.ts and restored on merge; the payload tests caught it.)
+import { Decrypter, Encrypter } from "age-encryption";
 import {
   KeystoreAbsentError,
   KeystoreLockedError,
