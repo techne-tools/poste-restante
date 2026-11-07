@@ -82,7 +82,7 @@ of `.env.enc` — `npm run serve` loads it.
 
 ## Upgrade a house that still carries the private halves in the database
 
-Before migration 030 a house kept its private halves in the `house_keys` row.
+Before migration 032 a house kept its private halves in the `house_keys` row.
 They are still there. The columns are deprecated and nullable, but they are
 **not** empty, and until they are the dump still opens the collaborative layer.
 Do this once, in order:
@@ -197,7 +197,7 @@ No command prints a private half except to the file named by `--out`.
 
 - `server/src/house/keys.ts` — the service: reads public columns only, reads the
   secret from the environment, refuses on absence or mismatch.
-- `server/src/db/migrations/030_house_key_private_halves_outside.sql` — relaxes
+- `server/src/db/migrations/032_house_key_private_halves_outside.sql` — relaxes
   the deprecated columns so a new house never writes them.
 - `server/test/unit/house-keys.test.ts` — the restored-database-without-the-
   secret test, and the refusal-not-mint tests.

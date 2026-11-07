@@ -30,7 +30,7 @@ import {
   type HouseKeypair,
 } from "../../src/crypto/keys.js";
 
-/** The shape of `house_keys` after migration 030 — private columns nullable. */
+/** The shape of `house_keys` after migration 032 — private columns nullable. */
 interface HouseRow {
   age_recipient: string;
   ed25519_public: string;

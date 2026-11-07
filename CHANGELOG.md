@@ -16,7 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   database dump alone no longer opens collaborative letters — it opens unsealed
   ones only, which are plaintext by definition. Sealed letters were never
   affected, before or after.
-- **Migration `030_house_key_private_halves_outside.sql`** relaxes
+- **Migration `032_house_key_private_halves_outside.sql`** relaxes
   `age_identity` and `ed25519_private` to nullable and comments them deprecated.
   They are *not* dropped: on a house that has not been upgraded they hold the
   only copy of the private halves in existence, and a migration must never be

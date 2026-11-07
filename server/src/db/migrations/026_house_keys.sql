@@ -26,7 +26,7 @@
 --     a dump held the ciphertext and the key. `age_identity` and
 --     `ed25519_private` survive as deprecated nullable columns only so a
 --     house that has not been upgraded yet keeps its one copy; migration
---     030 relaxes them, `npm run house:key:init` exports them, and
+--     032 relaxes them, `npm run house:key:init` exports them, and
 --     `npm run house:key:forget-db-halves` empties them. Procedure:
 --     docs/RUNBOOK-house-key.md.
 --   * Sealed letters are untouched by any of this. No house key of any

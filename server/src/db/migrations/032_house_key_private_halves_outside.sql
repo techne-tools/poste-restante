@@ -1,5 +1,11 @@
--- 030_house_key_private_halves_outside.sql
+-- 032_house_key_private_halves_outside.sql
 -- The house's private halves leave the database (PLAN-crypto.md C2, 2026-11-08).
+--
+-- NUMBERING: 030 is taken by `030_address_key_history.sql` (the append-only
+-- `address_keys` change, branch wt/t_5a5ec9e2) and 031 is reserved for the
+-- sealed-payloads work; this migration was first written as 030 before those
+-- branches met, and is numbered 032 so the two can land without sharing a
+-- number. The number carries no meaning to the runner beyond sort order.
 --
 -- BEFORE: `026_house_keys` kept `age_identity` and `ed25519_private` in the
 -- singleton row — in the same Postgres as every letter. A raw dump therefore
