@@ -55,6 +55,7 @@ import {
   purgeAllWorkingKeys,
   purgeWorkingKey,
 } from "./signingKey";
+import { forgetUnsealed } from "./unsealedCache";
 
 /** v2 — the wrapped keystore. */
 const STORE_KEY = "poste-restante.keystore";
@@ -511,6 +512,9 @@ export function signingKeyOf(address: string): CryptoKey | null {
 export function lockKeystore(address: string): void {
   vault.delete(address);
   void purgeWorkingKey(address);
+  // The unsealed-letter cache is plaintext held for the session. A locked
+  // client holds no unsealed letter anywhere — including there.
+  forgetUnsealed();
 }
 
 /** Drop everything — sign-out, or start-up with nothing open. Also
@@ -519,6 +523,7 @@ export function lockKeystore(address: string): void {
 export function lockAllKeystores(): void {
   vault.clear();
   void purgeAllWorkingKeys();
+  forgetUnsealed();
 }
 
 /* ── Reading the store without the passphrase ───────────────────────────── */
@@ -761,6 +766,7 @@ export async function wipeKeystore(address: string): Promise<void> {
   writeAll(all);
   vault.delete(address);
   await purgeWorkingKey(address);
+  forgetUnsealed();
 }
 
 /* ── Backup files ───────────────────────────────────────────────────────── */

@@ -169,7 +169,7 @@ export default function LetterView({ letter, onBack, actions }: Props) {
       // can open letters sealed to them, and only those.
       const auth = loadAuth();
       const resident = auth?.address ?? envelope.from;
-      const opened = await unsealLetterBody(resident, body.content);
+      const opened = await unsealLetterBody(resident, body.content, letter.id);
       if (!opened.ok) {
         // Three different silences, said as three different things. The
         // keystore's state is not consulted: the unseal already knows,

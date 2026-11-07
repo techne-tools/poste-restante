@@ -39,6 +39,11 @@ import {
   unlockedKeys,
 } from "./keystore";
 import type { ResidentKeys } from "./keys";
+import {
+  cacheUnseal,
+  cachedUnseal,
+  type UnsealedResult,
+} from "./unsealedCache";
 
 /* The primitives are re-exported here so the module stays the single
  * import for letter crypto; the definitions live in keys.ts. */
@@ -430,16 +435,38 @@ export type { UnsealOutcome } from "./keys";
  * holds the recovery private half; it lives with the resident, off-box, and
  * in this keystore so a lost session can be recovered.
  */
-export type UnsealedLetter =
-  | { ok: true; plaintext: string }
-  | { ok: false; reason: "no_keys" | "not_recipient" | "failed" };
+export type UnsealedLetter = UnsealedResult;
 
+/**
+ * Decrypt a sealed letter's body with the resident's own keys.
+ *
+ * Memoised per (letter id, resident key fingerprint) for the session
+ * (PLAN-crypto.md E4): a thread view re-renders, and decrypting the same
+ * immutable letter again each time is work with one answer. `keystore.ts`
+ * empties the cache on every lock and wipe, so nothing survives the keys
+ * closing. Callers that omit `letterId` get no caching — the id is what says
+ * the letter cannot have changed.
+ */
 export async function unsealLetterBody(
   address: string,
   ciphertext: string,
+  letterId?: string,
 ): Promise<UnsealedLetter> {
   const keys = loadKeys(address);
   if (!keys) return { ok: false, reason: "no_keys" };
+
+  // The resident's CURRENT key generation — a re-keyed resident is never
+  // served an answer their old key produced.
+  const fingerprint = keys.ed25519Public;
+  if (letterId) {
+    const remembered = cachedUnseal(letterId, fingerprint);
+    if (remembered) return remembered;
+  }
+
+  const remember = (outcome: UnsealedLetter): UnsealedLetter => {
+    if (letterId) cacheUnseal(letterId, fingerprint, outcome);
+    return outcome;
+  };
 
   const identities = [keys.ageIdentity, keys.recoveryAgeIdentity].filter(
     (identity): identity is string => Boolean(identity),
@@ -447,13 +474,13 @@ export async function unsealLetterBody(
   let tampered = false;
   for (const identity of identities) {
     const opened = await unsealWithIdentity(ciphertext, identity);
-    if (opened.ok) return opened;
+    if (opened.ok) return remember(opened);
     if (opened.reason === "failed") tampered = true;
   }
   // A seal that would not open outranks "not a recipient": if any key could
   // not get past the seal at all, the honest answer is 'failed', not
   // 'somebody else's letter'.
-  return { ok: false, reason: tampered ? "failed" : "not_recipient" };
+  return remember({ ok: false, reason: tampered ? "failed" : "not_recipient" });
 }
 
 /* ── Sealed payloads — the enclosure's own seal (PLAN-crypto.md C1) ─────── */
