@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Route, Switch, useLocation } from "wouter";
 import { house, loadAuth, saveAuth, clearAuth } from "./api";
+import { lockAllKeystores } from "./utils/crypto";
 import { readOidcReturn, planOidcReturn } from "./utils/oidcReturn";
 import type { HouseMeta, Whisper } from "./api";
 import Login from "./views/Login";
@@ -45,6 +46,13 @@ export default function App() {
     }
     saveAuth({ address: plan.address, header: plan.header });
     setAuth({ address: plan.address, header: plan.header });
+  }, []);
+
+  // A fresh page load holds nothing open: the keystore starts sealed, and
+  // any signing key a previous session (or a crash) left in IndexedDB is
+  // cleared. Unlock once per session — never per letter.
+  useEffect(() => {
+    lockAllKeystores();
   }, []);
 
   useEffect(() => {
@@ -95,6 +103,8 @@ export default function App() {
   }, [setLocation]);
 
   const signOut = useCallback(() => {
+    // The session's open keys die with the session.
+    lockAllKeystores();
     clearAuth();
     setAuth(null);
     setGuest(false);
@@ -105,6 +115,7 @@ export default function App() {
   }, [setLocation]);
 
   const relabeled = useCallback(() => {
+    lockAllKeystores();
     setMeta(null);
     setAuth(null);
     setGuest(false);
@@ -114,6 +125,7 @@ export default function App() {
   }, [setLocation]);
 
   const passwordChanged = useCallback(() => {
+    lockAllKeystores();
     clearAuth();
     setAuth(null);
     setGuest(false);

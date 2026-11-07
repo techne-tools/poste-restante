@@ -2,11 +2,10 @@
  * The resident's cryptography — SPEC §15, client side.
  *
  * The house holds exactly one keypair (its own, a participant key); the
- * resident holds theirs. This module is where the resident's private
- * halves live: generated in the browser, sealed with age
- * (ChaCha20-Poly1305 via the pure-ESM noble stack), signed with ed25519
- * via WebCrypto (no extra dependency). The house stores only the public
- * halves and never sees the secrets.
+ * resident holds theirs. The material itself is made in `keys.ts` and
+ * held in custody by `keystore.ts` — sealed under a passphrase, open only
+ * for the session. This module is the letter-facing half: the canonical
+ * form, the letter id, the seal, the unseal.
  *
  * The letter id is derived EXACTLY as the server derives it
  * (id.ts::canonicaliseWith + letterIdFromCanonical): sha256 of a
@@ -15,12 +14,13 @@
  * legacy addresses without keys resolve to the handle itself). The
  * client must reproduce that derivation byte-for-byte — a drifted
  * canonical form would make the id never match on the server side and
- * every sealed letter would be rejected at the signature gate.
+ * every sealed letter would be rejected at the signature gate. The
+ * canonicalise / letterIdFromCanonical pair below is frozen for that
+ * reason; custody changes never touch it.
  *
- * Key custody: the private halves live in localStorage alongside the
- * auth header (the same trust domain — a bearer credential the house
- * never sees either). The house never holds them; this file never
- * sends them.
+ * Key custody: `keystore.ts`. Nothing here writes a private half to
+ * storage directly, and nothing here sends one to the house — this file
+ * never transmits key material.
  *
  * This is the in-common that is nothing-in-common, made cryptographic
  * (Nancy): the house shares the with — the letters circulate through it —
@@ -28,186 +28,89 @@
  * the circulation, not the pooled content.
  */
 
+import { sealToRecipients, signLetterIdWithKey, importSigningKey, unsealWithIdentity } from "./keys";
 import {
-  Decrypter,
-  Encrypter,
-  armor,
-  generateX25519Identity,
-  identityToRecipient,
-} from "age-encryption";
+  KeystoreAbsentError,
+  KeystoreLockedError,
+  hasKeystore,
+  mintRecoveryIdentityFor,
+  signingKeyOf,
+  unlockedKeys,
+} from "./keystore";
+import type { ResidentKeys } from "./keys";
 
-/** The resident's full keypair, as held client-side. */
-export interface ResidentKeys {
-  /** The age identity (X25519 private key) — for unsealing. */
-  ageIdentity: string;
-  /** The age recipient (X25519 public) — sealed to by correspondents. */
-  ageRecipient: string;
-  /** The ed25519 private key (base64url pkcs8 DER) — for signing. */
-  ed25519Private: string;
-  /** The ed25519 public key (base64url spki DER) — the identity. */
-  ed25519Public: string;
-  /** The recovery age identity (X25519 private key) — the §15 backstop.
-   *  Minted once, shown once, held off-box by the resident; the house
-   *  holds only the public recipient and seal to it on every sealed
-   *  letter. Kept here so the same browser can recover a lost primary
-   *  session without the house holding anything. Null until minted. */
-  recoveryAgeIdentity: string | null;
-  /** The recovery age recipient — public, registered with the house. */
-  recoveryAgeRecipient: string | null;
-}
+/* The primitives are re-exported here so the module stays the single
+ * import for letter crypto; the definitions live in keys.ts. */
+export {
+  generateKeys,
+  sealToRecipients,
+  sealToPassphrase,
+  unsealWithIdentity,
+  unsealWithPassphrase,
+  signLetterId,
+  signLetterIdWithKey,
+} from "./keys";
+export type { PublicHalves, ResidentKeys } from "./keys";
 
-const KEYS_KEY = "poste-restante.keys";
+/* Custody surface, re-exported for the record view. */
+export {
+  KeystoreAbsentError,
+  KeystoreExistsError,
+  KeystoreLockedError,
+  KeystoreUnreadableError,
+  MIN_PASSPHRASE,
+  adoptLegacyKeys,
+  backupAt,
+  createKeystore,
+  exportBackup,
+  hasKeystore,
+  importBackup,
+  isKeystoreUnlocked,
+  legacyAddresses,
+  lockAllKeystores,
+  lockKeystore,
+  passphraseProblem,
+  publicHalvesOf,
+  recordOf,
+  storeKeys,
+  unlockKeystore,
+  unlockedKeys,
+  wipeKeystore,
+} from "./keystore";
 
-/** The client-held keystore — one keypair per address. */
+/** The resident's keys for an address, if the keystore is open for this
+ *  session. Null when there are none, or when they are sealed. */
 export function loadKeys(address: string): ResidentKeys | null {
-  try {
-    const raw = localStorage.getItem(KEYS_KEY);
-    if (!raw) return null;
-    const all = JSON.parse(raw) as Record<string, ResidentKeys>;
-    return all[address] ?? null;
-  } catch {
-    return null;
-  }
+  return unlockedKeys(address);
 }
 
-function storeKeys(address: string, keys: ResidentKeys): void {
-  const all = JSON.parse(localStorage.getItem(KEYS_KEY) ?? "{}") as Record<string, ResidentKeys>;
-  all[address] = keys;
-  localStorage.setItem(KEYS_KEY, JSON.stringify(all));
+/** The keys for an address that must be open to continue — sealing a
+ *  letter, minting a recovery identity, backing up.
+ *
+ *  There is no auto-mint any more, and no silent fallback: a keypair
+ *  cannot be brought into being without a passphrase to seal it with, so
+ *  a resident with no keystore is told to make one, and a sealed one is
+ *  told to open it. Both refusals carry the resident-facing copy. */
+export function ensureKeys(address: string): ResidentKeys {
+  const open = unlockedKeys(address);
+  if (open) return open;
+  throw hasKeystore(address)
+    ? new KeystoreLockedError()
+    : new KeystoreAbsentError();
 }
 
-/** Export a WebCrypto key to base64url DER (spki for public, pkcs8 for
- *  private) — the same byte encodings the server's node:crypto produces
- *  (crypto/keys.ts::generateEd25519Keypair), so client-minted keys
- *  verify server-side and vice versa. */
-async function exportBase64url(format: "spki" | "pkcs8", key: CryptoKey): Promise<string> {
-  const der = await crypto.subtle.exportKey(format, key);
-  return btoa(String.fromCharCode(...new Uint8Array(der))).replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_");
-}
-
-/** Decode a base64url string to bytes (browser-safe; Node's Buffer does
- *  not exist in the bundle). */
-function fromBase64url(s: string): Uint8Array<ArrayBuffer> {
-  const b64 = s.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (s.length % 4)) % 4);
-  const bin = atob(b64);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return out;
-}
-
-/** Encode bytes to base64url (browser-safe). */
-function toBase64url(bytes: Uint8Array): string {
-  let bin = "";
-  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
-  return btoa(bin).replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_");
-}
-
-/** Mint a resident's keypair (age + ed25519) entirely in the browser.
- *  The recovery age identity is not minted here — it is a deliberate
- *  act (mint on demand, show once, hold off-box), so a fresh keystore
- *  starts with neither recovery identity nor recipient. */
-export async function generateKeys(): Promise<ResidentKeys> {
-  const ageIdentity = await generateX25519Identity();
-  const ageRecipient = await identityToRecipient(ageIdentity);
-  const ed = await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"]);
-  const ed25519Private = await exportBase64url("pkcs8", ed.privateKey);
-  const ed25519Public = await exportBase64url("spki", ed.publicKey);
-  return {
-    ageIdentity,
-    ageRecipient,
-    ed25519Private,
-    ed25519Public,
-    recoveryAgeIdentity: null,
-    recoveryAgeRecipient: null,
-  };
-}
-
-/** Mint the recovery age identity — the §15 backstop. The private
- *  half is shown once and held off-box by the resident; the public
- *  recipient is registered with the house and returns here so the
- *  keystore can recover a lost session. Returns the updated keystore
- *  and the plain private identity, for the one-time reveal. */
+/** Mint the recovery age identity — the §15 backstop (see keystore.ts). */
 export async function mintRecoveryIdentity(address: string): Promise<{
   keys: ResidentKeys;
   recoveryIdentity: string;
 }> {
-  const existing = loadKeys(address);
-  const base = existing ?? (await generateKeys());
-  if (base.recoveryAgeIdentity) {
-    // Idempotent — a recovery identity already exists; re-show it.
-    return { keys: base, recoveryIdentity: base.recoveryAgeIdentity };
-  }
-  const recoveryAgeIdentity = await generateX25519Identity();
-  const recoveryAgeRecipient = await identityToRecipient(recoveryAgeIdentity);
-  const next: ResidentKeys = {
-    ...base,
-    recoveryAgeIdentity,
-    recoveryAgeRecipient,
-  };
-  storeKeys(address, next);
-  return { keys: next, recoveryIdentity: recoveryAgeIdentity };
+  return mintRecoveryIdentityFor(address);
 }
 
 /** The recovery recipient for an address's key record — used when
  *  registering keys, so the house can serve it to correspondents. */
 export function recoveryRecipientOf(keys: ResidentKeys): string | null {
   return keys.recoveryAgeRecipient;
-}
-
-/** Ensure the resident has keys — auto-minting on first use. The house
- *  stores only the public halves (registered through the API); the
- *  private halves never leave the browser. */
-export async function ensureKeys(address: string): Promise<ResidentKeys> {
-  const existing = loadKeys(address);
-  if (existing) return existing;
-  const fresh = await generateKeys();
-  storeKeys(address, fresh);
-  return fresh;
-}
-
-/** Sign a letter id with the resident's ed25519 private key. The server
- *  verifies with the public half on the address record (public keys are
- *  public). */
-export async function signLetterId(id: string, ed25519Private: string): Promise<string> {
-  const raw = await crypto.subtle.importKey(
-    "pkcs8",
-    fromBase64url(ed25519Private),
-    { name: "Ed25519" },
-    false,
-    ["sign"],
-  );
-  const sig = await crypto.subtle.sign(
-    "Ed25519",
-    raw,
-    new TextEncoder().encode(id),
-  );
-  return toBase64url(new Uint8Array(sig));
-}
-
-/** Seal a plaintext body to a set of age recipients. Armored, like the
- *  server's sealToRecipients — so a letter the house stores looks
- *  exactly like a letter the house would seal itself. */
-export async function sealToRecipients(plaintext: string, recipients: string[]): Promise<string> {
-  const encrypter = new Encrypter();
-  for (const recipient of recipients) encrypter.addRecipient(recipient);
-  const raw = await encrypter.encrypt(plaintext);
-  return armor.encode(raw);
-}
-
-/** Unseal an armored ciphertext with the resident's age identity.
- *  Returns null on failure (wrong key, tamper, malformed armor). */
-export async function unsealWithIdentity(
-  ciphertext: string,
-  ageIdentity: string,
-): Promise<string | null> {
-  try {
-    const decrypter = new Decrypter();
-    decrypter.addIdentity(ageIdentity);
-    const raw = armor.decode(ciphertext);
-    return await decrypter.decrypt(raw, "text");
-  } catch {
-    return null;
-  }
 }
 
 /* ── The letter id — the exact mirror of server id.ts ───────────────────── */
@@ -283,7 +186,7 @@ export async function letterIdFromCanonical(canonical: string): Promise<string> 
 
 /* ── The seal — turning a draft into a delivered sealed letter ──────────── */
 
-/** A participant's public halves, from the address book. */ 
+/** A participant's public halves, from the address book. */
 export interface ParticipantKeys {
   id: string;
   ageRecipient: string | null;
@@ -298,9 +201,10 @@ export interface ParticipantKeys {
  * Seal a drafted letter (SPEC §15, movement one: the resident half).
  *
  * The flow:
- *   1. Ensure the resident's keypair — minted in the browser on first
- *      use, held only client-side. The house never sees the private
- *      halves.
+ *   1. Read the resident's open keys. The keystore must be unlocked for
+ *      this session — a seal is a signing act, and a signing key that
+ *      answers without a passphrase is a signing key anyone can use.
+ *      (Unlock once per session, not per letter.)
  *   2. Register the public halves with the house (self-only, idempotent
  *      upsert; skipped when the address record already carries ours).
  *   3. Resolve every participant (from/to/cc, plus the writer) through
@@ -311,7 +215,9 @@ export interface ParticipantKeys {
  *      id will not match and the signature gate will reject the letter.
  *   4. Derive the letter id from the canonical form with that map —
  *      the same sha256 the server derives.
- *   5. Sign the id with the writer's ed25519 private key.
+ *   5. Sign the id with the writer's ed25519 key — the non-extractable
+ *      working key when IndexedDB holds one, else imported from the
+ *      wrapped pkcs8.
  *   6. Seal the plaintext body to every participant's age recipient.
  *
  * v1 refuses to seal to participants without keys: a letter sealed to
@@ -327,7 +233,7 @@ export interface SealResult {
     body: { format: "sealed"; content: string; recipients: string[]; signature: string };
   };
   id: string;
-  /** True when this call minted and registered a fresh keypair. */
+  /** True when this call registered a keypair the house had not seen. */
   minted: boolean;
 }
 
@@ -344,7 +250,7 @@ export async function sealDraft(
     ) => Promise<unknown>;
   },
 ): Promise<SealResult> {
-  const keys = await ensureKeys(draft.envelope.from);
+  const keys = ensureKeys(draft.envelope.from);
   const own = addressBook.find((a) => a.id === draft.envelope.from);
   const minted = !own || own.ed25519Public !== keys.ed25519Public;
 
@@ -409,7 +315,8 @@ export async function sealDraft(
   };
   const canonical = canonicalise(sealedDraft, identities);
   const id = await letterIdFromCanonical(canonical);
-  const signature = await signLetterId(id, keys.ed25519Private);
+  const signing = signingKeyOf(draft.envelope.from) ?? (await importSigningKey(keys.ed25519Private));
+  const signature = await signLetterIdWithKey(id, signing);
 
   return {
     letter: {
@@ -424,13 +331,17 @@ export async function sealDraft(
 
 /**
  * Decrypt a sealed letter's body with the resident's own keys. Returns
- * null when the resident is not a recipient (wrong key) or the armor is
- * malformed. The envelope is always visible; the body waits.
+ * null when the keystore is sealed, when the resident is not a recipient
+ * (wrong key), or when the armor is malformed. The envelope is always
+ * visible; the body waits.
  *
  * Fallback: when the primary age identity fails (lost — the §15 case),
  * the resident's recovery identity is tried. The house never holds the
  * recovery private half; it lives with the resident, off-box, and in
  * this keystore so a lost session can be recovered.
+ *
+ * A null return does not say why — callers that want to distinguish
+ * "sealed keystore" from "not a recipient" check `isKeystoreUnlocked`.
  */
 export async function unsealLetterBody(
   address: string,

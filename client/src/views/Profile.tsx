@@ -1,9 +1,38 @@
 import { useCallback, useEffect, useState } from "react";
 import { house, clearAuth } from "../api";
-import { mintRecoveryIdentity } from "../utils/crypto";
+import {
+  MIN_PASSPHRASE,
+  adoptLegacyKeys,
+  backupAt,
+  createKeystore,
+  exportBackup,
+  hasKeystore,
+  importBackup,
+  isKeystoreUnlocked,
+  legacyAddresses,
+  lockKeystore,
+  mintRecoveryIdentity,
+  passphraseProblem,
+  publicHalvesOf,
+  unlockKeystore,
+  unlockedKeys,
+  wipeKeystore,
+} from "../utils/crypto";
 import GatedAction from "../components/GatedAction";
 import { passwordReady } from "../utils/profileUtils";
 import type { Address, Letter } from "../api";
+
+/** Hand a text file to the browser's download path. The backup is a
+ *  standard age file; the resident keeps it off this machine. */
+function saveTextFile(filename: string, text: string): void {
+  const blob = new Blob([text], { type: "application/octet-stream" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
 
 interface Props {
   onError: (msg: string) => void;
@@ -61,6 +90,40 @@ export default function Profile({ onError, address, onRelabeled, onPasswordChang
   const [hasRecovery, setHasRecovery] = useState(false);
   const [recoveryRevealed, setRecoveryRevealed] = useState<string | null>(null);
   const [recoveryBusy, setRecoveryBusy] = useState(false);
+  /** The reveal cannot be closed without this: the resident states, in
+   *  so many words, that the identity is out of this browser. */
+  const [recoveryAcknowledged, setRecoveryAcknowledged] = useState(false);
+
+  // Key custody (SPEC §15, C5). The keystore is either absent, still in
+  // the old plaintext form, sealed, or open for this session.
+  const [keysState, setKeysState] = useState<"absent" | "legacy" | "locked" | "open">("absent");
+  const [passphrase, setPassphrase] = useState("");
+  const [passphraseAgain, setPassphraseAgain] = useState("");
+  const [keysBusy, setKeysBusy] = useState(false);
+  const [keysNote, setKeysNote] = useState<string | null>(null);
+  const [backupPassphrase, setBackupPassphrase] = useState("");
+  const [backedUpAt, setBackedUpAt] = useState<string | null>(null);
+  const [importPassphrase, setImportPassphrase] = useState("");
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [confirmWipe, setConfirmWipe] = useState(false);
+
+  /** Re-read the keystore's state from storage. Cheap — metadata only;
+   *  nothing here opens or decrypts anything. */
+  const refreshKeys = useCallback(() => {
+    setKeysState(
+      isKeystoreUnlocked(address)
+        ? "open"
+        : hasKeystore(address)
+          ? "locked"
+          : legacyAddresses().includes(address)
+            ? "legacy"
+            : "absent",
+    );
+    setBackedUpAt(backupAt(address));
+    // The recovery recipient is public — readable while sealed, and the
+    // house's record agrees with it once registered.
+    setHasRecovery(Boolean(publicHalvesOf(address)?.recoveryAgeRecipient ?? null));
+  }, [address]);
 
   const load = useCallback(async () => {
     try {
@@ -127,13 +190,147 @@ export default function Profile({ onError, address, onRelabeled, onPasswordChang
   }, [record]);
 
   useEffect(() => {
+    refreshKeys();
+  }, [refreshKeys]);
+
+  useEffect(() => {
     if (record) checkRecovery();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [record]);
+  }, [record, checkRecovery]);
+
+  /** Register a keypair's public halves with the house (idempotent,
+   *  self-only). Private halves never leave the browser — this is the
+   *  same call the composer makes on first seal. */
+  const registerPublicHalves = useCallback(
+    async (ageRecipient: string, ed25519Public: string, recoveryAgeRecipient: string | null) => {
+      await house.registerKeys(address, { ageRecipient, ed25519Public, recoveryAgeRecipient });
+    },
+    [address],
+  );
+
+  const withKeys = useCallback(
+    async (act: () => Promise<void>, note?: string) => {
+      setKeysBusy(true);
+      setKeysNote(null);
+      try {
+        await act();
+        if (note) setKeysNote(note);
+      } catch (err) {
+        onError(err instanceof Error ? err.message : "the keystore could not do that");
+      } finally {
+        setKeysBusy(false);
+        refreshKeys();
+        setPassphrase("");
+        setPassphraseAgain("");
+      }
+    },
+    [onError, refreshKeys],
+  );
+
+  /** Make a keypair and seal it under a passphrase. The resident's keys
+   *  exist nowhere else; the house registers only the public halves. */
+  const makeKeys = useCallback(() => {
+    const problem = passphraseProblem(passphrase, passphraseAgain);
+    if (problem) {
+      setKeysNote(problem);
+      return;
+    }
+    void withKeys(async () => {
+      const keys = await createKeystore(address, passphrase);
+      await registerPublicHalves(
+        keys.ageRecipient,
+        keys.ed25519Public,
+        keys.recoveryAgeRecipient,
+      );
+    }, "Your keys are made and open for this session. Back them up before you rely on them.");
+  }, [address, passphrase, passphraseAgain, registerPublicHalves, withKeys]);
+
+  /** Seal the keys the browser already holds in the old plaintext form. */
+  const sealLegacyKeys = useCallback(() => {
+    const problem = passphraseProblem(passphrase, passphraseAgain);
+    if (problem) {
+      setKeysNote(problem);
+      return;
+    }
+    void withKeys(async () => {
+      const keys = await adoptLegacyKeys(address, passphrase);
+      await registerPublicHalves(
+        keys.ageRecipient,
+        keys.ed25519Public,
+        keys.recoveryAgeRecipient,
+      );
+    }, "The keys in this browser are sealed now, and the open plaintext is gone. Back them up.");
+  }, [address, passphrase, passphraseAgain, registerPublicHalves, withKeys]);
+
+  const openKeys = useCallback(() => {
+    if (!passphrase) return;
+    void withKeys(async () => {
+      await unlockKeystore(address, passphrase);
+    });
+  }, [address, passphrase, withKeys]);
+
+  const closeKeys = useCallback(() => {
+    lockKeystore(address);
+    setKeysNote("Your keys are sealed for this session.");
+    setKeysState("locked");
+    setBackedUpAt(backupAt(address));
+  }, [address]);
+
+  /** Write a passphrase-protected backup file — a standard age file
+   *  holding the age identity, the recovery identity and the signing
+   *  key. This is the copy that survives the browser profile. */
+  const writeBackup = useCallback(() => {
+    const problem = passphraseProblem(backupPassphrase);
+    if (problem) {
+      setKeysNote(problem);
+      return;
+    }
+    void withKeys(async () => {
+      const { filename, contents } = await exportBackup(address, backupPassphrase);
+      saveTextFile(filename, contents);
+      setBackupPassphrase("");
+    }, "Backup written. Keep the file somewhere other than this computer.");
+  }, [address, backupPassphrase, withKeys]);
+
+  /** Restore from a backup file into this browser. */
+  const restoreBackup = useCallback(() => {
+    if (!importFile || !importPassphrase) return;
+    void withKeys(async () => {
+      const file = importFile;
+      const contents = await file.text();
+      const { address: restored } = await importBackup(contents, importPassphrase);
+      setImportFile(null);
+      setImportPassphrase("");
+      setKeysNote(
+        restored === address
+          ? "Restored. Your keys are open for this session."
+          : `Restored ${restored}. Sign in under that handle to use them.`,
+      );
+    });
+  }, [address, importFile, importPassphrase, withKeys]);
+
+  /** Forget these keys in this browser. The backup file is the way
+   *  back; the keys themselves are gone from here. */
+  const forgetKeys = useCallback(() => {
+    void withKeys(async () => {
+      await wipeKeystore(address);
+      setConfirmWipe(false);
+    }, "The keys are gone from this browser. A backup file can bring them back.");
+  }, [address, withKeys]);
+
+  /** Show the recovery identity again — possible only while the keys are
+   *  open, which means the resident has just proved they hold the
+   *  passphrase. The first reveal is still gated on the acknowledgement. */
+  const revealRecoveryAgain = useCallback(() => {
+    const identity = unlockedKeys(address)?.recoveryAgeIdentity;
+    if (!identity) return;
+    setRecoveryAcknowledged(false);
+    setRecoveryRevealed(identity);
+  }, [address]);
 
   /** Mint the recovery identity — a deliberate act, shown once, held
    *  off-box. The public recipient is registered with the house; the
-   *  private half stays in the keystore and in the resident's hands. */
+   *  private half stays in the sealed keystore and in the resident's
+   *  hands. */
   const mintRecovery = useCallback(async () => {
     setRecoveryBusy(true);
     try {
@@ -144,6 +341,7 @@ export default function Profile({ onError, address, onRelabeled, onPasswordChang
         recoveryAgeRecipient: keys.recoveryAgeRecipient,
       });
       setHasRecovery(true);
+      setRecoveryAcknowledged(false);
       setRecoveryRevealed(recoveryIdentity);
     } catch (err) {
       onError(err instanceof Error ? err.message : "the house could not hold the recovery key");
@@ -420,6 +618,195 @@ export default function Profile({ onError, address, onRelabeled, onPasswordChang
       </section>
 
       <section className="book-section">
+        <h3>Your keys</h3>
+        <p className="book-hint">
+          Your private keys are made here and stay here — the house holds only their public
+          halves, and never has a way to open a sealed letter. They are sealed with a passphrase
+          you choose; without it this browser cannot open them either.
+        </p>
+
+        {keysState === "absent" && (
+          <>
+            <p className="book-hint">
+              This browser holds no keys yet. Make them once, and they will be sealed with your
+              passphrase before anything is written down.
+            </p>
+            <label className="compose-field">
+              <span className="compose-label">Passphrase</span>
+              <input
+                type="password"
+                value={passphrase}
+                onChange={(e) => setPassphrase(e.target.value)}
+                autoComplete="new-password"
+                placeholder={`at least ${MIN_PASSPHRASE} characters — a line you can remember`}
+              />
+            </label>
+            <label className="compose-field">
+              <span className="compose-label">Passphrase again</span>
+              <input
+                type="password"
+                value={passphraseAgain}
+                onChange={(e) => setPassphraseAgain(e.target.value)}
+                autoComplete="new-password"
+              />
+            </label>
+            <div className="book-propose-actions">
+              <button className="clause-act" onClick={makeKeys} disabled={keysBusy}>
+                {keysBusy ? "…" : "Make my keys"}
+              </button>
+            </div>
+          </>
+        )}
+
+        {keysState === "legacy" && (
+          <>
+            <p className="book-hint">
+              This browser holds keys from before they were sealed — written in the clear, where
+              any script on the page could read them. Set a passphrase and they will be sealed; the
+              clear copies go.
+            </p>
+            <label className="compose-field">
+              <span className="compose-label">Passphrase</span>
+              <input
+                type="password"
+                value={passphrase}
+                onChange={(e) => setPassphrase(e.target.value)}
+                autoComplete="new-password"
+              />
+            </label>
+            <label className="compose-field">
+              <span className="compose-label">Passphrase again</span>
+              <input
+                type="password"
+                value={passphraseAgain}
+                onChange={(e) => setPassphraseAgain(e.target.value)}
+                autoComplete="new-password"
+              />
+            </label>
+            <div className="book-propose-actions">
+              <button className="clause-act" onClick={sealLegacyKeys} disabled={keysBusy}>
+                {keysBusy ? "…" : "Seal these keys"}
+              </button>
+            </div>
+          </>
+        )}
+
+        {keysState === "locked" && (
+          <>
+            <p className="book-hint">
+              Your keys are sealed. Open them for this session to read sealed letters, seal new
+              ones, or write a backup. They close again when you sign out.
+            </p>
+            <label className="compose-field">
+              <span className="compose-label">Passphrase</span>
+              <input
+                type="password"
+                value={passphrase}
+                onChange={(e) => setPassphrase(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") openKeys();
+                }}
+                autoComplete="current-password"
+              />
+            </label>
+            <div className="book-propose-actions">
+              <button className="clause-act" onClick={openKeys} disabled={keysBusy || !passphrase}>
+                {keysBusy ? "…" : "Open my keys"}
+              </button>
+            </div>
+            <p className="book-hint">
+              If the passphrase is lost, these keys cannot be opened again. A backup file can still
+              restore them; if there is no backup, the letters sealed to them stay sealed.
+            </p>
+            {confirmWipe ? (
+              <span className="scrub-confirm">
+                <span className="scrub-question">Forget these keys in this browser?</span>
+                <button className="forget-link" onClick={forgetKeys} disabled={keysBusy}>
+                  {keysBusy ? "…" : "Yes, forget them"}
+                </button>
+                <button className="clause-act" onClick={() => setConfirmWipe(false)}>
+                  Keep them
+                </button>
+              </span>
+            ) : (
+              <button className="forget-link" onClick={() => setConfirmWipe(true)}>
+                Forget these keys in this browser
+              </button>
+            )}
+          </>
+        )}
+
+        {keysState === "open" && (
+          <>
+            <p className="book-hint">Your keys are open for this session.</p>
+            <div className="book-propose-actions">
+              <button className="clause-act" onClick={closeKeys}>
+                Seal them again
+              </button>
+            </div>
+
+            <p className="book-hint">
+              {backedUpAt
+                ? `Last backed up ${new Date(backedUpAt).toLocaleString("en-AU")}. This browser holds one copy; the file holds another.`
+                : "This browser holds the only copy of your keys. If this profile is lost, the letters sealed to you cannot be opened — not by you, and not by the house. Write a backup file and keep it somewhere else."}
+            </p>
+            <label className="compose-field">
+              <span className="compose-label">Passphrase for the backup file</span>
+              <input
+                type="password"
+                value={backupPassphrase}
+                onChange={(e) => setBackupPassphrase(e.target.value)}
+                autoComplete="new-password"
+                placeholder={`at least ${MIN_PASSPHRASE} characters — it may be the same one`}
+              />
+            </label>
+            <div className="book-propose-actions">
+              <button
+                className="clause-act"
+                onClick={writeBackup}
+                disabled={keysBusy || !backupPassphrase}
+              >
+                {keysBusy ? "…" : "Write a backup file"}
+              </button>
+            </div>
+          </>
+        )}
+
+        <p className="book-hint">
+          A backup is a standard age file — the age identity, the recovery identity and the signing
+          key, sealed with the passphrase you give it. It can be opened with any age client, so you
+          are never dependent on this one to read it.
+        </p>
+        <label className="compose-field">
+          <span className="compose-label">Restore from a backup</span>
+          <input
+            type="file"
+            accept=".age,text/plain,application/octet-stream"
+            onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
+          />
+        </label>
+        <label className="compose-field">
+          <span className="compose-label">Passphrase for that file</span>
+          <input
+            type="password"
+            value={importPassphrase}
+            onChange={(e) => setImportPassphrase(e.target.value)}
+            autoComplete="off"
+          />
+        </label>
+        <div className="book-propose-actions">
+          <button
+            className="clause-act"
+            onClick={restoreBackup}
+            disabled={keysBusy || !importFile || !importPassphrase}
+          >
+            {keysBusy ? "…" : "Restore from backup"}
+          </button>
+        </div>
+        {keysNote && <p className="compose-hint">{keysNote}</p>}
+      </section>
+
+      <section className="book-section">
         <h3>Recovery</h3>
         <p className="book-hint">
           If your encryption key is ever lost, a recovery identity can still open your sealed
@@ -429,18 +816,47 @@ export default function Profile({ onError, address, onRelabeled, onPasswordChang
         {recoveryRevealed ? (
           <div className="recovery-reveal">
             <p className="compose-hint">
-              Write this down somewhere safe — it will not be shown again.
+              Write this down somewhere safe. It is held in this browser only behind your
+              passphrase, and it is the backstop for a lost key.
             </p>
             <pre className="recovery-key">{recoveryRevealed}</pre>
+            {/* The reveal closes only on an explicit acknowledgement —
+                never on a stray click, a navigation, or a change of mind. */}
+            <label className="seal-toggle">
+              <input
+                type="checkbox"
+                checked={recoveryAcknowledged}
+                onChange={(e) => setRecoveryAcknowledged(e.target.checked)}
+              />
+              <span>I have written it down, and it is somewhere other than this browser</span>
+            </label>
             <div className="book-propose-actions">
-              <button className="clause-act" onClick={() => setRecoveryRevealed(null)}>
-                I have written it down
+              <button
+                className="clause-act"
+                disabled={!recoveryAcknowledged}
+                onClick={() => {
+                  setRecoveryRevealed(null);
+                  setRecoveryAcknowledged(false);
+                }}
+              >
+                I have it — close this
               </button>
             </div>
           </div>
         ) : hasRecovery ? (
           <div className="book-propose-actions">
             <span className="compose-hint">Recovery is set — sealed letters already include it.</span>
+            {keysState === "open" && (
+              <button className="forget-link" onClick={revealRecoveryAgain}>
+                show it again
+              </button>
+            )}
+          </div>
+        ) : keysState !== "open" ? (
+          <div className="book-propose-actions">
+            <span className="compose-hint">
+              Recovery is part of your keys. Open them above to create it.
+            </span>
           </div>
         ) : (
           <div className="book-propose-actions">

@@ -18,7 +18,14 @@ import {
   unsealWithIdentity,
   unsealLetterBody,
   sealDraft,
+  createKeystore,
+  lockAllKeystores,
+  KeystoreLockedError,
+  KeystoreAbsentError,
 } from "./crypto";
+
+/** A passphrase long enough for the keystore's floor. */
+const PASSPHRASE = "the light in the rehearsal room";
 
 /** The localStorage the keystore writes to. */
 const KEYSTORE = (globalThis as unknown as { localStorage?: Storage }).localStorage;
@@ -112,6 +119,8 @@ describe("seal/unseal round-trip", () => {
   let saved: Storage | undefined;
 
   beforeEach(() => {
+    // The keystore's session vault is module state and outlives a test.
+    lockAllKeystores();
     saved = KEYSTORE ?? undefined;
     Object.defineProperty(globalThis, "localStorage", {
       value: fakeLocalStorage(),
@@ -149,6 +158,8 @@ describe("sealDraft — the resident's half of the flow", () => {
   let saved: Storage | undefined;
 
   beforeEach(() => {
+    // The keystore's session vault is module state and outlives a test.
+    lockAllKeystores();
     saved = KEYSTORE ?? undefined;
     Object.defineProperty(globalThis, "localStorage", {
       value: fakeLocalStorage(),
@@ -168,11 +179,12 @@ describe("sealDraft — the resident's half of the flow", () => {
   });
 
   it("mints + registers keys, seals to participants, and signs the stored-form id", async () => {
-    // First use: the writer's keypair lives in the keystore; the
+    // First use: the writer's keypair lives in the sealed keystore; the
     // address book does NOT yet carry it (nothing registered). sealDraft
     // detects the drift, registers the public halves, then signs with
-    // the fresh key.
-    const writer = await ensureKeys("chris@house");
+    // the open key.
+    await createKeystore("chris@house", PASSPHRASE);
+    const writer = ensureKeys("chris@house");
     const recipient = await generateKeys();
     const addressBook = [
       { id: "sam@house", ageRecipient: recipient.ageRecipient, ed25519Public: recipient.ed25519Public, recoveryAgeRecipient: null },
@@ -234,6 +246,7 @@ describe("sealDraft — the resident's half of the flow", () => {
   });
 
   it("refuses to seal to a participant without keys", async () => {
+    await createKeystore("chris@house", PASSPHRASE);
     const writer = await generateKeys();
     const addressBook = [{ id: "chris@house", ageRecipient: writer.ageRecipient, ed25519Public: writer.ed25519Public, recoveryAgeRecipient: null }];
     await expect(
@@ -262,6 +275,8 @@ describe("recovery identity — the §15 backstop", () => {
   let saved: Storage | undefined;
 
   beforeEach(() => {
+    // The keystore's session vault is module state and outlives a test.
+    lockAllKeystores();
     saved = KEYSTORE ?? undefined;
     Object.defineProperty(globalThis, "localStorage", {
       value: fakeLocalStorage(),
@@ -281,6 +296,7 @@ describe("recovery identity — the §15 backstop", () => {
   });
 
   it("mints a recovery identity idempotently — the same one comes back", async () => {
+    await createKeystore("you@house", PASSPHRASE);
     const first = await mintRecoveryIdentity("you@house");
     expect(first.keys.recoveryAgeIdentity).toBeTruthy();
     expect(first.keys.recoveryAgeRecipient).toBeTruthy();
@@ -291,6 +307,7 @@ describe("recovery identity — the §15 backstop", () => {
 
   it("seals to the recovery recipient — a lost primary still opens (the fallback)", async () => {
     // Mint the writer's recovery identity (shows once, held client-side).
+    await createKeystore("chris@house", PASSPHRASE);
     const recovered = await mintRecoveryIdentity("chris@house");
     const recipient = await generateKeys();
     const addressBook = [
@@ -331,6 +348,8 @@ describe("the sealed subject — the title moves into the body", () => {
   let saved: Storage | undefined;
 
   beforeEach(() => {
+    // The keystore's session vault is module state and outlives a test.
+    lockAllKeystores();
     saved = KEYSTORE ?? undefined;
     Object.defineProperty(globalThis, "localStorage", {
       value: fakeLocalStorage(),
@@ -350,6 +369,7 @@ describe("the sealed subject — the title moves into the body", () => {
   });
 
   it("empties the envelope subject and carries the title as the plaintext's first line", async () => {
+    await createKeystore("chris@house", PASSPHRASE);
     const recipient = await generateKeys();
     const addressBook = [
       { id: "sam@house", ageRecipient: recipient.ageRecipient, ed25519Public: recipient.ed25519Public, recoveryAgeRecipient: null },
@@ -385,6 +405,7 @@ describe("the sealed subject — the title moves into the body", () => {
   });
 
   it("seals body-only when the subject is blank — no stray title line", async () => {
+    await createKeystore("chris@house", PASSPHRASE);
     const recipient = await generateKeys();
     const addressBook = [
       { id: "sam@house", ageRecipient: recipient.ageRecipient, ed25519Public: recipient.ed25519Public, recoveryAgeRecipient: null },
@@ -408,6 +429,65 @@ describe("the sealed subject — the title moves into the body", () => {
     );
     const opened = await unsealWithIdentity(result.letter.body.content, recipient.ageIdentity);
     expect(opened).toBe("the letter's own first line");
+  });
+});
+
+describe("a sealed keystore refuses to seal", () => {
+  let saved: Storage | undefined;
+
+  beforeEach(() => {
+    lockAllKeystores();
+    saved = KEYSTORE ?? undefined;
+    Object.defineProperty(globalThis, "localStorage", {
+      value: fakeLocalStorage(),
+      configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    lockAllKeystores();
+    if (saved !== undefined) {
+      Object.defineProperty(globalThis, "localStorage", {
+        value: saved,
+        configurable: true,
+      });
+    } else {
+      delete (globalThis as Record<string, unknown>).localStorage;
+    }
+  });
+
+  it("tells the resident to open their keys, and does not invent a second keypair", async () => {
+    await createKeystore("chris@house", PASSPHRASE);
+    lockAllKeystores();
+
+    const before = globalThis.localStorage.getItem("poste-restante.keystore");
+    await expect(
+      sealDraft(
+        {
+          envelope: {
+            from: "chris@house",
+            to: ["sam@house"],
+            cc: [],
+            thread: "th_locked_1",
+            kind: "letter",
+            lang: "en-AU",
+            subject: "a secret",
+          },
+          time: { gregorian: "2026-11-08T09:00:00+04:00", frames: [] },
+          body: { format: "markdown", content: "hello" },
+        },
+        [],
+        { registerKeys: async () => ({ ok: true }) },
+      ),
+    ).rejects.toBeInstanceOf(KeystoreLockedError);
+
+    // Refused before any write — the record is untouched, and no fresh
+    // keypair has quietly replaced the sealed one.
+    expect(globalThis.localStorage.getItem("poste-restante.keystore")).toBe(before);
+  });
+
+  it("refuses to invent keys for a browser that holds none", () => {
+    expect(() => ensureKeys("nobody@house")).toThrow(KeystoreAbsentError);
   });
 });
 
