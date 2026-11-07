@@ -568,3 +568,93 @@ describe("the house holds no key to an enclosure", () => {
     expect(sql).toContain("ADD COLUMN IF NOT EXISTS sealed boolean NOT NULL DEFAULT false");
   });
 });
+
+describe("Payloads API — the enclosure's name is constrained", () => {
+  /** Upload one raw payload with a given name. */
+  async function upload(app: ReturnType<typeof server>, name: string) {
+    return app.request("/v1/letters/let_plain_1/payloads", {
+      method: "POST",
+      headers: {
+        ...bearer("alice@house"),
+        "X-Payload-Name": name,
+        "Content-Type": "application/octet-stream",
+        "Content-Length": "4",
+      },
+      body: new TextEncoder().encode("memo"),
+    });
+  }
+
+  it("refuses a name that addresses an object outside the letter", async () => {
+    const { house, store } = fakeHouse([{ letter: plainLetter(), sealed: false }]);
+    const app = server(house);
+    for (const bad of ["../escape.bin", "a/b.bin", "a\\b.bin", "..", ".hidden"]) {
+      const res = await upload(app, bad);
+      expect(res.status, bad).toBe(400);
+      expect(((await res.json()) as { error: { code: string } }).error.code).toBe(
+        "invalid_payload_name",
+      );
+    }
+    // Nothing was stored: the object key is built from the name, so an
+    // unusable name must not reach the store at all.
+    expect(store.objects.size).toBe(0);
+  });
+
+  it("refuses a name that would break the download header", async () => {
+    const { house, store } = fakeHouse([{ letter: plainLetter(), sealed: false }]);
+    const app = server(house);
+    // The name is interpolated into Content-Disposition: filename="…".
+    // A quote would end the quoted string; a control character would end
+    // the header. (A raw newline cannot travel in a header at all, so the
+    // query form — which the route also accepts — is the injectable path.)
+    expect((await upload(app, 'quote".bin')).status).toBe(400);
+    expect((await upload(app, "semi;colon.bin")).status).toBe(400);
+    for (const bad of ["line%0Abreak.bin", "crlf%0D.bin"]) {
+      const res = await app.request(
+        `/v1/letters/let_plain_1/payloads?name=${bad}`,
+        {
+          method: "POST",
+          headers: { ...bearer("alice@house"), "Content-Type": "application/octet-stream", "Content-Length": "4" },
+          body: new TextEncoder().encode("memo"),
+        },
+      );
+      expect(res.status, bad).toBe(400);
+    }
+    expect(store.objects.size).toBe(0);
+  });
+
+  it("refuses a name longer than the cap", async () => {
+    const { house } = fakeHouse([{ letter: plainLetter(), sealed: false }]);
+    const app = server(house);
+    expect((await upload(app, "a".repeat(201))).status).toBe(400);
+    expect((await upload(app, `${"a".repeat(196)}.wav`)).status).toBe(201);
+  });
+
+  it("accepts the names a resident actually gives a file", async () => {
+    const { house } = fakeHouse([{ letter: plainLetter(), sealed: false }]);
+    const app = server(house);
+    for (const good of [
+      "take-3.wav",
+      "2026-11-08 rehearsal.m4a",
+      "répétition (final).wav",
+      "notes_v2.txt",
+    ]) {
+      expect((await upload(app, good)).status, good).toBe(201);
+    }
+  });
+
+  it("answers 404, not 400, for a malformed name on download and delete — nothing is confirmed", async () => {
+    const { house } = fakeHouse([{ letter: plainLetter(), sealed: false }]);
+    const app = server(house);
+    for (const bad of ["..%2Fetc%2Fpasswd", "..", "a%2Fb.bin"]) {
+      const get = await app.request(`/v1/letters/let_plain_1/payloads/${bad}`, {
+        headers: bearer("alice@house"),
+      });
+      expect(get.status, bad).toBe(404);
+      const del = await app.request(`/v1/letters/let_plain_1/payloads/${bad}`, {
+        method: "DELETE",
+        headers: bearer("alice@house"),
+      });
+      expect(del.status, bad).toBe(404);
+    }
+  });
+});
