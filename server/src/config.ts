@@ -54,6 +54,10 @@ export interface HouseConfig {
   minioRegion: string;
   /** Whether S3 payload store is enabled (true if access keys or MINIO_ENABLED=1). */
   minioEnabled: boolean;
+  /** The ceiling for one enclosure, in bytes (PAYLOAD_MAX_BYTES). The
+   *  upload streams, so this is a disk/bandwidth bound, not a heap bound;
+   *  the default is 512 MiB — a rehearsal recording, not an email. */
+  payloadMaxBytes: number;
   /** Redis URL for ingestion queue and pub/sub (e.g. redis://localhost:6379/0). */
   redisUrl: string | undefined;
   /** Faster-whisper ASR web service URL (e.g. http://localhost:9000). */
@@ -178,6 +182,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): HouseConfig {
     minioEnabled:
       boolFromEnv(env.MINIO_ENABLED, false) ||
       Boolean(env.MINIO_ACCESS_KEY && env.MINIO_SECRET_KEY),
+    payloadMaxBytes: intFromEnv(env.PAYLOAD_MAX_BYTES, 512 * 1024 * 1024),
     redisUrl: env.REDIS_URL || undefined,
     whisperUrl: env.WHISPER_URL || undefined,
     integration: boolFromEnv(env.POSTE_RESTANTE_INTEGRATION, false),

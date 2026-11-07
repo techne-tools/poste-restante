@@ -79,22 +79,29 @@ export function createLetterServer(house: House, options: LetterServerOptions = 
       referrerPolicy: "strict-origin-when-cross-origin",
     }),
   );
-  app.use(
-    "*",
-    bodyLimit({
-      maxSize: 30 * 1024 * 1024,
-      onError: (c) =>
-        c.json(
-          {
-            error: {
-              code: "payload_too_large",
-              message: "the letter exceeds the house's 25 MB mail limit",
-            },
+  // The mail body limit. Skipped for the enclosure upload route: hono's
+  // bodyLimit buffers a chunked body to measure it, which is exactly the
+  // heap ceiling E1 removes. The payload route enforces its own cap while
+  // streaming (routes/payloads.ts::limitPayload, PAYLOAD_MAX_BYTES).
+  const letterBodyLimit = bodyLimit({
+    maxSize: 30 * 1024 * 1024,
+    onError: (c) =>
+      c.json(
+        {
+          error: {
+            code: "payload_too_large",
+            message: "the letter exceeds the house's 25 MB mail limit",
           },
-          413,
-        ),
-    }),
-  );
+        },
+        413,
+      ),
+  });
+  app.use("*", async (c, next) => {
+    if (c.req.method === "POST" && /^\/v1\/letters\/[^/]+\/payloads\/?$/.test(c.req.path)) {
+      return next();
+    }
+    return letterBodyLimit(c, next);
+  });
 
   const oidcLimiter = createRateLimiter({
     windowMs: 60_000,

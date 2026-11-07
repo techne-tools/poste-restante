@@ -9,7 +9,13 @@ import {
   CreateBucketCommand,
   type S3ClientConfig,
 } from "@aws-sdk/client-s3";
-import type { PayloadStore } from "./store.js";
+import { createReadStream, createWriteStream } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Readable, Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import type { PayloadStore, StoredPayload } from "./store.js";
 
 export interface S3PayloadStoreOptions {
   endpoint: string;
@@ -89,6 +95,82 @@ export class S3PayloadStore implements PayloadStore {
       }),
     );
     return key;
+  }
+
+  /**
+   * Store a payload from a stream. Two paths, one contract:
+   *
+   *  - The client declared a length (a Blob upload always does), so stream
+   *    it straight into the object with that ContentLength. Heap stays flat
+   *    and the bytes never touch a local disk.
+   *  - No length (chunked): spool to a temp file first, because S3 needs a
+   *    ContentLength for a streamed body. The ceiling becomes the disk
+   *    rather than the heap — which is the point of E1.
+   *
+   * Returns the key and the byte count actually written, so the catalog
+   * records what exists rather than what was claimed.
+   */
+  async putStream(
+    letterId: string,
+    name: string,
+    body: ReadableStream<Uint8Array>,
+    contentType?: string,
+    sizeHint?: number,
+  ): Promise<StoredPayload> {
+    const key = `letters/${letterId}/${name}`;
+    const type = contentType ?? "application/octet-stream";
+
+    if (sizeHint !== undefined && sizeHint > 0) {
+      let seen = 0;
+      const counted = new Transform({
+        transform(chunk: Buffer, _enc, cb) {
+          seen += chunk.length;
+          cb(null, chunk);
+        },
+      });
+      await this.client.send(
+        new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+          Body: Readable.fromWeb(
+            body as unknown as import("node:stream/web").ReadableStream<Uint8Array>,
+          ).pipe(counted),
+          ContentLength: sizeHint,
+          ContentType: type,
+        }),
+      );
+      return { key, size: seen };
+    }
+
+    const dir = await mkdtemp(join(tmpdir(), "poste-restante-payload-"));
+    const file = join(dir, "payload");
+    try {
+      let size = 0;
+      await pipeline(
+        Readable.fromWeb(
+          body as unknown as import("node:stream/web").ReadableStream<Uint8Array>,
+        ),
+        new Transform({
+          transform(chunk: Buffer, _enc, cb) {
+            size += chunk.length;
+            cb(null, chunk);
+          },
+        }),
+        createWriteStream(file),
+      );
+      await this.client.send(
+        new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+          Body: createReadStream(file),
+          ContentLength: size,
+          ContentType: type,
+        }),
+      );
+      return { key, size };
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   }
 
   /**

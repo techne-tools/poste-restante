@@ -188,47 +188,65 @@ export class PostgresRepository {
    *  content type, and size are schema properties so the house can say
    *  what a payload *is* without asking the object store; the bytes
    *  themselves stay in MinIO. The rows die with the letter
-   *  (ON DELETE CASCADE) — no orphaned pointers, ever. */
+   *  (ON DELETE CASCADE) — no orphaned pointers, ever.
+   *
+   *  `sealed` (031) is the enclosure's own seal: true means the bytes in
+   *  the store are age ciphertext the house cannot open, and the content
+   *  type is `application/octet-stream` because the real one rides inside. */
   async listPayloads(letterId: string): Promise<
-    { name: string; content_type: string; size: number }[]
+    { name: string; content_type: string; size: number; sealed: boolean }[]
   > {
     const { rows } = await this.pool.query(
-      `SELECT name, content_type, size
+      `SELECT name, content_type, size, sealed
        FROM letter_payloads
        WHERE letter_id = $1
        ORDER BY created_at ASC, name ASC`,
       [letterId],
     );
-    return rows;
+    // `size` is bigint: pg hands it back as a string. The catalog's contract
+    // is a number (the client formats it, the API types it) — coerce here,
+    // once, so every caller sees the same shape.
+    return rows.map((r: { name: string; content_type: string; size: string | number; sealed: boolean }) => ({
+      name: r.name,
+      content_type: r.content_type,
+      size: Number(r.size),
+      sealed: r.sealed,
+    }));
   }
 
   /** One catalog row — null when the letter carries no such payload. */
   async getPayload(
     letterId: string,
     name: string,
-  ): Promise<{ name: string; content_type: string; size: number } | null> {
+  ): Promise<{ name: string; content_type: string; size: number; sealed: boolean } | null> {
     const { rows } = await this.pool.query(
-      `SELECT name, content_type, size
+      `SELECT name, content_type, size, sealed
        FROM letter_payloads
        WHERE letter_id = $1 AND name = $2`,
       [letterId, name],
     );
-    return rows[0] ?? null;
+    const row = rows[0];
+    if (!row) return null;
+    return { ...row, size: Number(row.size) };
   }
 
-  /** Record a stored payload in the catalog. */
+  /** Record a stored payload in the catalog. `sealed` is the enclosure's
+   *  seal (031) — the API refuses an upload whose seal does not match its
+   *  letter's, so this row can never claim a seal the bytes do not have. */
   async insertPayload(
     letterId: string,
     name: string,
     content_type: string,
     size: number,
+    sealed = false,
   ): Promise<void> {
     await this.pool.query(
-      `INSERT INTO letter_payloads (letter_id, name, content_type, size)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO letter_payloads (letter_id, name, content_type, size, sealed)
+       VALUES ($1, $2, $3, $4, $5)
        ON CONFLICT (letter_id, name) DO UPDATE
-         SET content_type = EXCLUDED.content_type, size = EXCLUDED.size`,
-      [letterId, name, content_type, size],
+         SET content_type = EXCLUDED.content_type, size = EXCLUDED.size,
+             sealed = EXCLUDED.sealed`,
+      [letterId, name, content_type, size, sealed],
     );
   }
 

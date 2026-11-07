@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { house } from "../api";
-import { sealDraft } from "../utils/crypto";
+import { sealDraft, sealPayload } from "../utils/crypto";
 import type { Address } from "../api";
 import WhyNote from "../components/WhyNote";
 
@@ -131,6 +131,10 @@ export default function Compose({ onError, onDelivered, initialTo, initialThread
         lang: "en-AU",
         subject: sealed ? "" : subject.trim(),
       };
+      // The recipient set the body was sealed to. A sealed letter's
+      // enclosures are sealed to EXACTLY these people — the same circle,
+      // primary + recovery, as `sealDraft` computes it.
+      let sealRecipients: string[] | null = null;
       const { id } = await house.deliver(
         sealed
           ? await (async () => {
@@ -172,6 +176,7 @@ export default function Compose({ onError, onDelivered, initialTo, initialThread
                 // letter"; the client presents the first line of the
                 // plaintext as the subject after unsealing (SPEC §15 —
                 // subject moves into the body).
+                sealRecipients = result.letter.body.recipients;
                 return result.letter;
               } finally {
                 setSealing(false);
@@ -184,15 +189,21 @@ export default function Compose({ onError, onDelivered, initialTo, initialThread
             },
       );
 
-      // The letter is delivered; the enclosures follow. Enclosures on
-      // sealed letters are client side only — the house cannot read or
-      // serve what it cannot open (SPEC §15: sealed payloads are
-      // client-side encrypted before upload; v1 ships text bodies, the
-      // payload layer is the recorded follow-on).
+      // The letter is delivered; the enclosures follow. A sealed letter's
+      // enclosures are sealed HERE — to the same recipients the body was
+      // sealed to — before they leave this desk, so the house stores
+      // ciphertext and holds no key for it (SPEC §15, PLAN-crypto.md C1).
       for (const f of files) {
-        if (sealed) continue;
         try {
-          await house.uploadPayload(id, f.blob, f.name);
+          if (sealed && sealRecipients) {
+            const sealedFile = await sealPayload(f.blob, sealRecipients, {
+              name: f.name,
+              contentType: f.type || "application/octet-stream",
+            });
+            await house.uploadPayload(id, sealedFile, f.name, { sealed: true });
+          } else {
+            await house.uploadPayload(id, f.blob, f.name);
+          }
         } catch (err) {
           onError(`the letter is delivered; ${f.name} could not be attached — ${err instanceof Error ? err.message : "the house declined"}`);
         }
@@ -264,14 +275,15 @@ export default function Compose({ onError, onDelivered, initialTo, initialThread
               ref={fileInput}
               type="file"
               multiple
-              disabled={sealed}
               onChange={(e) => addFiles(e.target.files)}
             />
           </label>
         </div>
         {sealed && (
           <p className="compose-hint">
-            A sealed letter carries the text alone — the house cannot serve what it cannot open.
+            Enclosures are sealed to the same people as the letter before they leave this
+            desk — the house keeps ciphertext it cannot open, and the real file name and type
+            travel inside it.
           </p>
         )}
         {/* The seal — a per-letter choice, not a default (SPEC §15).
@@ -316,7 +328,7 @@ export default function Compose({ onError, onDelivered, initialTo, initialThread
         {kind === "audio" && body.trim().length === 0 && (
           <p className="compose-hint">An audio letter — the recording is the letter.</p>
         )}
-        {files.length > 0 && !sealed && (
+        {files.length > 0 && (
           <div className="attach-list">
             {files.map((f) => (
               <span key={f.name} className="attach-chip">

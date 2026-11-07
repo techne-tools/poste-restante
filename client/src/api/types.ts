@@ -226,11 +226,16 @@ export interface SearchResponse {
 /** The payload catalog — what a letter carries beyond its body (migration
  *  016). The name, content type, and size ride in the list response so the
  *  client can render an enclosure without fetching bytes first; the bytes
- *  themselves stay behind the house's auth. */
+ *  themselves stay behind the house's auth.
+ *
+ *  `sealed` (031) says the bytes are age ciphertext the house cannot open.
+ *  For a sealed enclosure `contentType` is `application/octet-stream` and
+ *  the real type comes back only after the client unseals it. */
 export interface PayloadMeta {
   key: string;
   name: string;
   contentType: string;
   size: number;
+  sealed: boolean;
 }
 

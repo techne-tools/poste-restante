@@ -113,12 +113,83 @@ describe("S3PayloadStore", () => {
       }),
     );
   });
+  it("streams a declared-length upload straight through with that ContentLength", async () => {
+    let seenBody: Uint8Array | null = null;
+    let seenLength: number | undefined;
+    const mockSend = vi.fn().mockImplementation(async (command) => {
+      if (command.constructor.name === "PutObjectCommand") {
+        const body = command.input.Body as AsyncIterable<Uint8Array>;
+        const chunks: Uint8Array[] = [];
+        for await (const chunk of body) chunks.push(chunk);
+        seenBody = new Uint8Array(Buffer.concat(chunks.map((c) => Buffer.from(c))));
+        seenLength = command.input.ContentLength;
+      }
+      return {};
+    });
+
+    const store = new S3PayloadStore({
+      endpoint: "http://localhost:9000",
+      bucket: "test-bucket",
+      client: { send: mockSend } as unknown as S3Client,
+    });
+
+    const plaintext = new TextEncoder().encode("ciphertext the house cannot read");
+    const stream = new Blob([plaintext]).stream();
+    const stored = await store.putStream(
+      "let_1",
+      "take.age",
+      stream as ReadableStream<Uint8Array>,
+      "application/octet-stream",
+      plaintext.byteLength,
+    );
+
+    expect(stored).toEqual({ key: "letters/let_1/take.age", size: plaintext.byteLength });
+    expect(seenLength).toBe(plaintext.byteLength);
+    expect(seenBody).toEqual(plaintext);
+  });
+
+  it("spools a chunked upload to disk, then uploads it with the measured length", async () => {
+    let seenBody: Uint8Array | null = null;
+    let seenLength: number | undefined;
+    const mockSend = vi.fn().mockImplementation(async (command) => {
+      if (command.constructor.name === "PutObjectCommand") {
+        const body = command.input.Body as AsyncIterable<Uint8Array>;
+        const chunks: Uint8Array[] = [];
+        for await (const chunk of body) chunks.push(chunk);
+        seenBody = new Uint8Array(Buffer.concat(chunks.map((c) => Buffer.from(c))));
+        seenLength = command.input.ContentLength;
+      }
+      return {};
+    });
+
+    const store = new S3PayloadStore({
+      endpoint: "http://localhost:9000",
+      bucket: "test-bucket",
+      client: { send: mockSend } as unknown as S3Client,
+    });
+
+    const plaintext = new TextEncoder().encode("no content-length on this one");
+    const stream = new Blob([plaintext]).stream();
+    const stored = await store.putStream(
+      "let_1",
+      "take.age",
+      stream as ReadableStream<Uint8Array>,
+      "application/octet-stream",
+    );
+
+    expect(stored).toEqual({ key: "letters/let_1/take.age", size: plaintext.byteLength });
+    expect(seenLength).toBe(plaintext.byteLength);
+    expect(seenBody).toEqual(plaintext);
+  });
 });
 
 describe("NoopPayloadStore", () => {
   it("fails closed on put and returns null on get", async () => {
     const stub = new NoopPayloadStore();
     await expect(stub.put("let_1", "file.bin", new Uint8Array([1]))).rejects.toThrow("payload store is disabled");
+    await expect(
+      stub.putStream("let_1", "file.bin", new Blob([new Uint8Array([1])]).stream()),
+    ).rejects.toThrow("payload store is disabled");
     expect(await stub.get("letters/let_1/file.bin")).toBeNull();
     expect(await stub.listForLetter("let_1")).toEqual([]);
     await expect(stub.delete("letters/let_1/file.bin")).resolves.toBeUndefined();

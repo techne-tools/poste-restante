@@ -32,16 +32,25 @@ export const house = {
 
   /** Upload a raw payload — an enclosure for a letter already delivered.
    *  The bytes travel raw (no JSON wrapping); the name and content type
-   *  ride in headers so the house can catalogue them (migration 016). */
-  uploadPayload(letterId: string, file: Blob, name: string) {
-    return request<{ letterId: string; key: string; name: string; size: number }>(
+   *  ride in headers so the house can catalogue them (migration 016).
+   *
+   *  A sealed enclosure (031) arrives already age-encrypted by the client:
+   *  the type is `application/octet-stream` whatever the file really is,
+   *  and `X-Payload-Sealed` tells the house to record the seal. The house
+   *  refuses a mismatch with the letter in either direction. */
+  uploadPayload(letterId: string, file: Blob, name: string, opts: { sealed?: boolean } = {}) {
+    const headers: Record<string, string> = {
+      "Content-Type": opts.sealed
+        ? "application/octet-stream"
+        : file.type || "application/octet-stream",
+      "X-Payload-Name": name,
+    };
+    if (opts.sealed) headers["X-Payload-Sealed"] = "1";
+    return request<{ letterId: string; key: string; name: string; size: number; sealed: boolean }>(
       `/letters/${encodeURIComponent(letterId)}/payloads`,
       {
         method: "POST",
-        headers: {
-          "Content-Type": file.type || "application/octet-stream",
-          "X-Payload-Name": name,
-        },
+        headers,
         body: file,
       },
     );

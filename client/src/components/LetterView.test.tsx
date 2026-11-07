@@ -44,6 +44,7 @@ function payload(over: Partial<PayloadMeta> = {}): PayloadMeta {
     name: "memo.wav",
     contentType: "audio/wav",
     size: 1_258_291,
+    sealed: false,
     ...over,
   };
 }
@@ -146,5 +147,49 @@ describe("Enclosures — what a letter carries", () => {
     expect(confirming).toContain("Yes, remove it");
     expect(confirming).toContain("Keep it");
     expect(confirming).not.toContain("this deletes it for everyone");
+  });
+
+  it("marks a sealed enclosure and renders it once the real type is known", () => {
+    const sealed = payload({
+      name: "take-3.age",
+      contentType: "application/octet-stream",
+      sealed: true,
+      size: 4096,
+    });
+    // Before unsealing, the catalog says octet-stream: name, size and the
+    // seal are visible, the type is not.
+    const resting = renderToStaticMarkup(<Enclosures payloads={[sealed]} {...base} />);
+    expect(resting).toContain("take-3.age");
+    expect(resting).toContain("sealed");
+    expect(resting).toContain("opening…");
+
+    // After unsealing the real type is known and it renders in place.
+    const opened = renderToStaticMarkup(
+      <Enclosures
+        payloads={[sealed]}
+        {...base}
+        types={{ "take-3.age": "audio/wav" }}
+        blobs={{ "take-3.age": "blob:sealed-audio" }}
+      />,
+    );
+    expect(opened).toContain('class="enclosure-audio"');
+    expect(opened).toContain("blob:sealed-audio");
+  });
+
+  it("says why a sealed enclosure will not open instead of dropping it", () => {
+    const sealed = payload({
+      name: "take-3.age",
+      contentType: "application/octet-stream",
+      sealed: true,
+    });
+    const html = renderToStaticMarkup(
+      <Enclosures
+        payloads={[sealed]}
+        {...base}
+        failed={{ "take-3.age": "sealed — it opens with your key, and this browser holds none for you" }}
+      />,
+    );
+    expect(html).toContain("take-3.age");
+    expect(html).toContain("this browser holds none for you");
   });
 });
