@@ -277,6 +277,49 @@ export interface ParticipantKeys {
 }
 
 /**
+ * The participants a sealed letter cannot reach: no live age recipient or
+ * no ed25519 identity registered yet (SPEC §15). `self` is excluded — the
+ * writer's own keys exist by construction.
+ *
+ * Exported because the composer asks the same question the seal asks, and
+ * asks it BEFORE the letter is written: a resident should learn that a
+ * correspondent has no keys while choosing to seal, not from a refused send.
+ */
+export function keylessRecipients(
+  handles: Iterable<string>,
+  addressBook: ParticipantKeys[],
+  self: string,
+): string[] {
+  const byAddress = new Map(addressBook.map((a) => [a.id, a]));
+  const keyless: string[] = [];
+  for (const handle of handles) {
+    if (handle === self) continue;
+    const rec = byAddress.get(handle);
+    if (!rec || !rec.ed25519Public || !rec.ageRecipient) keyless.push(handle);
+  }
+  return keyless.sort();
+}
+
+/**
+ * A sealed letter that would exclude someone it is addressed to.
+ *
+ * v1 refuses to seal to a participant without keys, and that refusal is
+ * correct: a letter sealed to fewer people than its envelope names has
+ * silently decided, on the writer's behalf, who may read it. The refusal
+ * carries the addresses so the composer can name them and offer the two
+ * honest moves — write unsealed, or wait for their keys.
+ */
+export class KeylessAddresseesError extends Error {
+  constructor(readonly addresses: string[]) {
+    super(
+      `${addresses.join(", ")} ${addresses.length === 1 ? "has" : "have"} no keys registered — ` +
+        "a sealed letter must reach everyone it is addressed to, so it cannot be sealed yet",
+    );
+    this.name = "KeylessAddresseesError";
+  }
+}
+
+/**
  * Seal a drafted letter (SPEC §15, movement one: the resident half).
  *
  * The flow:
@@ -359,6 +402,12 @@ export async function sealDraft(
   const recipients: string[] = [];
   const identities = new Map<string, string>();
 
+  // One refusal that names everyone, before any sealing work: a letter
+  // sealed to fewer people than it is addressed to would silently decide
+  // who reads it. The composer catches this and says it in the desk.
+  const keyless = keylessRecipients(participants, addressBook, draft.envelope.from);
+  if (keyless.length > 0) throw new KeylessAddresseesError(keyless);
+
   for (const handle of participants) {
     const rec = byAddress.get(handle);
     if (handle === draft.envelope.from) {
@@ -367,11 +416,8 @@ export async function sealDraft(
       if (keys.recoveryAgeRecipient) recipients.push(keys.recoveryAgeRecipient);
       continue;
     }
-    if (!rec || !rec.ed25519Public || !rec.ageRecipient) {
-      throw new Error(
-        `${handle} has no keys registered — seal to ${handle} once they register theirs`,
-      );
-    }
+    // Unreachable: the guard above refused every keyless participant.
+    if (!rec || !rec.ed25519Public || !rec.ageRecipient) continue;
     identities.set(handle, rec.ed25519Public);
     recipients.push(rec.ageRecipient);
     if (rec.recoveryAgeRecipient) recipients.push(rec.recoveryAgeRecipient);

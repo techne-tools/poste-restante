@@ -26,6 +26,8 @@ import {
   KeystoreAbsentError,
   keyProofMessage,
   registerKeysWithProof,
+  keylessRecipients,
+  KeylessAddresseesError,
 } from "./crypto";
 import type { KeyRegistrationProof } from "./crypto";
 import { armor } from "age-encryption";
@@ -281,6 +283,60 @@ describe("sealDraft — the resident's half of the flow", () => {
         },
       ),
     ).rejects.toThrow(/no keys registered/);
+  });
+
+  it("names every keyless addressee in one refusal, not one throw at a time", async () => {
+    await createKeystore("chris@house", PASSPHRASE);
+    const writer = await generateKeys();
+    const addressBook = [
+      { id: "chris@house", ageRecipient: writer.ageRecipient, ed25519Public: writer.ed25519Public, recoveryAgeRecipient: null },
+      // Keyed, so not named.
+      { id: "bo@house", ageRecipient: writer.ageRecipient, ed25519Public: writer.ed25519Public, recoveryAgeRecipient: null },
+    ];
+
+    const attempt = sealDraft(
+      {
+        envelope: {
+          from: "chris@house",
+          to: ["bo@house", "ghost@house"],
+          cc: ["shade@house"],
+          thread: "th_sealed_3",
+          kind: "letter",
+          lang: "en-AU",
+          subject: "",
+        },
+        time: { gregorian: "2026-08-29T14:00:00+04:00", frames: [] },
+        body: { format: "markdown", content: "hello" },
+      },
+      addressBook,
+      {
+        requestKeyChallenge: async () => ({ nonce: "1700000000.a-test-nonce" }),
+        registerKeys: async () => ({ ok: true }),
+      },
+    );
+
+    await expect(attempt).rejects.toBeInstanceOf(KeylessAddresseesError);
+    await expect(attempt).rejects.toMatchObject({
+      addresses: ["ghost@house", "shade@house"],
+    });
+  });
+});
+
+describe("keylessRecipients — who a sealed letter cannot reach", () => {
+  const book = [
+    { id: "bo@house", ageRecipient: "age1bo", ed25519Public: "pub-bo", recoveryAgeRecipient: null },
+    { id: "half@house", ageRecipient: null, ed25519Public: "pub-half", recoveryAgeRecipient: null },
+  ];
+
+  it("names an address with no age recipient, and one the book has never heard of", () => {
+    expect(keylessRecipients(["bo@house", "half@house", "ghost@house"], book, "chris@house")).toEqual([
+      "ghost@house",
+      "half@house",
+    ]);
+  });
+
+  it("never counts the writer — their keys exist by construction", () => {
+    expect(keylessRecipients(["chris@house"], book, "chris@house")).toEqual([]);
   });
 });
 

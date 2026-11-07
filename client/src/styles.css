@@ -910,6 +910,19 @@ a:hover {
   padding: 2px 8px;
 }
 
+/* An address with no keys yet: a state, not a warning. It cannot take a
+   sealed letter (SPEC §15) — the mark says so before a letter is written,
+   and the row still opens for correspondence that travels unsealed. */
+.keyless-tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  border: var(--rule);
+  border-radius: 3px;
+  padding: 2px 6px;
+}
+
 /* The address and its instrument mark travel together — one group, so the
    row's space-between leaves the name hanging on the right. */
 .address-row .address-who {
