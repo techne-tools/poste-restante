@@ -6,6 +6,57 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed — the house's private key left the database (2026-11-08)
+
+- **`house@house`'s private halves moved out of Postgres, into the deployment
+  secret store** (PLAN-crypto.md C2). `house_keys` now carries the public halves
+  only (`age_recipient`, `ed25519_public`); `HOUSE_AGE_IDENTITY` and
+  `HOUSE_ED25519_PRIVATE` are read from the environment, which `deploy.sh`
+  merges out of `.env.enc` (sops + age). The consequence is the point: a raw
+  database dump alone no longer opens collaborative letters — it opens unsealed
+  ones only, which are plaintext by definition. Sealed letters were never
+  affected, before or after.
+- **Migration `030_house_key_private_halves_outside.sql`** relaxes
+  `age_identity` and `ed25519_private` to nullable and comments them deprecated.
+  They are *not* dropped: on a house that has not been upgraded they hold the
+  only copy of the private halves in existence, and a migration must never be
+  the thing that destroys an identity.
+- **The service verifies the pair.** `get()` refuses with
+  `HouseKeyMissingError` when the row, the secret, or both are absent, and with
+  `HouseKeyMismatchError` when the secret does not derive the row's public
+  halves — a restored database plus the wrong `.env.enc` is a refusal, not a
+  half-working house. The serving path selects no private column.
+- **`unsealBody()` now raises instead of returning null when the house has no
+  usable key.** "Not addressed to us" and "we lost our key" are different facts
+  and no longer look alike.
+- **`GET /v1/house/meta` uses the public halves**, so a house whose secret is
+  missing can still tell a correspondent what to seal to — which is when an
+  operator needs it most.
+- **Operator commands:** `house:key:init` (provision, or export an un-upgraded
+  database), `house:key:show` (public halves), `house:key:check` (prove the
+  secret matches the database), `house:key:export`,
+  `house:key:forget-db-halves` (empty the deprecated columns — refuses unless
+  the secret already matches). `init` writes the private halves to
+  `containers/poste-restante/.env.house-key` (0600, gitignored) *before* the
+  row, because the secret is the half that cannot be regenerated. No command
+  prints a private half.
+- **`compose.yml` refuses to start without the secret** (`:?` on both
+  variables), the same early-failure shape `DATABASE_URL` uses; the service is
+  the second gate.
+- **`docs/RUNBOOK-house-key.md`** — export, store, back up, restore, and what
+  losing the key means: collaborative letters written before the loss are
+  unreadable forever, sealed letters are unaffected, new collaborative letters
+  use the new key.
+- **`026_house_keys.sql`'s header corrected** (comments only; migrations apply
+  by filename and applied files are skipped). Its "the private halves live
+  here" claim was true of the code and was exactly the leak. The header's
+  separate contradiction — "no rotation history" versus "rotates and
+  re-encrypts collaborative letters" — is left standing and marked unresolved:
+  that is a custody decision, not a comment edit.
+- **Not in this change:** no body re-encryption (it cannot preserve letter ids
+  or signatures), no `seal_level` enum, no house-key rotation, sealed payloads
+  (C1) and client keystore custody (C5) untouched.
+
 ### Changed — crypto claims corrected, the house key fails closed, `.env` loads (2026-11-08)
 
 - **The house refuses to mint its keypair on boot.** `HouseKeysService.ensure()` now
