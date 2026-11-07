@@ -78,6 +78,8 @@ describe("credential isolation — age-encrypted at rest, unsealed in memory", (
     const ageIdentity = await generateAgeIdentity();
     const ageRecipient = await ageRecipientOf(ageIdentity);
     return {
+      // publicHalves() is what sealing needs; get() is what unsealing needs.
+      publicHalves: async () => ({ ageRecipient, ed25519Public: "" }),
       get: async () => ({ ageIdentity, ageRecipient, ed25519Private: "", ed25519Public: "" }),
     } as never;
   }

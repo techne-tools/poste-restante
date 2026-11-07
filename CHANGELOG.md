@@ -31,7 +31,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   and no longer look alike.
 - **`GET /v1/house/meta` uses the public halves**, so a house whose secret is
   missing can still tell a correspondent what to seal to — which is when an
-  operator needs it most.
+  operator needs it most. `integration:add` does the same when sealing
+  credentials: sealing needs the recipient, not the identity, so it no longer
+  demands the private half to be present.
 - **Operator commands:** `house:key:init` (provision, or export an un-upgraded
   database), `house:key:show` (public halves), `house:key:check` (prove the
   secret matches the database), `house:key:export`,
