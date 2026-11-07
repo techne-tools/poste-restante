@@ -7,6 +7,7 @@
  */
 import { z } from "zod";
 import { LETTER_KINDS } from "./types.js";
+import { isEd25519PublicKey, isSealableRecipient } from "./crypto/keys.js";
 import { stripClauseFrontmatter } from "./book/frontmatter.js";
 import type { StoredLetterRow } from "./db/repository.js";
 
@@ -142,11 +143,33 @@ export const ChangePasswordSchema = z.object({
  * registered key changes how every subsequent letter is hashed (the
  * identity IS the key; legacy addresses without keys resolve to the
  * handle itself until one exists).
+ *
+ * The halves are VALIDATED, not merely present. A recipient the encrypter
+ * cannot parse is a recipient no letter can be sealed to (the failure used
+ * to surface at the first seal, long after registration); an ed25519 public
+ * key that is not the house's SPKI encoding is an identity the letter-id
+ * resolver cannot hash against. Both are refusals at the door.
  */
 export const RegisterKeysSchema = z.object({
-  ageRecipient: z.string().min(1),
-  ed25519Public: z.string().min(1),
-  recoveryAgeRecipient: z.string().nullable().default(null),
+  ageRecipient: z
+    .string()
+    .min(1)
+    .refine(isSealableRecipient, {
+      message: "ageRecipient must be a recipient a letter can be sealed to (age1…)",
+    }),
+  ed25519Public: z
+    .string()
+    .min(1)
+    .refine(isEd25519PublicKey, {
+      message: "ed25519Public must be a base64url SPKI ed25519 public key",
+    }),
+  recoveryAgeRecipient: z
+    .string()
+    .nullable()
+    .default(null)
+    .refine((value) => value === null || isSealableRecipient(value), {
+      message: "recoveryAgeRecipient must be a recipient a letter can be sealed to (age1…)",
+    }),
 });
 
 /**

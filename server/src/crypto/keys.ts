@@ -60,6 +60,63 @@ export interface HouseKeypair {
   ed25519Public: string;
 }
 
+/**
+ * Can the house actually seal to this recipient string?
+ *
+ * The question a registration must answer before it is stored: a recipient
+ * the encrypter cannot parse is a recipient a letter cannot be sealed to,
+ * and today that is discovered only when a letter fails to seal — or worse,
+ * when a correspondent seals to a typo and the letter is unopenable.
+ *
+ * Defined by the encrypter itself rather than by a hand-rolled bech32
+ * check, so the test of validity is exactly the operation that will use
+ * it. Accepts every recipient form age's `addRecipient` accepts (X25519
+ * `age1…`, and the hybrid/tag forms), which is the honest boundary: if
+ * sealing would take it, registration should.
+ */
+export function isSealableRecipient(recipient: string): boolean {
+  if (typeof recipient !== "string" || !recipient.startsWith("age1")) return false;
+  try {
+    // No cryptographic work happens here — addRecipient only parses the
+    // recipient (bech32 decode + length) and builds a wrapper.
+    new Encrypter().addRecipient(recipient);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The SPKI SubjectPublicKeyInfo header for an ed25519 key: the 12 fixed
+ *  bytes every ed25519 public key in the house's encoding begins with. */
+const ED25519_SPKI_HEADER = Buffer.from("302a300506032b6570032100", "hex");
+
+/**
+ * Is this the house's ed25519 public-key encoding — base64url of a DER
+ * SubjectPublicKeyInfo whose one key is 32 bytes and whose algorithm is
+ * ed25519?
+ *
+ * The encoding is the one `generateEd25519Keypair` produces and the client
+ * produces (`exportBase64url("spki", …)`), so a registration carrying
+ * anything else — a raw 32-byte key, a truncated DER, a different
+ * algorithm, a standard-base64 string — is a key the letter-id resolver
+ * cannot use, and the identity spine would be silently wrong.
+ */
+export function isEd25519PublicKey(publicKey: string): boolean {
+  // base64url, unpadded. Node's decoder is lenient, so the alphabet is
+  // checked before decoding rather than after.
+  if (typeof publicKey !== "string" || !/^[A-Za-z0-9_-]+$/.test(publicKey)) return false;
+  const der = Buffer.from(publicKey, "base64url");
+  // 12 header bytes + the 32-byte key. Exact, so no trailing bytes.
+  if (der.length !== 44) return false;
+  if (!der.subarray(0, ED25519_SPKI_HEADER.length).equals(ED25519_SPKI_HEADER)) return false;
+  try {
+    const key = createPublicKey({ key: der, format: "der", type: "spki" });
+    return key.asymmetricKeyType === "ed25519";
+  } catch {
+    return false;
+  }
+}
+
 /** Generate a fresh ed25519 keypair. Returns base64url-encoded keys. */
 export function generateEd25519Keypair(): { publicKey: string; privateKey: string } {
   const { publicKey, privateKey } = generateKeyPairSync("ed25519");

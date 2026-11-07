@@ -283,7 +283,14 @@ export function createAgentsRoutes(
     const parsed = RegisterKeysSchema.safeParse(body);
     if (!parsed.success) {
       return c.json(
-        { error: { code: "invalid_keys", message: "the key record must carry the public halves" } },
+        {
+          error: {
+            code: "invalid_keys",
+            message:
+              "the key record must carry a sealable age recipient (age1…) and a base64url SPKI ed25519 public key",
+            details: parsed.error.flatten(),
+          },
+        },
         400,
       );
     }
