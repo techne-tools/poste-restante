@@ -28,6 +28,7 @@
  * the circulation, not the pooled content.
  */
 
+import { Decrypter, Encrypter } from "age-encryption";
 import { sealToRecipients, signLetterIdWithKey, importSigningKey, unsealWithIdentity } from "./keys";
 import {
   KeystoreAbsentError,
