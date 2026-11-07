@@ -6,6 +6,64 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added — the keyletter: a letter that carries a public key (2026-11-08)
+
+A correspondent with an address and no keys had no way to be told, in the house's own idiom,
+that keys exist or how to get theirs to the house: the only path was out of band (they make a
+keystore in their own record and register the public halves). So a new correspondent was
+unreachable for sealed correspondence and nobody inside the house could say so.
+
+A **keyletter** is a letter that carries a public key. It is a first-class letter `kind`
+(`keyletter`) — a letter whose content is a key should be identifiable without parsing it —
+with a body `format: "keyframe"` carrying the sender's `ageRecipient`, `ed25519Public` and
+(where minted) `recoveryAgeRecipient`, a human note, and an ed25519 `signature` over the
+letter id made with the private half of the published key. The schema and the pipeline both
+refuse a kind/format mismatch, so the two markers always name the same thing; the canonical
+form hashes the frame's **keys** (a signature that did not cover the material it was attached
+to would say nothing about it) and excludes its own signature.
+
+**What a keyletter proves, and what it does not.** It proves *possession of the key*, and —
+because every letter face binds `from` to the authenticated caller — that the address's owner
+sent it. It does **not** prove the address: no challenge was signed. That is TOFU on first
+sight, and it is recorded rather than glossed:
+
+- `address_keys` gains `origin` (`registration` | `keyletter`) and `source_letter_id`
+  (migration 034), so the history says how a key arrived and which letter carried it. A key
+  record outlives the letter — provenance, not an edge.
+- A keyletter **never pins `identity_id`**. The identity spine is established only by a
+  registration that proves possession over a house challenge; a key that arrived by TOFU has
+  proven the key, not the address. The address keeps resolving to its handle until its owner
+  registers with proof — and its sealed letters verify either way, because verification walks
+  the sender's key history.
+- **First sight installs** (nothing to contradict — this is the bind that makes a keyless
+  correspondent reachable). A frame that matches the live record is a no-op. A frame that
+  **differs** does not overwrite it: it raises one pending `address_key_offers` row, because
+  whoever already sealed to the old key needs to see that it moved.
+- The change is answered by a human: `POST /v1/addresses/:id/keys/offer/accept` (install the
+  offered keys, still with `origin = 'keyletter'`) or `/decline` (leave the record standing).
+  Only the address itself, or someone who can see the keyletter, may answer; a non-party gets
+  the same 404 as an offer that does not exist. A registration with proof settles a pending
+  offer too — accepted when it is the offered key, superseded when the address chose another.
+- Refusals are told apart instead of collapsed: `keyletter_unsigned` (no signature at all),
+  `invalid_signature` (does not verify), `invalid_letter` (kind/body mismatch).
+
+Client: a keyless address-book row offers **"send my keys"** (the letter is composed from the
+resident's open keystore, keyed exactly as the house derives ids), and a row whose address has
+published a different key shows the change with both answers. A keyletter reads as a letter —
+its note, and one sentence saying where the keys went; the keys themselves are the address
+book's business.
+
+A key installed by keyletter can be pinned later: the pin now runs on every *registration*
+(not only the first), gated by its own predicate — so an owner who registers the same key with
+proof is pinned then, and a rotation still moves nothing.
+
+Tests: the canonical form frozen as a literal on both sides (a drift is a letter the house
+refuses, not a comment), the two silences, the kind/body gate, install / no-op / offer, the
+round trip (keyless correspondent → keyletter → a sealed letter to them opens and theirs
+verifies), the offer's accept and decline, the negative (a non-party cannot answer), and the
+settle-on-registration path. Server 455 / client 224 unit tests, plus 34 postgres integration
+tests including 9 new keyletter ones.
+
 ### Changed — the letter id keys on a rotation-stable identity (2026-11-08)
 
 `addresses.identity_id` was minted as the handle and then **overwritten with the current

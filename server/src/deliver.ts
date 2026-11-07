@@ -17,14 +17,57 @@ export interface DeliverResult {
   created: boolean;
   /** True when a sealed letter's signature failed verification. */
   rejected?: boolean;
+  /** Which silence it was — the door says it rather than collapsing them. */
+  rejectionReason?: RejectionReason;
+}
+
+/** The reasons a letter can be refused at the signature/kind gate. */
+export type RejectionReason = "unsigned" | "bad_signature" | "frame_mismatch";
+
+/**
+ * The answer a rejection deserves, as data rather than as route prose.
+ *
+ * Three silences, told apart: a keyletter whose frame carries NO signature is
+ * a different fact from one that does not verify, and a kind that does not
+ * match its body is a third. Answering all three with "the signature does not
+ * verify" would be the house guessing at what it actually knows.
+ *
+ * Exported so the mapping is testable without a live house — the route is a
+ * thin caller, and the copy lives where it can be read in one place.
+ */
+export function rejectionAnswer(reason: RejectionReason | undefined): {
+  status: 400;
+  code: string;
+  message: string;
+} {
+  switch (reason) {
+    case "unsigned":
+      return {
+        status: 400,
+        code: "keyletter_unsigned",
+        message: "a keyletter must carry a signature over its own id — this one carries none",
+      };
+    case "frame_mismatch":
+      return {
+        status: 400,
+        code: "invalid_letter",
+        message: "a keyletter is its key frame — the kind and the body must name the same thing",
+      };
+    default:
+      return {
+        status: 400,
+        code: "invalid_signature",
+        message: "the letter's signature does not verify",
+      };
+  }
 }
 
 export async function deliverLetter(house: House, letter: LetterInput): Promise<DeliverResult> {
   // The id is derived from the envelope+body; a caller-supplied id is
   // ignored (the hash is the identity). Strip it before ingest.
   const { id: _ignored, ...clean } = letter;
-  const { letterId, created, rejected } = await house.pipeline.ingest(clean);
-  if (rejected) return { letterId, created: false, rejected: true };
+  const { letterId, created, rejected, rejectionReason } = await house.pipeline.ingest(clean);
+  if (rejected) return { letterId, created: false, rejected: true, rejectionReason };
 
   if (created && letter.envelope.kind === "system" && letter.envelope.from === "house@house") {
     const summary = letter.body.content.slice(0, 200);

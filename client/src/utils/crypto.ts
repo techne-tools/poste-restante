@@ -143,6 +143,11 @@ export interface LetterForCanonical {
   body: {
     format: string;
     content: string;
+    /** Present only on a key frame. The keys ARE the content it publishes, so
+     *  they are hashed with it — otherwise a key frame's id would cover its
+     *  note and not its keys, and the signature would say nothing about the
+     *  material it carries. */
+    keys?: { ageRecipient: string; ed25519Public: string; recoveryAgeRecipient: string | null };
   };
 }
 
@@ -180,11 +185,40 @@ export function canonicalise(
       gregorian: letter.time.gregorian,
       frames,
     },
-    body: {
-      format: letter.body.format,
-      content: letter.body.content,
-    },
+    // The mirror of the server's `canonicalBody` (id.ts). The two original
+    // shapes hash `{format, content}` and nothing else — every stored id was
+    // derived from exactly that, so adding a field to them would move the
+    // archive. A key frame is the one shape with material to hash beyond its
+    // text: the keys it publishes. Its signature is deliberately absent (an
+    // id cannot hash the signature made over it), as the sealed body's is.
+    body:
+      letter.body.format === "keyframe"
+        ? keyFrameCanonicalBody(letter.body)
+        : { format: letter.body.format, content: letter.body.content },
   });
+}
+
+/** The key frame's canonical body — fixed field order, the keys included. */
+function keyFrameCanonicalBody(body: LetterForCanonical["body"]): {
+  format: "keyframe";
+  content: string;
+  keys: { ageRecipient: string; ed25519Public: string; recoveryAgeRecipient: string | null };
+} {
+  if (!body.keys) {
+    // A key frame with no keys cannot be hashed the way the house hashes it.
+    // Refusing here is the honest failure: the alternative is an id the
+    // server derives differently, i.e. a letter whose signature never verifies.
+    throw new Error("a key frame must carry its keys to be hashed");
+  }
+  return {
+    format: "keyframe",
+    content: body.content,
+    keys: {
+      ageRecipient: body.keys.ageRecipient,
+      ed25519Public: body.keys.ed25519Public,
+      recoveryAgeRecipient: body.keys.recoveryAgeRecipient,
+    },
+  };
 }
 
 /** sha256 hex of the canonical serialisation — the letter id. */

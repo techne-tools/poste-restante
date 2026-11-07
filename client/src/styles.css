@@ -953,6 +953,74 @@ a:hover {
   font-size: 13px;
 }
 
+/* One line of the book: the row itself, and whatever acts on it. The line
+   stacks, because a key offer needs the full width to be read before it is
+   answered — it is a question about somebody's keys, not a badge. */
+.address-line {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.address-line .address-row {
+  width: 100%;
+}
+
+/* "Send my keys" — the in-band keyletter (SPEC §15). A quiet mono act, the
+   same register as the book's other offers; it sends OUR public halves, which
+   are public, so there is nothing to warn about. */
+.address-act {
+  align-self: flex-start;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  background: none;
+  border: var(--rule);
+  border-radius: 3px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+
+.address-act:hover {
+  color: var(--fg);
+  border-color: var(--fg);
+}
+
+/* A keyletter whose keys differ from the live record: a change waiting on a
+   human (034). Set apart from the row because it is a question — the record
+   has NOT moved, and the resident is the one who decides whether it should. */
+.key-offer {
+  border-left: 2px solid var(--muted);
+  padding: var(--space-2) var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.key-offer-say {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* A keyletter read as a letter: the note, then the one sentence that says
+   where the keys went. The keys themselves are the address book's business —
+   they are public, but a wall of base64 is not what a letter reads like. */
+.keyframe-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.keyframe-say {
+  margin: var(--space-2) 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  border-top: var(--rule);
+  padding-top: var(--space-2);
+}
+
 /* The day's own items — single cards, not letters, not threads. */
 .day-cards h3 {
   font-size: 12px;

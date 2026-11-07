@@ -141,6 +141,27 @@ export const house = {
     });
   },
 
+  /** Answer a keyletter's offered key change (SPEC §15). A keyletter from an
+   *  address whose live key differs does not overwrite it — the change waits
+   *  for a human, because whoever sealed to the old key needs to know it
+   *  moved. Accepting installs the offered keys as the live record (still with
+   *  origin 'keyletter': a human agreeing is not proof of possession). */
+  acceptKeyOffer(id: string, letterId: string) {
+    return request<{ address: string; letterId: string; accepted: boolean }>(
+      `/addresses/${encodeURIComponent(id)}/keys/offer/accept`,
+      { method: "POST", body: JSON.stringify({ letterId }) },
+    );
+  },
+
+  /** Leave the live key record as it is. The keyletter stays in the archive;
+   *  the offer is closed. */
+  declineKeyOffer(id: string, letterId: string) {
+    return request<{ address: string; letterId: string; accepted: boolean }>(
+      `/addresses/${encodeURIComponent(id)}/keys/offer/decline`,
+      { method: "POST", body: JSON.stringify({ letterId }) },
+    );
+  },
+
   /** Relabel — the handle is a label, the identity is the key (SPEC §19). */
   relabel(id: string, handle: string) {
     return request<{ relabeled: boolean; from: string; to: string }>(
