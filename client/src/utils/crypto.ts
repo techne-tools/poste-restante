@@ -29,7 +29,7 @@
  */
 
 import { Decrypter, Encrypter } from "age-encryption";
-import { sealToRecipients, signLetterIdWithKey, importSigningKey, unsealWithIdentity } from "./keys";
+import { sealToRecipients, signLetterIdWithKey, signWithKey, importSigningKey, unsealWithIdentity } from "./keys";
 import {
   KeystoreAbsentError,
   KeystoreLockedError,
@@ -185,6 +185,79 @@ export async function letterIdFromCanonical(canonical: string): Promise<string> 
     .join("");
 }
 
+/* ── Proof of possession — registering the public halves (SPEC §15) ─────── */
+
+/**
+ * The bytes a key registration signs.
+ *
+ * The mirror of the server's `auth/key-proof.ts::keyProofMessage`: six
+ * lines, fixed order, no escaping — every field is charset-constrained by
+ * the registration schema (bech32 and base64url carry no newlines), and an
+ * absent recovery recipient is the empty line. Both sides assert the same
+ * literal in their tests, because a drift here does not fail quietly: every
+ * registration would fail its proof.
+ */
+export const KEY_PROOF_VERSION = "poste-restante:key-proof:v1";
+
+export function keyProofMessage(input: {
+  address: string;
+  nonce: string;
+  ageRecipient: string;
+  ed25519Public: string;
+  recoveryAgeRecipient: string | null;
+}): string {
+  return [
+    KEY_PROOF_VERSION,
+    input.address,
+    input.nonce,
+    input.ageRecipient,
+    input.ed25519Public,
+    input.recoveryAgeRecipient ?? "",
+  ].join("\n");
+}
+
+/** The body a registration posts: the halves plus the proof. */
+export interface KeyRegistrationProof {
+  ageRecipient: string;
+  ed25519Public: string;
+  recoveryAgeRecipient: string | null;
+  nonce: string;
+  signature: string;
+}
+
+/**
+ * Register the public halves, proving possession of the signing key.
+ *
+ * A registration writes `identity_id` — the address's identity spine — so
+ * the house will not take it on the strength of the session alone. It issues
+ * a challenge; the resident signs the challenge and the whole key record
+ * with the private half of the key being registered. The private half never
+ * leaves this device; only the signature does, and it is worthless to anyone
+ * who does not already hold the key.
+ *
+ * The keystore must be open: this is a signing act, and a signing key that
+ * answers without a passphrase is a signing key anyone can use.
+ */
+export async function registerKeysWithProof(
+  address: string,
+  halves: {
+    ageRecipient: string;
+    ed25519Public: string;
+    recoveryAgeRecipient: string | null;
+  },
+  io: {
+    requestKeyChallenge: (id: string) => Promise<{ nonce: string }>;
+    registerKeys: (id: string, body: KeyRegistrationProof) => Promise<unknown>;
+  },
+): Promise<void> {
+  const keys = ensureKeys(address);
+  const { nonce } = await io.requestKeyChallenge(address);
+  const message = keyProofMessage({ address, nonce, ...halves });
+  const signing = signingKeyOf(address) ?? (await importSigningKey(keys.ed25519Private));
+  const signature = await signWithKey(message, signing);
+  await io.registerKeys(address, { ...halves, nonce, signature });
+}
+
 /* ── The seal — turning a draft into a delivered sealed letter ──────────── */
 
 /** A participant's public halves, from the address book. */
@@ -242,13 +315,13 @@ export async function sealDraft(
   draft: LetterForCanonical,
   addressBook: ParticipantKeys[],
   opts: {
+    /** Ask the house for the challenge a registration must sign. The
+     *  callback is injected so this module stays a leaf — no dependence on
+     *  the fetch client; the caller supplies it. */
+    requestKeyChallenge: (id: string) => Promise<{ nonce: string }>;
     /** Register the public halves with the house (self-only, idempotent
-     *  upsert). The callback is injected so this module stays a leaf —
-     *  no dependence on the fetch client; the caller supplies it. */
-    registerKeys: (
-      id: string,
-      keys: { ageRecipient: string; ed25519Public: string; recoveryAgeRecipient?: string | null },
-    ) => Promise<unknown>;
+     *  upsert), carrying the proof of possession of the signing key. */
+    registerKeys: (id: string, body: KeyRegistrationProof) => Promise<unknown>;
   },
 ): Promise<SealResult> {
   const keys = ensureKeys(draft.envelope.from);
@@ -256,11 +329,15 @@ export async function sealDraft(
   const minted = !own || own.ed25519Public !== keys.ed25519Public;
 
   if (minted) {
-    await opts.registerKeys(draft.envelope.from, {
-      ageRecipient: keys.ageRecipient,
-      ed25519Public: keys.ed25519Public,
-      recoveryAgeRecipient: keys.recoveryAgeRecipient,
-    });
+    await registerKeysWithProof(
+      draft.envelope.from,
+      {
+        ageRecipient: keys.ageRecipient,
+        ed25519Public: keys.ed25519Public,
+        recoveryAgeRecipient: keys.recoveryAgeRecipient,
+      },
+      opts,
+    );
   }
 
   // Every participant must be resolvable to a recipient. The writer is

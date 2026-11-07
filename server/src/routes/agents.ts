@@ -8,6 +8,9 @@ import { deliverLetter } from "../deliver.js";
 import type { House } from "../house.js";
 import type { RetrievalQuery } from "../retrieval/retrieval.js";
 import type { AuthService, Authenticated } from "../auth/service.js";
+import type { KeyProofService } from "../auth/key-proof.js";
+import { addressTag } from "../pipeline/logger.js";
+import { keyFingerprint } from "../crypto/keys.js";
 import { isVisibleTo, isPublicAddress, visibleToSql, filterVisible, PUB_ADDRESS } from "../auth/visibility.js";
 import type { InviteService } from "../invites/service.js";
 import type { BookService } from "../book/service.js";
@@ -21,7 +24,8 @@ export function createAgentsRoutes(
   auth: AuthService | undefined,
   invites: InviteService | undefined,
   book: BookService | undefined,
-  limiters: any
+  limiters: any,
+  keyProof: KeyProofService,
 ) {
   const app = new Hono();
 
@@ -272,7 +276,24 @@ export function createAgentsRoutes(
   // closed (`retired_at`), not overwritten, so letters already sealed
   // and signed under it stay verifiable, and a re-delivery of one keeps
   // its original id. Re-registering the SAME key writes nothing.
-  app.post("/v1/addresses/:id/keys", async (c) => {
+  //
+  // Self-only is not enough. The row it writes includes
+  // `addresses.identity_id` — the identity spine — so a stolen session
+  // token could replace who an address IS. A registration therefore
+  // carries proof of possession of the NEW signing key: a signature over
+  // a house-issued challenge and the whole key record. See
+  // auth/key-proof.ts for the nonce design and why it is stateless.
+  app.post("/v1/addresses/:id/keys/challenge", async (c) => {
+    const who = await caller(c);
+    if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
+    const address = c.req.param("id");
+    if (address !== who.address) {
+      return c.json({ error: { code: "forged", message: "you can only register your own keys" } }, 403);
+    }
+    return c.json(keyProof.issue(address));
+  });
+
+  app.post("/v1/addresses/:id/keys", limiters.pwLimiter, async (c) => {
     const who = await caller(c);
     if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
     const address = c.req.param("id");
@@ -287,8 +308,35 @@ export function createAgentsRoutes(
           error: {
             code: "invalid_keys",
             message:
-              "the key record must carry a sealable age recipient (age1…) and a base64url SPKI ed25519 public key",
+              "the key record must carry a sealable age recipient (age1…), a base64url SPKI ed25519 public key, and a signed challenge",
             details: parsed.error.flatten(),
+          },
+        },
+        400,
+      );
+    }
+    // The proof, before the row. Nothing below writes until this passes:
+    // a registration that cannot show possession of the key it proposes
+    // must leave the identity spine exactly as it was.
+    const proof = keyProof.verify(
+      address,
+      parsed.data,
+      parsed.data.nonce,
+      parsed.data.signature,
+    );
+    if (!proof.ok) {
+      house.log.warn("keys:proof-refused", {
+        addressTag: addressTag(address),
+        reason: proof.reason,
+      });
+      return c.json(
+        {
+          error: {
+            code: "keys_unproven",
+            message:
+              proof.reason === "bad_signature"
+                ? "the signature does not verify against the key being registered — sign the challenge with the new ed25519 private key"
+                : "the challenge has expired or was not issued for this address — ask for a new one and sign again",
           },
         },
         400,
@@ -301,9 +349,21 @@ export function createAgentsRoutes(
     // record. Keeping both in sync means the resolver and the OIDC bindings
     // agree on who this address is (a rotation re-establishes the binding to
     // the new key, per §19).
+    const previous = await house.repo.getAddressKey(address);
     await house.repo.setAddressKey(address, parsed.data);
     await house.repo.setAddressIdentity(address, parsed.data.ed25519Public);
-    house.log.info("keys:registered", { address });
+    // Log the change, never the person: the address travels as a hash and
+    // the keys as their fingerprint tails (AGENTS.md privacy checklist
+    // #6). An operator can follow one address's key history; a log reader
+    // cannot learn who it is or reconstruct a key. A no-op re-registration
+    // writes no line — it changed nothing.
+    if (previous === null || previous.ed25519_public !== parsed.data.ed25519Public) {
+      house.log.info(previous === null ? "keys:registered" : "keys:rotated", {
+        addressTag: addressTag(address),
+        from: previous === null ? null : keyFingerprint(previous.ed25519_public).slice(0, 8),
+        to: keyFingerprint(parsed.data.ed25519Public).slice(0, 8),
+      });
+    }
     const key = await house.repo.getAddressKey(address);
     return c.json(key, 201);
   });

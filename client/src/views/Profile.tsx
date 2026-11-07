@@ -14,6 +14,7 @@ import {
   mintRecoveryIdentity,
   passphraseProblem,
   publicHalvesOf,
+  registerKeysWithProof,
   unlockKeystore,
   unlockedKeys,
   wipeKeystore,
@@ -198,11 +199,20 @@ export default function Profile({ onError, address, onRelabeled, onPasswordChang
   }, [record, checkRecovery]);
 
   /** Register a keypair's public halves with the house (idempotent,
-   *  self-only). Private halves never leave the browser — this is the
-   *  same call the composer makes on first seal. */
+   *  self-only), proving possession of the signing key. Private halves
+   *  never leave the browser — this is the same call the composer makes on
+   *  first seal, and it needs the keystore open: registering writes
+   *  `identity_id`, so the house asks for a signature, not just a session. */
   const registerPublicHalves = useCallback(
     async (ageRecipient: string, ed25519Public: string, recoveryAgeRecipient: string | null) => {
-      await house.registerKeys(address, { ageRecipient, ed25519Public, recoveryAgeRecipient });
+      await registerKeysWithProof(
+        address,
+        { ageRecipient, ed25519Public, recoveryAgeRecipient },
+        {
+          requestKeyChallenge: (id) => house.requestKeyChallenge(id),
+          registerKeys: (id, body) => house.registerKeys(id, body),
+        },
+      );
     },
     [address],
   );
@@ -335,11 +345,11 @@ export default function Profile({ onError, address, onRelabeled, onPasswordChang
     setRecoveryBusy(true);
     try {
       const { keys, recoveryIdentity } = await mintRecoveryIdentity(address);
-      await house.registerKeys(address, {
-        ageRecipient: keys.ageRecipient,
-        ed25519Public: keys.ed25519Public,
-        recoveryAgeRecipient: keys.recoveryAgeRecipient,
-      });
+      await registerPublicHalves(
+        keys.ageRecipient,
+        keys.ed25519Public,
+        keys.recoveryAgeRecipient,
+      );
       setHasRecovery(true);
       setRecoveryAcknowledged(false);
       setRecoveryRevealed(recoveryIdentity);

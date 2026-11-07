@@ -167,6 +167,7 @@ export default function Compose({ onError, onDelivered, initialTo, initialThread
                   },
                   sealedBook,
                   {
+                    requestKeyChallenge: (id) => house.requestKeyChallenge(id),
                     registerKeys: (id, keys) => house.registerKeys(id, keys),
                   },
                 );

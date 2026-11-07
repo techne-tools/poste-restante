@@ -54,7 +54,6 @@ for (const file of files(testRoot)) {
 const TRACKED = new Set([
   "invalid_card",
   "invalid_invite",
-  "invalid_keys",
   "invalid_limit",
   "invalid_payload",
   "invalid_redeem",

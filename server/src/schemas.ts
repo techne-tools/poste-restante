@@ -170,6 +170,16 @@ export const RegisterKeysSchema = z.object({
     .refine((value) => value === null || isSealableRecipient(value), {
       message: "recoveryAgeRecipient must be a recipient a letter can be sealed to (age1…)",
     }),
+  /**
+   * The challenge the house issued for this address (auth/key-proof.ts),
+   * and an ed25519 signature over `keyProofMessage(...)` made with the
+   * private half of `ed25519Public`. Together they prove possession of the
+   * key being installed — the one thing a stolen session token cannot
+   * supply. Shape only here; the proof itself is verified by the service,
+   * which needs the secret and the clock.
+   */
+  nonce: z.string().min(1).max(200),
+  signature: z.string().min(1).max(200),
 });
 
 /**

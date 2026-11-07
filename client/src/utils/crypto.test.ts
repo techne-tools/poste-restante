@@ -24,7 +24,10 @@ import {
   lockAllKeystores,
   KeystoreLockedError,
   KeystoreAbsentError,
+  keyProofMessage,
+  registerKeysWithProof,
 } from "./crypto";
+import type { KeyRegistrationProof } from "./crypto";
 
 /** A passphrase long enough for the keystore's floor. */
 const PASSPHRASE = "the light in the rehearsal room";
@@ -208,6 +211,7 @@ describe("sealDraft — the resident's half of the flow", () => {
       },
       addressBook,
       {
+        requestKeyChallenge: async () => ({ nonce: "1700000000.a-test-nonce" }),
         registerKeys: async (id, keys) => {
           registered.push({ id, keys });
           return { ok: true };
@@ -267,7 +271,10 @@ describe("sealDraft — the resident's half of the flow", () => {
           body: { format: "markdown", content: "hello" },
         },
         addressBook,
-        { registerKeys: async () => ({ ok: true }) },
+        {
+          requestKeyChallenge: async () => ({ nonce: "1700000000.a-test-nonce" }),
+          registerKeys: async () => ({ ok: true }),
+        },
       ),
     ).rejects.toThrow(/no keys registered/);
   });
@@ -330,7 +337,10 @@ describe("recovery identity — the §15 backstop", () => {
         body: { format: "markdown", content: "recover me" },
       },
       addressBook,
-      { registerKeys: async () => ({ ok: true }) },
+      {
+        requestKeyChallenge: async () => ({ nonce: "1700000000.a-test-nonce" }),
+        registerKeys: async () => ({ ok: true }),
+      },
     );
 
     // The recipient set includes the recovery recipient (the backstop).
@@ -391,7 +401,10 @@ describe("the sealed subject — the title moves into the body", () => {
         body: { format: "markdown", content: "first line of the letter" },
       },
       addressBook,
-      { registerKeys: async () => ({ ok: true }) },
+      {
+        requestKeyChallenge: async () => ({ nonce: "1700000000.a-test-nonce" }),
+        registerKeys: async () => ({ ok: true }),
+      },
     );
 
     // The stored form hashes an empty envelope subject — the house shows
@@ -427,7 +440,10 @@ describe("the sealed subject — the title moves into the body", () => {
         body: { format: "markdown", content: "the letter's own first line" },
       },
       addressBook,
-      { registerKeys: async () => ({ ok: true }) },
+      {
+        requestKeyChallenge: async () => ({ nonce: "1700000000.a-test-nonce" }),
+        registerKeys: async () => ({ ok: true }),
+      },
     );
     const opened = await unsealWithIdentity(result.letter.body.content, recipient.ageIdentity);
     expect(opened).toBe("the letter's own first line");
@@ -479,7 +495,10 @@ describe("a sealed keystore refuses to seal", () => {
           body: { format: "markdown", content: "hello" },
         },
         [],
-        { registerKeys: async () => ({ ok: true }) },
+        {
+          requestKeyChallenge: async () => ({ nonce: "1700000000.a-test-nonce" }),
+          registerKeys: async () => ({ ok: true }),
+        },
       ),
     ).rejects.toBeInstanceOf(KeystoreLockedError);
 
@@ -614,5 +633,116 @@ describe("sealed payloads — the enclosure's own seal", () => {
     expect(opened.ok).toBe(true);
     if (!opened.ok) return;
     expect(new Uint8Array(await opened.blob.arrayBuffer())).toEqual(bytes);
+  });
+});
+
+/* ── Proof of possession — the resident's half of a key registration ────── */
+
+describe("proof of possession — registering keys proves the key", () => {
+  let saved: Storage | undefined;
+
+  beforeEach(() => {
+    lockAllKeystores();
+    saved = KEYSTORE ?? undefined;
+    Object.defineProperty(globalThis, "localStorage", {
+      value: fakeLocalStorage(),
+      configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    lockAllKeystores();
+    if (saved !== undefined) {
+      Object.defineProperty(globalThis, "localStorage", {
+        value: saved,
+        configurable: true,
+      });
+    } else {
+      delete (globalThis as Record<string, unknown>).localStorage;
+    }
+  });
+
+  it("builds the exact message the server checks — the mirror is a literal", () => {
+    // The same literal is asserted in
+    // server/test/unit/key-proof.test.ts. If either side drifts, its own
+    // test fails rather than every registration failing in the field.
+    expect(
+      keyProofMessage({
+        address: "chris@house",
+        nonce: "1700000000.abc",
+        ageRecipient: "age1qqq",
+        ed25519Public: "AAAA",
+        recoveryAgeRecipient: null,
+      }),
+    ).toBe("poste-restante:key-proof:v1\nchris@house\n1700000000.abc\nage1qqq\nAAAA\n");
+  });
+
+  it("asks for a challenge, signs it with the resident's key, and posts the halves with the proof", async () => {
+    await createKeystore("chris@house", PASSPHRASE);
+    const keys = ensureKeys("chris@house");
+    const halves = {
+      ageRecipient: keys.ageRecipient,
+      ed25519Public: keys.ed25519Public,
+      recoveryAgeRecipient: null,
+    };
+
+    let asked: string | null = null;
+    let posted: KeyRegistrationProof | null = null;
+    await registerKeysWithProof("chris@house", halves, {
+      requestKeyChallenge: async (id) => {
+        asked = id;
+        return { nonce: "1700000000.abc" };
+      },
+      registerKeys: async (_id, body) => {
+        posted = body;
+        return { ok: true };
+      },
+    });
+
+    expect(asked).toBe("chris@house");
+    expect(posted).not.toBeNull();
+    expect(posted).toMatchObject({ ...halves, nonce: "1700000000.abc" });
+
+    // The signature verifies with the public half being registered, over
+    // the exact message the server will rebuild. Nothing else could.
+    const verifyKey = await crypto.subtle.importKey(
+      "spki",
+      new Uint8Array(fromBase64url(keys.ed25519Public)),
+      { name: "Ed25519" },
+      false,
+      ["verify"],
+    );
+    const ok = await crypto.subtle.verify(
+      "Ed25519",
+      verifyKey,
+      new Uint8Array(fromBase64url(posted!.signature)),
+      new TextEncoder().encode(
+        keyProofMessage({ address: "chris@house", nonce: "1700000000.abc", ...halves }),
+      ),
+    );
+    expect(ok).toBe(true);
+  });
+
+  it("refuses to register while the keystore is sealed — proof needs the key open", async () => {
+    await createKeystore("chris@house", PASSPHRASE);
+    const keys = ensureKeys("chris@house");
+    const halves = {
+      ageRecipient: keys.ageRecipient,
+      ed25519Public: keys.ed25519Public,
+      recoveryAgeRecipient: null,
+    };
+    lockAllKeystores();
+
+    let posted = false;
+    await expect(
+      registerKeysWithProof("chris@house", halves, {
+        requestKeyChallenge: async () => ({ nonce: "1700000000.abc" }),
+        registerKeys: async () => {
+          posted = true;
+          return { ok: true };
+        },
+      }),
+    ).rejects.toBeInstanceOf(KeystoreLockedError);
+    expect(posted).toBe(false);
   });
 });

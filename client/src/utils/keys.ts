@@ -142,12 +142,17 @@ export async function importSigningKey(pkcs8Base64url: string): Promise<CryptoKe
   );
 }
 
+/** Sign an arbitrary UTF-8 message with a non-extractable signing key. */
+export async function signWithKey(message: string, key: CryptoKey): Promise<string> {
+  const sig = await crypto.subtle.sign("Ed25519", key, new TextEncoder().encode(message));
+  return toBase64url(new Uint8Array(sig));
+}
+
 /** Sign a letter id with a non-extractable signing key. The server
  *  verifies with the public half on the address record (public keys are
  *  public). */
 export async function signLetterIdWithKey(id: string, key: CryptoKey): Promise<string> {
-  const sig = await crypto.subtle.sign("Ed25519", key, new TextEncoder().encode(id));
-  return toBase64url(new Uint8Array(sig));
+  return signWithKey(id, key);
 }
 
 /** Sign a letter id from a base64url pkcs8 key. Kept for call sites that

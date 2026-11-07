@@ -21,7 +21,7 @@
  * recipients are strings, encrypt returns raw bytes (armor them for
  * storage), decrypt takes raw bytes (unarmor first).
  */
-import { createPrivateKey, createPublicKey, generateKeyPairSync, sign, verify } from "node:crypto";
+import { createHash, createPrivateKey, createPublicKey, generateKeyPairSync, sign, verify } from "node:crypto";
 import {
   Decrypter,
   Encrypter,
@@ -190,9 +190,9 @@ export function signLetterId(letterId: string, ed25519Private: string): string {
   return sign(null, Buffer.from(letterId, "utf8"), privateKey).toString("base64url");
 }
 
-/** Verify a letter id signature against an ed25519 public key. */
-export function verifyLetterId(
-  letterId: string,
+/** Verify an ed25519 signature over arbitrary UTF-8 text. */
+export function verifySignedText(
+  text: string,
   signature: string,
   ed25519Public: string,
 ): boolean {
@@ -201,13 +201,33 @@ export function verifyLetterId(
     const publicKey = { key, type: "spki", format: "der" } as const;
     return verify(
       null,
-      Buffer.from(letterId, "utf8"),
+      Buffer.from(text, "utf8"),
       publicKey,
       Buffer.from(signature, "base64url"),
     );
   } catch {
     return false;
   }
+}
+
+/** Verify a letter id signature against an ed25519 public key. */
+export function verifyLetterId(
+  letterId: string,
+  signature: string,
+  ed25519Public: string,
+): boolean {
+  return verifySignedText(letterId, signature, ed25519Public);
+}
+
+/**
+ * A public key's fingerprint — sha256 of the key as registered, hex.
+ *
+ * Public keys are public, so this is not a secret; it is a stable, short
+ * name for a key that can go in a log without the key itself (or the
+ * address that holds it) travelling with it.
+ */
+export function keyFingerprint(ed25519Public: string): string {
+  return createHash("sha256").update(ed25519Public).digest("hex");
 }
 
 /** Seal a plaintext body to a set of age recipients. Returns armored ciphertext. Async. */

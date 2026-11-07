@@ -28,6 +28,10 @@ async function realRecipient(): Promise<string> {
 
 const realEd25519 = () => generateEd25519Keypair().publicKey;
 
+/** The proof half of a registration. Shape only here — the signature is
+ *  verified by KeyProofService, and this suite is about the halves. */
+const PROOF = { nonce: "1700000000.abc", signature: "c2lnbmF0dXJl" };
+
 describe("the age recipient — refused unless the house can seal to it", () => {
   it("accepts a recipient the library itself produced", async () => {
     expect(isSealableRecipient(await realRecipient())).toBe(true);
@@ -128,6 +132,7 @@ describe("the registration schema — the door the route actually uses", () => {
     const parsed = RegisterKeysSchema.safeParse({
       ageRecipient: await realRecipient(),
       ed25519Public: realEd25519(),
+      ...PROOF,
     });
     expect(parsed.success).toBe(true);
     if (!parsed.success) return;
@@ -139,6 +144,7 @@ describe("the registration schema — the door the route actually uses", () => {
       ageRecipient: await realRecipient(),
       ed25519Public: realEd25519(),
       recoveryAgeRecipient: await realRecipient(),
+      ...PROOF,
     });
     expect(parsed.success).toBe(true);
   });
@@ -147,6 +153,7 @@ describe("the registration schema — the door the route actually uses", () => {
     const parsed = RegisterKeysSchema.safeParse({
       ageRecipient: "age1not-really-a-key",
       ed25519Public: realEd25519(),
+      ...PROOF,
     });
     expect(parsed.success).toBe(false);
   });
@@ -155,6 +162,7 @@ describe("the registration schema — the door the route actually uses", () => {
     const parsed = RegisterKeysSchema.safeParse({
       ageRecipient: await realRecipient(),
       ed25519Public: "aGVsbG8",
+      ...PROOF,
     });
     expect(parsed.success).toBe(false);
   });
@@ -164,8 +172,19 @@ describe("the registration schema — the door the route actually uses", () => {
       ageRecipient: await realRecipient(),
       ed25519Public: realEd25519(),
       recoveryAgeRecipient: "age1garbage",
+      ...PROOF,
     });
     expect(parsed.success).toBe(false);
+  });
+
+  it("refuses a record with no proof at all — the halves alone are not a registration", async () => {
+    const halves = {
+      ageRecipient: await realRecipient(),
+      ed25519Public: realEd25519(),
+    };
+    expect(RegisterKeysSchema.safeParse(halves).success).toBe(false);
+    expect(RegisterKeysSchema.safeParse({ ...halves, nonce: "n" }).success).toBe(false);
+    expect(RegisterKeysSchema.safeParse({ ...halves, signature: "s" }).success).toBe(false);
   });
 
   it("refuses a record whose halves are missing or empty", () => {
