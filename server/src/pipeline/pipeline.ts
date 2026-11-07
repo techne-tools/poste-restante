@@ -12,7 +12,7 @@
  */
 import type { Logger } from "./logger.js";
 import type { Letter, StoredLetter } from "../types.js";
-import { letterIdFromCanonical, canonicaliseWith } from "../id.js";
+import { letterIdFromCanonical, canonicaliseWith, resolveSignedId } from "../id.js";
 import { markdownToText } from "./markdown.js";
 import { verifyLetterId } from "../crypto/keys.js";
 import type { PostgresRepository } from "../db/repository.js";
@@ -58,41 +58,40 @@ export class IngestionPipeline {
   /**
    * Ingest a letter. Idempotent: the same letter (same id) is stored once.
    * The id is derived from the envelope+body with addresses resolved to
-   * their identity ids (SPEC §19) — a rename never changes a letter's id.
+   * their identity ids (SPEC §19) — a rename never changes a letter's id, and
+   * neither does a key rotation (a sealed letter keeps the id its signature
+   * was made over; see resolveId).
    */
   async ingest(letter: Letter): Promise<IngestResult> {
-    // The id is always derived from the envelope+body. A caller-supplied id is
-    // ignored — the hash is the identity, so two identical letters are the same
+    // The id is derived from the envelope+body, and a sealed letter's
+    // signature is verified on the way (SPEC §15) — one pass, because the id
+    // a signature names is the id the SENDER hashed, which may belong to an
+    // earlier generation of their key (see resolveId). A caller-supplied id is
+    // ignored: the hash is the identity, so two identical letters are the same
     // letter and a changed letter is a new one.
-    const id = await this.deriveId(letter);
+    const { id, rejected } = await this.resolveId(letter);
     const existing = await this.repo.getLetter(id);
     if (existing) {
       this.log.info("ingest:duplicate", { letterId: id });
       return { letterId: id, created: false };
+    }
+    // A signature that verifies under no key the sender has ever held is NOT
+    // a duplicate: it is a rejection. The house does not store what it cannot
+    // verify, and the route answers 400, never 200.
+    if (rejected) {
+      this.log.warn("ingest:sealed-signature-invalid", { letterId: id });
+      return { letterId: id, created: false, rejected: true };
     }
 
     const receivedAt = new Date(letter.time.gregorian);
     // Sealed letters (SPEC §15): the body is ciphertext the house stores
     // but never reads. No plain-text extraction, no embedding, no FTS —
     // the house cannot index what it cannot read, and it does not pretend
-    // otherwise. The signature is verified on ingest (below); the body
+    // otherwise. The signature was verified in resolveId (above); the body
     // stays opaque.
     const sealed = letter.body.format === "sealed";
     const bodyText = sealed ? "" : markdownToText(letter.body.content);
     const stored: StoredLetter = { ...letter, id, receivedAt, bodyText };
-
-    // 0. Verify the signature on ingest (SPEC §15). The signature is
-    //    ed25519 over the letter id — the stored form. A bad signature is
-    //    rejected before anything is written: the house does not store
-    //    what it cannot verify. (The sender's public key is looked up by
-    //    the caller — the route — because the pipeline has no auth.)
-    if (sealed && letter.body.format === "sealed") {
-      const ok = await this.verifySealed(letter, id);
-      if (!ok) {
-        this.log.warn("ingest:sealed-signature-invalid", { letterId: id });
-        return { letterId: id, created: false, rejected: true };
-      }
-    }
 
     // 1. Postgres row + links (thread, correspondents, frames).
     await this.repo.storeLetter(stored);
@@ -158,13 +157,45 @@ export class IngestionPipeline {
   }
 
   /**
-   * Derive the letter id with addresses resolved to their identity ids
-   * (SPEC §19). The resolver reads the address_keys table — the identity
-   * id is the ed25519 public key fingerprint; legacy addresses without
-   * keys resolve to themselves (the identity IS the handle until a key
-   * exists).
+   * Resolve a letter's id — and, for a sealed letter, verify its signature on
+   * the way (SPEC §15). The id hashes the envelope+body with every handle
+   * resolved to its identity id, which is the ed25519 fingerprint of the key
+   * the address holds NOW (SPEC §19); legacy addresses without keys resolve to
+   * their handle.
+   *
+   * A sealed letter's signature is ed25519 over the id as of signing, and a
+   * rotation changes the fingerprint the id resolves to. So verification walks
+   * the sender's key history newest-first (`resolveSignedId`) and returns the
+   * id the signature actually covers: a letter written before the sender
+   * rotated re-delivers to its ORIGINAL id — verified against the retired key,
+   * stored once, not rejected and not duplicated.
+   *
+   * `rejected` means no key the sender has ever held verifies the signature.
+   * The returned id is then the current-resolution id (what the letter would
+   * have been keyed as), which is what the logs and the 400 name.
    */
-  private async deriveId(letter: Letter): Promise<string> {
+  private async resolveId(letter: Letter): Promise<{ id: string; rejected?: boolean }> {
+    const identities = await this.identityIds(letter);
+    const id = letterIdFromCanonical(canonicaliseWith(letter, identities));
+    if (letter.body.format !== "sealed") return { id };
+
+    const history = await this.repo.getAddressKeyHistory(letter.envelope.from);
+    const signedId = resolveSignedId(
+      letter,
+      identities,
+      history.map((record) => record.ed25519_public),
+      letter.body.signature,
+      verifyLetterId,
+    );
+    return signedId === null ? { id, rejected: true } : { id: signedId };
+  }
+
+  /**
+   * The identity ids for every handle a letter names (SPEC §19). The resolver
+   * reads address_keys — the LIVE row only (a retired key is not where a
+   * correspondent seals, and not what a new letter's id resolves to).
+   */
+  private async identityIds(letter: Letter): Promise<Map<string, string>> {
     const handles = new Set<string>([
       letter.envelope.from,
       ...letter.envelope.to,
@@ -175,21 +206,7 @@ export class IngestionPipeline {
       const key = await this.repo.getAddressKey(handle);
       if (key) identities.set(handle, key.ed25519_public);
     }
-    return letterIdFromCanonical(canonicaliseWith(letter, identities));
-  }
-
-  /**
-   * Verify a sealed letter's signature (SPEC §15). The signature is
-   * ed25519 over the letter id — the stored form. The sender's public key
-   * comes from the address_keys table (public keys are public). A missing
-   * key record or a bad signature fails verification: the house does not
-   * store what it cannot verify.
-   */
-  private async verifySealed(letter: Letter, id: string): Promise<boolean> {
-    if (letter.body.format !== "sealed") return false;
-    const key = await this.repo.getAddressKey(letter.envelope.from);
-    if (!key) return false;
-    return verifyLetterId(id, letter.body.signature, key.ed25519_public);
+    return identities;
   }
 
   /**

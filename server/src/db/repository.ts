@@ -36,6 +36,24 @@ export interface StoredLetterRow extends LetterRow {
   frames: { frame: string; value: string }[];
 }
 
+/** One generation of an address's public key record (SPEC §15 key history).
+ *
+ *  `retired_at` null means this is the LIVE record — the partial unique index
+ *  `address_keys_one_active_idx` allows exactly one of those per address.
+ *  A non-null `retired_at` is a closed generation: the address held that
+ *  identity between `created_at` and `retired_at`, and letters signed under
+ *  it stay verifiable. `id` is bigint and arrives from node-postgres as a
+ *  string (like every int8), so it is typed as one. */
+export interface AddressKeyRecord {
+  id: string;
+  address: string;
+  age_recipient: string;
+  ed25519_public: string;
+  recovery_age_recipient: string | null;
+  created_at: Date;
+  retired_at: Date | null;
+}
+
 export class PostgresRepository {
   constructor(private readonly pool: pg.Pool) {}
 
@@ -286,7 +304,9 @@ export class PostgresRepository {
 
   /** Get an address's current public key record (SPEC §15). Public keys
    *  are public — verification needs them; they are not secrets. Returns
-   *  the current (non-retired) key, or null when the address has none. */
+   *  the LIVE key (the one `address_keys_one_active_idx` proves unique),
+   *  or null when the address has none. Sealing reads this: a correspondent
+   *  seals to the recipient's live age recipient, never a retired one. */
   async getAddressKey(
     address: string,
   ): Promise<{ age_recipient: string; ed25519_public: string; recovery_age_recipient: string | null } | null> {
@@ -301,19 +321,83 @@ export class PostgresRepository {
     return rows[0] ?? null;
   }
 
-  /** Register an address's public key record (SPEC §15). Idempotent
-   *  upsert on the address — a resident has one current key record. */
+  /** Every key record an address has ever registered, newest first — the
+   *  live row and each retired one (SPEC §15 key history). This is the
+   *  verification path: a sealed letter's signature is over the id as of
+   *  signing, so the pipeline walks this list to find the key that made it.
+   *  Public keys are public; the history leaks no secret. */
+  async getAddressKeyHistory(address: string): Promise<AddressKeyRecord[]> {
+    const { rows } = await this.pool.query<AddressKeyRecord>(
+      `SELECT id, address, age_recipient, ed25519_public, recovery_age_recipient,
+              created_at, retired_at
+       FROM address_keys
+       WHERE address = $1
+       ORDER BY created_at DESC, id DESC`,
+      [address],
+    );
+    return rows;
+  }
+
+  /** Register an address's public key record (SPEC §15).
+   *
+   *  Key history, not overwriting. Registering a DIFFERENT key closes the
+   *  live row (`retired_at = now()`) and appends the next, in one
+   *  transaction, so the old public half survives and every letter sealed
+   *  or signed under it stays verifiable. Re-registering the SAME key is a
+   *  no-op — the house does not mint a generation for an identity that has
+   *  not changed, which also keeps "idempotent registration" true.
+   *
+   *  Concurrency: `FOR UPDATE` serialises rotations of a live row. Two
+   *  *first* registrations for a keyless address race on a row that does not
+   *  exist yet, so the partial unique index breaks the tie — the loser's
+   *  INSERT fails and its transaction rolls back rather than forking the
+   *  history. */
   async setAddressKey(
     address: string,
     keys: { ageRecipient: string; ed25519Public: string; recoveryAgeRecipient: string | null },
   ): Promise<void> {
-    await this.pool.query(
-      `INSERT INTO address_keys (address, age_recipient, ed25519_public, recovery_age_recipient)
-       VALUES ($1, $2, $3, $4)
-       ON CONFLICT (address) DO UPDATE
-         SET age_recipient = $2, ed25519_public = $3, recovery_age_recipient = $4, retired_at = NULL`,
-      [address, keys.ageRecipient, keys.ed25519Public, keys.recoveryAgeRecipient],
-    );
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const { rows } = await client.query<{
+        id: string;
+        age_recipient: string;
+        ed25519_public: string;
+        recovery_age_recipient: string | null;
+      }>(
+        `SELECT id, age_recipient, ed25519_public, recovery_age_recipient
+         FROM address_keys
+         WHERE address = $1 AND retired_at IS NULL
+         FOR UPDATE`,
+        [address],
+      );
+      const live = rows[0];
+      const unchanged =
+        live !== undefined &&
+        live.age_recipient === keys.ageRecipient &&
+        live.ed25519_public === keys.ed25519Public &&
+        live.recovery_age_recipient === keys.recoveryAgeRecipient;
+
+      if (!unchanged) {
+        if (live) {
+          await client.query(
+            `UPDATE address_keys SET retired_at = now() WHERE id = $1`,
+            [live.id],
+          );
+        }
+        await client.query(
+          `INSERT INTO address_keys (address, age_recipient, ed25519_public, recovery_age_recipient)
+           VALUES ($1, $2, $3, $4)`,
+          [address, keys.ageRecipient, keys.ed25519Public, keys.recoveryAgeRecipient],
+        );
+      }
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw err;
+    } finally {
+      client.release();
+    }
   }
 
   /** Make the identity id durable (SPEC §19). After a resident registers
