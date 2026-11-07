@@ -20,6 +20,11 @@
 --   * Key history, not re-encryption: retired public keys stay on the
 --     address record; old letters stay decryptable and verifiable with
 --     old keys. The identity id is the CURRENT key's fingerprint.
+--     ⚠️ AMENDED 2026-11-08 (033_identity_pin.sql): that last sentence is
+--     withdrawn. The identity id is pinned at the address's FIRST key
+--     registration and never moves; rotation retires a key and moves no
+--     letter id. The identity is durable; the key is material the address
+--     holds over time. See SPEC §5 #19 (amended the same day).
 --   * The wire format keeps the handle (people type ben@house); the
 --     store and the id use the identity.
 

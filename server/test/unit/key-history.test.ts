@@ -228,6 +228,9 @@ describe("setAddressKey — close the live row, append the next", () => {
     expect(calls[3].params).toEqual(["ben@house", "age-new", "ed-new", null]);
     // Nothing overwrites or reopens a retired row.
     expect(calls.some((c) => /DO UPDATE|ON CONFLICT/i.test(c.sql))).toBe(false);
+    // And a rotation never touches the identity: the pin is for the FIRST
+    // registration only (SPEC §19, amended 2026-11-08).
+    expect(calls.some((c) => c.sql.includes("UPDATE addresses"))).toBe(false);
     expect(released()).toBe(1);
   });
 
@@ -257,5 +260,30 @@ describe("setAddressKey — close the live row, append the next", () => {
     expect(sqls).toContain("INSERT INTO address_keys (address, age_recipient, ed25519_public, recovery_age_recipient)");
     expect(sqls.some((s) => s.startsWith("UPDATE address_keys"))).toBe(false);
     expect(calls[2].params).toEqual(["you@house", "age-1", "ed-1", "recovery-1"]);
+  });
+
+  it("pins the identity at the first registration, in the same transaction", async () => {
+    const { repo, calls } = fakePool(null);
+    await repo.setAddressKey("you@house", {
+      ageRecipient: "age-1",
+      ed25519Public: "ed-1",
+      recoveryAgeRecipient: null,
+    });
+
+    const pin = calls.find((c) => c.sql.includes("UPDATE addresses"));
+    expect(pin).toBeDefined();
+    // The pin is the key being registered, written inside the same transaction
+    // as the key row — after the insert, before the commit, so the identity and
+    // the live key can never disagree.
+    expect(pin!.params).toEqual(["you@house", "ed-1"]);
+    const iPin = calls.indexOf(pin!);
+    const iInsert = calls.findIndex((c) => c.sql.startsWith("INSERT INTO address_keys"));
+    const iCommit = calls.findIndex((c) => c.sql === "COMMIT");
+    expect(iInsert).toBeGreaterThan(-1);
+    expect(iPin).toBeGreaterThan(iInsert);
+    expect(iCommit).toBeGreaterThan(iPin);
+    // And it can never overwrite an established identity: the predicate is
+    // "the identity is not a key this address holds".
+    expect(pin!.sql).toContain("NOT EXISTS");
   });
 });

@@ -3,23 +3,37 @@
  *
  * The id is `sha256` of the canonical serialisation of the envelope +
  * body, where the envelope's addresses are resolved to their IDENTITY
- * ids (the ed25519 public key fingerprint, §15) before hashing. A rename
- * never changes a letter's id — the integrity spine (dedup, references,
- * payloads, qdrant points) holds through the change.
+ * ids before hashing. A rename never changes a letter's id — the integrity
+ * spine (dedup, references, payloads, qdrant points) holds through the
+ * change.
  *
- * The wire format keeps the handle (people type ben@house); the store
- * and the id use the identity. For addresses without keys (legacy), the
- * identity id IS the handle — the identity IS the handle until a key
- * exists; the key is what makes it durable.
+ * The identity is the address's DURABLE identity (amended 2026-11-08): the
+ * ed25519 fingerprint of the first key the address ever registered, pinned
+ * once and never moved. A key is material the address holds over time, so
+ * rotation retires a key (`address_keys.retired_at`) without touching an id —
+ * letter ids are stable against ANY party's rotation, not only the sender's.
+ * For addresses without keys (legacy), the identity id IS the handle — the
+ * identity IS the handle until a key exists; the key is what makes it durable.
+ *
+ * The wire format keeps the handle (people type ben@house); the store and the
+ * id use the identity.
  *
  * The resolver is injected: the pipeline and the routes resolve handles
- * through the address_keys table. The pure function `canonicaliseWith`
+ * through `addresses.identity_id`. The pure function `canonicaliseWith`
  * takes the resolution map so it stays deterministic and testable.
  *
- * Rotation does not move a stored id. A sealed letter's signature names the
- * id it was made over, so `resolveSignedId` recovers that id from the
- * sender's key history (SPEC §15) instead of rejecting a letter simply
- * because the sender re-registered their keys afterwards.
+ * Rotation does not move a stored id. Two rules recover the id a sealed letter
+ * was made over, because the archive spans them:
+ *
+ *   `resolvePinnedId` — the rule since 2026-11-08. The identity is durable, so
+ *   the id does not vary at all; what varies is which generation's public half
+ *   made the signature, so it is checked against each the sender has held.
+ *
+ *   `resolveSignedId` — the pre-pin rule, kept for verification. It re-derives
+ *   the id from a resolution that still follows the live keys, walking the
+ *   sender's history, which is what a client that predates the address book's
+ *   `identityId` field computes. Accepting both is what keeps a deployed
+ *   client working across the change.
  */
 import { createHash } from "node:crypto";
 import type { Letter } from "./types.js";
@@ -78,29 +92,68 @@ export function canonicaliseLegacy(letter: Letter): string {
 }
 
 /**
- * Resolve the id a sealed letter was SIGNED under (SPEC §15 key history).
+ * Resolve the id a sealed letter was SIGNED under, under the pin (SPEC §19,
+ * amended 2026-11-08).
  *
- * A sealed letter's signature is ed25519 over its id, and the id resolves
- * each handle to its identity — the ed25519 fingerprint. Rotation changes a
- * fingerprint, so the same letter re-delivered after its sender has rotated
- * hashes to a different id, while the signature it carries still names the id
- * it was made over. The sender's key history names every identity that
- * address has held, so walk it (newest first) and keep the id whose signature
- * verifies under that key.
+ * The id no longer varies with the sender's key: the identity is durable, so a
+ * sender who rotated hashes to the identity it registered first. What varies is
+ * which KEY made the signature — rotation retires a key, it does not re-sign the
+ * archive — so the signature is checked against every generation the sender has
+ * held (newest first) and the id it covers is the one canonical form they all
+ * share.
+ *
+ * Returns `null` when no key the sender has ever held verifies — the caller
+ * falls through to the legacy rule, then rejects. An empty history (a keyless
+ * legacy address) therefore cannot carry a sealed letter.
+ *
+ * `verify` is injected so this stays a pure function of the letter, the
+ * resolution map and the key history (the pipeline passes the ed25519 check).
+ */
+export function resolvePinnedId(
+  letter: Letter,
+  identities: Map<string, string>,
+  senderKeys: string[],
+  signature: string,
+  verify: (id: string, signature: string, publicKey: string) => boolean,
+): string | null {
+  const id = letterIdFromCanonical(canonicaliseWith(letter, identities));
+  for (const key of senderKeys) {
+    if (verify(id, signature, key)) return id;
+  }
+  return null;
+}
+
+/**
+ * Resolve the id a sealed letter was SIGNED under, by the PRE-PIN rule — kept
+ * for verification, not for writing (SPEC §15 key history; superseded by the
+ * pin on 2026-11-08).
+ *
+ * Before the identity was pinned, the id resolved each handle to the key the
+ * address held at that moment, so a rotation changed a fingerprint and the same
+ * letter re-delivered after its sender had rotated hashed to a different id
+ * while the signature still named the old one. The sender's key history names
+ * every identity that address has held, so walk it (newest first) and keep the
+ * id whose signature verifies under that key.
+ *
+ * Still load-bearing in two ways: the archive holds letters written under this
+ * rule, and a deployed client that predates the address book's `identityId`
+ * field still computes this way. `identities` for this rule must be the LIVE
+ * key resolution, which is what such a client reads.
  *
  * Returns `null` when no key the sender has ever held verifies — the caller
  * rejects: the house does not store what it cannot verify. An empty history
  * (a keyless legacy address) therefore cannot carry a sealed letter.
  *
- * `identities` carries the CURRENT resolution for every handle; only the
- * sender's entry is varied, so a self-addressed letter (from and to the same
- * handle) resolves consistently across both positions.
+ * `identities` carries the resolution for every handle; only the sender's entry
+ * is varied, so a self-addressed letter (from and to the same handle) resolves
+ * consistently across both positions.
  *
  * Deliberately NOT done here: resolving the recipients' histories too. A
- * letter re-delivered after a party other than the sender has rotated cannot
- * re-derive its signed id — a recorded limitation of the v1 rule, not an
- * oversight. Nothing in the archive depends on it: the archive stores the id
- * it verified, and stored ids never move.
+ * pre-pin letter re-delivered after a party other than the sender has rotated
+ * cannot re-derive its signed id — a recorded limitation of the legacy rule,
+ * not an oversight, and the very failure the pin removes for everything written
+ * after it. Nothing in the archive depends on it: the archive stores the id it
+ * verified, and stored ids never move.
  *
  * `verify` is injected so this stays a pure function of the letter, the
  * resolution map and the key history (the pipeline passes the ed25519 check).
