@@ -11,7 +11,7 @@
  * Observable via structured logs (no telemetry — logs stay local).
  */
 import type { Logger } from "./logger.js";
-import type { Letter, StoredLetter } from "../types.js";
+import type { Letter, LetterBody, SealedLetterBody, StoredLetter } from "../types.js";
 import { letterIdFromCanonical, canonicaliseWith, resolveSignedId } from "../id.js";
 import { markdownToText } from "./markdown.js";
 import { verifyLetterId } from "../crypto/keys.js";
@@ -19,6 +19,15 @@ import type { PostgresRepository } from "../db/repository.js";
 import type { SemanticStore } from "../qdrant/store.js";
 import type { Embedder } from "../embed/embedder.js";
 import type { PayloadStore } from "../minio/store.js";
+
+/** A letter whose body the house may read. Only this shape reaches the
+ *  embedder and the semantic store. */
+type OpenLetter = Letter & { body: LetterBody };
+
+/** A letter whose body is ciphertext. The house stores it and verifies the
+ *  signature; it never reads it, so nothing here can index it. */
+type SealedLetter = Letter & { body: SealedLetterBody };
+
 
 export interface IngestResult {
   letterId: string;
@@ -69,7 +78,7 @@ export class IngestionPipeline {
     // earlier generation of their key (see resolveId). A caller-supplied id is
     // ignored: the hash is the identity, so two identical letters are the same
     // letter and a changed letter is a new one.
-    const { id, rejected } = await this.resolveId(letter);
+    const { id, rejected, keyGeneration } = await this.resolveId(letter);
     const existing = await this.repo.getLetter(id);
     if (existing) {
       this.log.info("ingest:duplicate", { letterId: id });
@@ -82,52 +91,28 @@ export class IngestionPipeline {
       this.log.warn("ingest:sealed-signature-invalid", { letterId: id });
       return { letterId: id, created: false, rejected: true };
     }
-
-    const receivedAt = new Date(letter.time.gregorian);
-    // Sealed letters (SPEC §15): the body is ciphertext the house stores
-    // but never reads. No plain-text extraction, no embedding, no FTS —
-    // the house cannot index what it cannot read, and it does not pretend
-    // otherwise. The signature was verified in resolveId (above); the body
-    // stays opaque.
-    const sealed = letter.body.format === "sealed";
-    const bodyText = sealed ? "" : markdownToText(letter.body.content);
-    const stored: StoredLetter = { ...letter, id, receivedAt, bodyText };
-
-    // 1. Postgres row + links (thread, correspondents, frames).
-    await this.repo.storeLetter(stored);
-    // Log the seal, never the pointer: a thread id in a log names a
-    // relationship (AGENTS.md privacy checklist #6). The letter id is a
-    // content hash; the sealed flag is the one fact an operator needs.
-    this.log.info("ingest:stored", { letterId: id, sealed });
-
-    // 2. Embed the plain-text body and index in Qdrant — only for
-    //    unsealed letters. Sealed bodies never reach the semantic layer
-    //    (SPEC §15: "sealed = not indexed, not whispered, not
-    //    semantically connected").
-    if (!sealed) {
-      try {
-        const vector = await this.embedder.embed(bodyText);
-        this.log.info("ingest:embedded", { letterId: id, dimension: vector.length });
-
-        // 3. Qdrant vector.
-        await this.semantic.upsert(id, vector);
-        this.log.info("ingest:indexed-semantic", { letterId: id });
-      } catch (err) {
-        this.log.error("ingest:semantic-index-failed", {
-          letterId: id,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
-    } else {
-      this.log.info("ingest:sealed-not-indexed", { letterId: id });
+    // A sealed letter signed by a key the sender has RETIRED is accepted:
+    // it may be a letter written before the rotation, arriving late — the
+    // archive's past, re-delivering. It is not what a live sender produces,
+    // so it is said out loud, by letter id only (a content hash), never by
+    // address. v1 cannot tell "an old letter arriving now" from "an old key
+    // used to forge a new one" without a signed freshness counter; see the
+    // note recorded on this card rather than a guess here.
+    if (keyGeneration === "retired") {
+      this.log.info("ingest:sealed-signed-by-retired-key", { letterId: id });
     }
 
-    // 4. Full-text: the postgres FTS index is maintained by the row insert
-    //    (the GIN index on body_text). Nothing further to do here.
-
-    // 5. Raw payloads: the letter's enclosures live in the payload store
-    //    (MinIO when configured; the noop fallback otherwise). The payload
-    //    API (server.ts /v1/letters/:id/payloads) writes them directly.
+    const receivedAt = new Date(letter.time.gregorian);
+    // The body narrows the letter for the rest of ingest. A sealed letter
+    // and an open one are different shapes, and each is stored by a method
+    // that only takes its own: the embedding path is not skipped for a
+    // sealed letter by a runtime `if` — it is a method a SealedLetter
+    // cannot reach (PLAN-crypto.md E3, SPEC §15).
+    const body = letter.body;
+    const stored =
+      body.format === "sealed"
+        ? await this.storeSealed({ ...letter, body }, id)
+        : await this.storeOpen({ ...letter, body }, id);
 
     // 6. A leave/join/shelve/unshelve letter updates the participation
     //    cache — the structural stop and the shelf are derived from the
@@ -160,6 +145,73 @@ export class IngestionPipeline {
   }
 
   /**
+   * Store a letter whose body is readable: the row, then the plain-text
+   * body into the semantic layer. This is the only path to the embedder,
+   * and it takes an OpenLetter — a sealed letter has no such method to
+   * call (PLAN-crypto.md E3).
+   */
+  private async storeOpen(letter: OpenLetter, id: string): Promise<StoredLetter> {
+    const bodyText = markdownToText(letter.body.content);
+    const stored: StoredLetter = {
+      ...letter,
+      id,
+      receivedAt: new Date(letter.time.gregorian),
+      bodyText,
+    };
+
+    // 1. Postgres row + links (thread, correspondents, frames).
+    await this.repo.storeLetter(stored);
+    // Log the seal, never the pointer: a thread id in a log names a
+    // relationship (AGENTS.md privacy checklist #6). The letter id is a
+    // content hash; the sealed flag is the one fact an operator needs.
+    this.log.info("ingest:stored", { letterId: id, sealed: false });
+
+    // 2. Embed the plain-text body and index in Qdrant.
+    try {
+      const vector = await this.embedder.embed(bodyText);
+      this.log.info("ingest:embedded", { letterId: id, dimension: vector.length });
+
+      // 3. Qdrant vector.
+      await this.semantic.upsert(id, vector);
+      this.log.info("ingest:indexed-semantic", { letterId: id });
+    } catch (err) {
+      this.log.error("ingest:semantic-index-failed", {
+        letterId: id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    // 4. Full-text: the postgres FTS index is maintained by the row insert
+    //    (the GIN index on body_text). Nothing further to do here.
+    //
+    // 5. Raw payloads: the letter's enclosures live in the payload store
+    //    (MinIO when configured; the noop fallback otherwise). The payload
+    //    API (server.ts /v1/letters/:id/payloads) writes them directly.
+
+    return stored;
+  }
+
+  /**
+   * Store a letter whose body is ciphertext (SPEC §15): the row, and
+   * nothing that reads it. No plain-text extraction, no embedding, no FTS
+   * — the house cannot index what it cannot read, and it does not pretend
+   * otherwise. The signature was verified in resolveId; the body stays
+   * opaque.
+   */
+  private async storeSealed(letter: SealedLetter, id: string): Promise<StoredLetter> {
+    const stored: StoredLetter = {
+      ...letter,
+      id,
+      receivedAt: new Date(letter.time.gregorian),
+      bodyText: "",
+    };
+    await this.repo.storeLetter(stored);
+    this.log.info("ingest:stored", { letterId: id, sealed: true });
+    this.log.info("ingest:sealed-not-indexed", { letterId: id });
+    return stored;
+  }
+
+  /**
    * Resolve a letter's id — and, for a sealed letter, verify its signature on
    * the way (SPEC §15). The id hashes the envelope+body with every handle
    * resolved to its identity id, which is the ed25519 fingerprint of the key
@@ -177,7 +229,9 @@ export class IngestionPipeline {
    * The returned id is then the current-resolution id (what the letter would
    * have been keyed as), which is what the logs and the 400 name.
    */
-  private async resolveId(letter: Letter): Promise<{ id: string; rejected?: boolean }> {
+  private async resolveId(
+    letter: Letter,
+  ): Promise<{ id: string; rejected?: boolean; keyGeneration?: "active" | "retired" }> {
     const identities = await this.identityIds(letter);
     const id = letterIdFromCanonical(canonicaliseWith(letter, identities));
     if (letter.body.format !== "sealed") return { id };
@@ -190,26 +244,27 @@ export class IngestionPipeline {
       letter.body.signature,
       verifyLetterId,
     );
-    return signedId === null ? { id, rejected: true } : { id: signedId };
+    if (signedId === null) return { id, rejected: true };
+    // Which generation signed it. resolveSignedId walks newest-first, so a
+    // signature the ACTIVE key verifies resolves to the current-resolution
+    // id; anything else was made by a key the sender has since retired.
+    return { id: signedId, keyGeneration: signedId === id ? "active" : "retired" };
   }
 
   /**
    * The identity ids for every handle a letter names (SPEC §19). The resolver
    * reads address_keys — the LIVE row only (a retired key is not where a
    * correspondent seals, and not what a new letter's id resolves to).
+   *
+   * One query for the whole set (PLAN-crypto.md E2): the resolver already
+   * takes a set of handles, so it takes the keys the same way instead of one
+   * round trip per handle per letter.
    */
   private async identityIds(letter: Letter): Promise<Map<string, string>> {
-    const handles = new Set<string>([
-      letter.envelope.from,
-      ...letter.envelope.to,
-      ...letter.envelope.cc,
-    ]);
-    const identities = new Map<string, string>();
-    for (const handle of handles) {
-      const key = await this.repo.getAddressKey(handle);
-      if (key) identities.set(handle, key.ed25519_public);
-    }
-    return identities;
+    const handles = [
+      ...new Set([letter.envelope.from, ...letter.envelope.to, ...letter.envelope.cc]),
+    ];
+    return this.repo.getAddressKeys(handles);
   }
 
   /**

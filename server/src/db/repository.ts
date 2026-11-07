@@ -339,6 +339,26 @@ export class PostgresRepository {
     return rows[0] ?? null;
   }
 
+  /** The LIVE ed25519 identities for a set of addresses, in one query —
+   *  the ingest resolver's map (PLAN-crypto.md E2). The id resolver takes
+   *  a set of handles, so the lookup takes the set too: one round trip per
+   *  letter, not one per handle. Addresses with no live key are simply
+   *  absent from the map (they resolve to their handle — SPEC §19), so the
+   *  caller does not need a second pass to tell "no key" from "no row".
+   *  Public keys are public. */
+  async getAddressKeys(addresses: string[]): Promise<Map<string, string>> {
+    const resolved = new Map<string, string>();
+    if (addresses.length === 0) return resolved;
+    const { rows } = await this.pool.query<{ address: string; ed25519_public: string }>(
+      `SELECT address, ed25519_public
+       FROM address_keys
+       WHERE address = ANY($1) AND retired_at IS NULL`,
+      [addresses],
+    );
+    for (const row of rows) resolved.set(row.address, row.ed25519_public);
+    return resolved;
+  }
+
   /** Every key record an address has ever registered, newest first — the
    *  live row and each retired one (SPEC §15 key history). This is the
    *  verification path: a sealed letter's signature is over the id as of
