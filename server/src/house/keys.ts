@@ -100,11 +100,22 @@ export class HouseKeysService {
        ON CONFLICT (id) DO NOTHING`,
       [HOUSE_ADDRESS],
     );
+    // Key history (030): the mirror never OVERWRITES a public half. If the
+    // singleton disagrees with the live record, the live record is CLOSED and
+    // the singleton appended — so the old public half survives, and
+    // collaborative letters sealed to it stay openable. `ON CONFLICT (address)
+    // WHERE retired_at IS NULL` names the partial unique index, so the mirror
+    // is idempotent and never mints a generation for an unchanged key.
+    await this.pool.query(
+      `UPDATE address_keys SET retired_at = now()
+        WHERE address = $1 AND retired_at IS NULL
+          AND (age_recipient <> $2 OR ed25519_public <> $3)`,
+      [HOUSE_ADDRESS, key.ageRecipient, key.ed25519Public],
+    );
     await this.pool.query(
       `INSERT INTO address_keys (address, age_recipient, ed25519_public, recovery_age_recipient)
        VALUES ($1, $2, $3, NULL)
-       ON CONFLICT (address) DO UPDATE
-         SET age_recipient = $2, ed25519_public = $3, recovery_age_recipient = NULL, retired_at = NULL`,
+       ON CONFLICT (address) WHERE retired_at IS NULL DO NOTHING`,
       [HOUSE_ADDRESS, key.ageRecipient, key.ed25519Public],
     );
   }

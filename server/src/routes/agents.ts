@@ -267,9 +267,11 @@ export function createAgentsRoutes(
   // identity IS the key, and every subsequent letter is hashed against
   // it (legacy addresses without keys resolve to the handle itself
   // until one exists). Registration is self-only and idempotent: a
-  // resident may re-register their own keys (rotation re-establishes
-  // the record; the §15 key-history rule keeps old letters
-  // decryptable with old keys).
+  // resident may re-register their own keys. A DIFFERENT key is a
+  // rotation, and rotation is append-only (030): the old record is
+  // closed (`retired_at`), not overwritten, so letters already sealed
+  // and signed under it stay verifiable, and a re-delivery of one keeps
+  // its original id. Re-registering the SAME key writes nothing.
   app.post("/v1/addresses/:id/keys", async (c) => {
     const who = await caller(c);
     if (!who) return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
@@ -285,13 +287,15 @@ export function createAgentsRoutes(
         400,
       );
     }
-    // Also make the identity id durable: after registration the address's
-    // identity IS the ed25519 fingerprint. The addresses.identity_id
-    // column is the canonical store (§19); address_keys is the parallel
-    // public-key record. Keeping both in sync means the resolver and the
-    // OIDC bindings agree on who this address is.
-    await house.repo.setAddressIdentity(address, parsed.data.ed25519Public);
+    // The key row first — it is what the id resolver and the address book
+    // read — then make the identity id durable: after registration the
+    // address's identity IS the ed25519 fingerprint. The addresses.identity_id
+    // column is the canonical store (§19); address_keys is the public-key
+    // record. Keeping both in sync means the resolver and the OIDC bindings
+    // agree on who this address is (a rotation re-establishes the binding to
+    // the new key, per §19).
     await house.repo.setAddressKey(address, parsed.data);
+    await house.repo.setAddressIdentity(address, parsed.data.ed25519Public);
     house.log.info("keys:registered", { address });
     const key = await house.repo.getAddressKey(address);
     return c.json(key, 201);

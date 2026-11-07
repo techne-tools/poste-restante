@@ -6,6 +6,66 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added — key history, actually kept (2026-11-08)
+
+`018_sealed_letters.sql` stated the invariant — *"key history, not
+re-encryption: retired public keys stay on the address record"* — and the
+schema contradicted it. `address_keys` was `PRIMARY KEY (address)`: one slot
+per address. `setAddressKey()` overwrote the public halves and reset
+`retired_at = NULL`, so a resident who re-registered their keys **destroyed the
+old public key**, and every letter they had already sealed and signed stopped
+verifying. Nothing in `server/src` ever set `retired_at` to a timestamp: the
+only writes were `NULL`, the only reads were `IS NULL`. The comment described
+a table that kept no history.
+
+- **Migration `030_address_key_history.sql`** makes a key record a row, not a
+  slot: surrogate `id` primary key, `address` as ordinary data, and exactly one
+  *live* row per address by partial unique index (`WHERE retired_at IS NULL`).
+  Existing rows become the live ones — proved against a populated copy of the
+  database at migration 029 (three rows in, three rows out, values and
+  `created_at` intact, ids assigned, PK moved, FK kept, second live row
+  refused).
+- **`setAddressKey()` closes, it never overwrites.** Rotation sets
+  `retired_at = now()` on the live row and appends the next, in one
+  transaction. Re-registering the *same* key writes nothing, so idempotent
+  registration stays true without minting phantom generations.
+- **Verification walks the history.** A sealed letter's signature is over its
+  id, and the id resolves each handle to its ed25519 fingerprint — so a
+  rotation changes the id a re-delivered letter would hash to. `resolveSignedId`
+  canonicalises with the sender resolved to each key they have ever held
+  (newest first) and keeps the id the signature actually covers. A letter
+  written before a rotation therefore re-delivers to its **original id**:
+  verified against the retired key, stored once — not rejected, not
+  duplicated.
+- **Sealing reads the live row.** The address-book joins are unchanged and now
+  provably unique. The house's own mirror (`house/keys.ts`) closes-and-appends
+  instead of overwriting, so a restored singleton cannot orphan collaborative
+  letters sealed to the old recipient.
+- **What was NOT decided, and is raised rather than assumed.** The id has a
+  second answer — pin the identity to a rotation-stable key
+  (`addresses.identity_id`) so the id never depends on the current
+  fingerprint. That is a SPEC §19 change and it moves the OIDC binding
+  semantics (§19 says the binding re-establishes on the *new* key), so the
+  current derivation is left untouched and the choice goes to Chris. Recorded
+  in the `030` header; the consequence is named below, not hidden.
+- **Known limit, recorded.** Only the sender's history is walked, so a letter
+  re-delivered after a party *other than* the sender has rotated cannot
+  re-derive its signed id and is rejected. Such a letter was never stored —
+  re-seal and re-sign. Nothing in the archive moves: a stored id never changes.
+
+Tests: `server/test/unit/key-history.test.ts` (hermetic — signed-id recovery
+across a rotation, self-addressed letters, the recorded limit, and the
+close-then-append SQL) and `server/test/integration/key-history.test.ts`
+(postgres — rotate, re-deliver to the original id, the retired row survives,
+sealing reads the live row, the partial index refuses a second live row, a
+keyless legacy address still resolves to its handle, and forged or keyless
+sealed letters are still rejected).
+
+Also fixed, unrelated to the above: `server/test/unit/config.test.ts` still
+asserted `nomic-embed-text` as the embedding default, which `9e5085a` had
+already moved to `embeddinggemma-2:740m` — the one stale expectation keeping
+`npm run test` red on the branch.
+
 ### Removed — the mailbox read-side, backed out (2026-09-16)
 
 The house stops running a mail server. This is a **strategic reversal**, made
