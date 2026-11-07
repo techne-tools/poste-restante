@@ -33,22 +33,27 @@
 --     kind opens one, so a dump could not read them before the correction
 --     and cannot now.
 --
--- The house key rotates rarely and re-encrypts collaborative letters via
--- a migration letter (a later slice); v1 provisions once.
+-- DECIDED 2026-11-08 — NO HOUSE-KEY ROTATION IN V1 (Chris). The singleton is
+-- provisioned once, `npm run house:key:init`, and backed up off-box
+-- (docs/RUNBOOK-house-key.md). Rotation is a future plan with its own
+-- migration story; nothing in v1 re-keys the house or rewrites a body.
+-- "Re-encrypts collaborative letters" was never implementable and is
+-- withdrawn: the letter id is sha256 over the canonical form including body
+-- content, the ed25519 signature is over that id, and the house never holds
+-- a resident's signing key — re-encryption would change every id, orphan
+-- letter_addresses / letter_frames / the payload catalog / Qdrant points,
+-- and could not re-sign. 018 already set the rule for residents: key
+-- history, not re-encryption.
 --
--- UNRESOLVED 2026-11-08 — the last paragraph and the "no rotation history"
--- invariant above cannot both hold, and the contradiction is left standing
--- here rather than quietly resolved: rotation with a singleton means the old
--- identity is gone and every collaborative letter sealed to it becomes
--- unreadable, while keeping the old identity is the rotation history this
--- table rejects. Body re-encryption is not implementable at all — the letter
--- id is sha256 over the canonical form including body content, the ed25519
--- signature is over that id, and the house never holds a resident's signing
--- key, so re-encryption changes every id, orphans letter_addresses /
--- letter_frames / the payload catalog / Qdrant points, and cannot re-sign.
--- The decision (no rotation in v1, or house key history) is pending and will
--- be stated here in one unambiguous sentence when it is made — PLAN-crypto.md
--- C4. No body re-encryption will be implemented.
+-- Losing the key: collaborative letters sealed before the loss become
+-- unreadable — no re-encryption can rescue them, because re-encryption is
+-- the thing that cannot exist. Sealed letters are unaffected: no house key
+-- of any kind ever opened one. Recovery is the off-box backup, not
+-- re-minting — a new key is a new identity and opens nothing old.
+--
+-- So the "no rotation history" invariant above stands unchanged: there is no
+-- rotation, therefore no history to keep. One active key, and no admin class
+-- of keys.
 
 CREATE TABLE IF NOT EXISTS house_keys (
     id                integer PRIMARY KEY DEFAULT 1 CHECK (id = 1),

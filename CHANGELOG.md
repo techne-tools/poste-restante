@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Decided — the house key does not rotate, and no body is ever re-encrypted (2026-11-08)
+
+`026_house_keys.sql` had said two incompatible things in one header: that the house key
+"rotates rarely and **re-encrypts collaborative letters**", and that the table keeps "no
+key ring, **no rotation history**". Both cannot hold — rotation with a singleton means the
+old identity is gone and every collaborative letter sealed to it becomes unreadable, while
+keeping the old identity is exactly the history the header rejects.
+
+**Decided: no house-key rotation in v1.** The singleton is provisioned once
+(`npm run house:key:init`) and backed up off-box (`docs/RUNBOOK-house-key.md`); rotation is
+a future plan with its own migration story. The re-encryption sentence is withdrawn, not
+deferred: re-encryption cannot be implemented at all, because the letter id is `sha256`
+over the canonical form **including body content**, the ed25519 signature is over that id,
+and the house holds no resident signing key — re-encryption would change every id, orphan
+`letter_addresses` / `letter_frames` / the payload catalog / Qdrant points, and could not
+re-sign. `018` already set the rule for residents: key history, not re-encryption.
+
+Losing the key means collaborative letters sealed before the loss are unreadable, and no
+re-encryption can rescue them; sealed letters are unaffected, because no house key of any
+kind ever opened one. Corrected in place: the `026` header, `SPEC.md` §5 #15, and this
+entry.
+
 ### Added — key history, actually kept (2026-11-08)
 
 `018_sealed_letters.sql` stated the invariant — *"key history, not
