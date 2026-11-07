@@ -67,7 +67,6 @@ const TRACKED = new Set([
   "invalid_card",
   "invalid_invite",
   "invalid_limit",
-  "invalid_payload",
   "invalid_redeem",
   "invalid_renew",
   "invalid_scrub",
