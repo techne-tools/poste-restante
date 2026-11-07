@@ -47,3 +47,10 @@ Invariant 4 is the principle; this is the practice. Privacy is built from the fi
 8. **Does the test prove the negative?** For every visibility rule, a test asserts that a non-participant *cannot* see, open, or mutate the thing. "Works for the owner" is not a privacy test.
 
 If any answer is "I don't know", the work is not done.
+
+
+## Fleet conventions
+
+Stricter-than (never looser than) fleet-wide conventions apply everywhere in the fleet:
+
+@../fleet-conventions.md

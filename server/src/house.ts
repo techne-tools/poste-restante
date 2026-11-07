@@ -58,8 +58,8 @@ export interface House {
   audio: import("./audio/audio-service.js").AudioLetterService;
   /** Audio transcriber client for faster-whisper. */
   transcriber?: import("./audio/transcriber.js").AudioTranscriber;
-  /** The outbound relay (SPEC §5 #13) — null when dormant/refused. */
-  outbound: OutboundRelay | null;
+  /** Outbound seam retired 2026-11-07 — house does not do outbound mail. */
+  outbound?: null;
   /** The mailbox sync drive (SPEC §5 #12) — null when no accounts
    *  provisioned; the house syncs when it has mailboxes to sync. */
   mailbox: MailboxSyncDrive | null;

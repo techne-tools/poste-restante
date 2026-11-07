@@ -151,7 +151,7 @@ import { QdrantSemanticStore } from "./qdrant/store.js";
 import { type PayloadStore, NoopPayloadStore } from "./minio/store.js";
 import { S3PayloadStore } from "./minio/s3-store.js";
 import { IngestionPipeline } from "./pipeline/pipeline.js";
-import { startOutbound, type OutboundRelay } from "./bridge/outbound.js";
+// outbound seam removed (2026-11-07): no outbound mail from the house.
 import { MailboxAccountsService } from "./bridge/mailbox-accounts.js";
 import { MailboxSyncDrive } from "./bridge/mailbox-drive.js";
 import { Retrieval } from "./retrieval/retrieval.js";
@@ -221,10 +221,7 @@ export async function buildHouse(
   // the pipeline to write its own letters. By the time any letter is
   // ingested, `participation` is assigned.
   let participation: ParticipationService;
-  // The outbound relay (SPEC §5 #13) is late-bound the same way: the
-  // pipeline is the single write path, the relay rides the onStored hook;
-  // by the time any letter is ingested, `outbound` is assigned.
-  let outbound: OutboundRelay | null;
+  // (outbound seam removed 2026-11-07: the house does not do outbound mail.)
   // The mailbox sync drive (SPEC §5 #12) rides the same hook — after any
   // stored letter, the residents party to it (via their provisioned
   // mailbox accounts) re-converge. Late-bound like the others: the drive
@@ -238,7 +235,6 @@ export async function buildHouse(
     log,
     (letter) => participation.record(letter),
     (letter) => {
-      const relays = outbound?.enabled ? outbound.relay(letter) : Promise.resolve(undefined);
       const syncs = mailbox ? mailbox.onStored() : Promise.resolve(undefined);
       const events = eventBus.publish({
         type: "letter:stored",
@@ -255,7 +251,7 @@ export async function buildHouse(
           });
         });
       }
-      return Promise.all([relays, syncs, events]).then(() => undefined);
+      return Promise.all([syncs, events]).then(() => undefined);
     },
   );
 
@@ -277,7 +273,6 @@ export async function buildHouse(
   const whisper = new WhisperService(db.pool, log, semantic, embedder);
   participation = new ParticipationService(db.pool, pipeline, log);
   const reads = new LetterReadsService(db.pool);
-  outbound = startOutbound({ config, log });
   mailbox = new MailboxSyncDrive(
     {
       accounts: new MailboxAccountsService(db.pool),
@@ -326,7 +321,6 @@ export async function buildHouse(
     retrieval,
     whisper,
     participation,
-    outbound,
     mailbox,
     book,
     agents,
@@ -339,7 +333,6 @@ export async function buildHouse(
     async close() {
       await queue.stop();
       await eventBus.close();
-      outbound?.close();
       mailbox?.stop();
       await db.close();
     },

@@ -5,7 +5,8 @@
   "description": "Poste Restante — a house where everything is mail. Root package delegating to the server package.",
   "workspaces": ["server", "client"],
   "overrides": {
-    "qs": "^6.16.0"
+    "qs": "^6.16.0",
+    "nodemailer": "^7.0.0"
   },
   "scripts": {
     "build": "npm run build --workspace server && npm run build --workspace client",

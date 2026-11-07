@@ -21,9 +21,9 @@ const intFromEnv = (v: string | undefined, dflt: number): number => {
 };
 
 const EmbeddingConfigSchema = z.object({
-  /** The embedding model name. Local default is the Ollama nomic-embed-text. */
-  model: z.string().default("nomic-embed-text"),
-  /** The embedding dimension. nomic-embed-text is 768. */
+  /** The embedding model name. Local default is Ollama embeddinggemma-2:740m. */
+  model: z.string().default("embeddinggemma-2:740m"),
+  /** The embedding dimension. embeddinggemma-2:740m is 768. */
   dimension: z.number().int().positive().default(768),
   /** The OpenAI-compatible base URL. Unset = local Ollama. */
   baseUrl: z.string().url().optional(),
