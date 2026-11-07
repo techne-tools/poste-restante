@@ -298,8 +298,18 @@ export async function buildHouse(
   // Constructed here, ahead of the integration seam, because §17
   // credential isolation needs the house keys to unseal integration
   // credentials at call time.
-  const houseKeys = new HouseKeysService(db.pool, log);
-  await houseKeys.ensure();
+  const houseKeys = new HouseKeysService(db.pool, log, env);
+  // Fail closed. The serving path never mints a key: a restored database
+  // missing its key row would otherwise acquire a new identity on boot and
+  // strand every collaborative letter sealed to the old one. Provisioning is
+  // the operator's act — `npm run house:key:init`. Tests provision, because
+  // they build a throwaway house per run.
+  //
+  // The private halves are not in this database at all (PLAN-crypto.md C2):
+  // they arrive as HOUSE_AGE_IDENTITY / HOUSE_ED25519_PRIVATE from the
+  // deployment's secret store, so a dump plus the letters is not enough to
+  // open a collaborative letter. docs/RUNBOOK-house-key.md is the procedure.
+  await houseKeys.ensure({ provision: env.NODE_ENV === "test" });
   const integrations = new IntegrationService(db.pool, pipeline, log, {
     houseKeys,
   });

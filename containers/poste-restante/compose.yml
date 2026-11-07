@@ -81,6 +81,15 @@ services:
       #    transcription; the house still serves (presence-not-pressure).
       REDIS_URL: redis://shared-redis:6379
       WHISPER_URL: http://whisper:9000
+      # ── the house's own private halves (SPEC §5 #15, PLAN-crypto.md C2).
+      #    These are NOT in the database — house_keys keeps the public halves
+      #    only, so a raw dump plus the letters still cannot open a
+      #    collaborative letter. Required: `:?` makes compose itself refuse to
+      #    interpolate when either is unset, the same early-failure shape
+      #    DATABASE_URL uses. Values live in .env.enc (sops+age), written by
+      #    `npm run house:key:init` — procedure in docs/RUNBOOK-house-key.md.
+      HOUSE_AGE_IDENTITY: ${HOUSE_AGE_IDENTITY:?required - see docs/RUNBOOK-house-key.md}
+      HOUSE_ED25519_PRIVATE: ${HOUSE_ED25519_PRIVATE:?required - see docs/RUNBOOK-house-key.md}
       # ── the resident (auth) — fail closed, never none.
       AUTH_MODE: ${AUTH_MODE:?AUTH_MODE must be set (basic/oidc/both)}
       HOUSE_DOMAIN: ${HOUSE_DOMAIN:-house}

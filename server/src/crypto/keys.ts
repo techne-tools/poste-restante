@@ -21,7 +21,7 @@
  * recipients are strings, encrypt returns raw bytes (armor them for
  * storage), decrypt takes raw bytes (unarmor first).
  */
-import { generateKeyPairSync, sign, verify } from "node:crypto";
+import { createPrivateKey, createPublicKey, generateKeyPairSync, sign, verify } from "node:crypto";
 import {
   Decrypter,
   Encrypter,
@@ -67,6 +67,25 @@ export function generateEd25519Keypair(): { publicKey: string; privateKey: strin
     publicKey: publicKey.export({ type: "spki", format: "der" }).toString("base64url"),
     privateKey: privateKey.export({ type: "pkcs8", format: "der" }).toString("base64url"),
   };
+}
+
+/**
+ * Derive the ed25519 public key from its private half — spki, base64url, the
+ * same encoding `generateEd25519Keypair` produces.
+ *
+ * This is how a house checks that the secret in its environment belongs to the
+ * public halves in its database: the two are a pair or they are from different
+ * houses, and there is no third state. Throws on a malformed private key.
+ */
+export function ed25519PublicOf(ed25519Private: string): string {
+  const privateKey = createPrivateKey({
+    key: Buffer.from(ed25519Private, "base64url"),
+    format: "der",
+    type: "pkcs8",
+  });
+  return createPublicKey(privateKey)
+    .export({ type: "spki", format: "der" })
+    .toString("base64url");
 }
 
 /** Generate a fresh age identity (X25519). Async — the library is async. */

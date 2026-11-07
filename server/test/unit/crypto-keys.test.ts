@@ -7,6 +7,7 @@
  */
 import { describe, it, expect } from "vitest";
 import {
+  ed25519PublicOf,
   generateEd25519Keypair,
   generateHouseKeypair,
   generateResidentKeypair,
@@ -92,5 +93,16 @@ describe("keypair generation", () => {
     expect(house.ageRecipient.startsWith("age1")).toBe(true);
     expect(house.ed25519Public.length).toBeGreaterThan(40);
     expect(house.ageIdentity.startsWith("AGE-SECRET-KEY-1")).toBe(true);
+  });
+
+  it("derives the ed25519 public half from its private half — the custody check", () => {
+    // The house proves a secret belongs to a stored public half by deriving
+    // one from the other. A different private key must derive something else,
+    // or "the secret matches the database" would mean nothing.
+    const ed = generateEd25519Keypair();
+    expect(ed25519PublicOf(ed.privateKey)).toBe(ed.publicKey);
+    expect(ed25519PublicOf(generateEd25519Keypair().privateKey)).not.toBe(ed.publicKey);
+    // Malformed input throws rather than returning something plausible.
+    expect(() => ed25519PublicOf("not-a-key")).toThrow();
   });
 });

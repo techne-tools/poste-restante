@@ -71,8 +71,9 @@ export interface LetterBody {
  * The sealed body (SPEC §15) — ciphertext the house stores but never
  * reads. The envelope keeps the pointers; the subject moves into the body
  * (the one envelope field that is pure content). The house verifies the
- * signature on ingest and at rest; it never embeds, FTSes, or whispers
- * sealed bodies.
+ * signature on ingest — the read path does not re-verify it, and this
+ * comment claimed otherwise until 2026-11-07; it never embeds, FTSes, or
+ * whispers sealed bodies.
  */
 export interface SealedLetterBody {
   format: "sealed";

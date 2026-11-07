@@ -145,11 +145,16 @@ export class IntegrationService {
    *  are age-encrypted at rest with the house's own key (§17: "age-encrypted
    *  at rest; the house passes them to the server at call time"). The agent
    *  never sees a shared credential; the integration never sees the house's
-   *  keys. Overwrites any prior credentials. */
+   *  keys. Overwrites any prior credentials.
+   *
+   *  Sealing needs only the house's PUBLIC half, so this works on a house
+   *  whose secret store is not to hand — which is exactly when an operator is
+   *  setting credentials up. Unsealing them, below, does need the private
+   *  half. */
   async setCredentials(id: string, credentials: Record<string, string>): Promise<void> {
-    const key = await this.houseKeys?.get();
-    if (!key) throw new Error("integration:no-house-keys — the house cannot seal credentials");
-    const enc = await sealToRecipients(JSON.stringify(credentials), [key.ageRecipient]);
+    const pub = await this.houseKeys?.publicHalves();
+    if (!pub) throw new Error("integration:no-house-keys — the house cannot seal credentials");
+    const enc = await sealToRecipients(JSON.stringify(credentials), [pub.ageRecipient]);
     await this.pool.query(
       `UPDATE integrations SET credentials_enc = $2 WHERE id = $1`,
       [id, enc],

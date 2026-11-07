@@ -21,7 +21,11 @@ import { BookService } from "./book/service.js";
 import { startGapScheduler } from "./whisper/scheduler.js";
 import { startAgentSweepScheduler } from "./agents/scheduler.js";
 import { startSmtpBridge } from "./bridge/smtp.js";
+import { loadDotEnv } from "./env.js";
 import { findThreadBySubject } from "./bridge/threads.js";
+
+// `server/.env` if present; the process environment always wins over it.
+loadDotEnv();
 
 const PORT = Number.parseInt(process.env.PORT ?? "8787", 10);
 

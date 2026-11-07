@@ -30,6 +30,9 @@ dist-ssr
 *.sln
 *.sw?
 
+# Kanban worktrees (one per card; never committed)
+.worktrees/
+
 # Impeccable tooling — reinstall per worktree via: npx impeccable install
 .agent/
 .agents/skills/

@@ -39,6 +39,7 @@ export function createHouseWordsRoutes(
     if (!house.config.houseMetaPublic && !who) {
       return c.json({ error: { code: "unauthorized", message: "the house does not know you" } }, 401);
     }
+    const housePublic = await house.houseKeys.publicHalves();
     return c.json({
       houseName: house.config.houseName,
       pubName: house.config.pubName,
@@ -57,9 +58,11 @@ export function createHouseWordsRoutes(
       // The house's public halves (SPEC §15, second model) — the
       // composer seals *with* the house by including house@house in
       // the recipients; the house opens only the collaborative letters
-      // it is party to. Public keys are public.
-      houseAgeRecipient: (await house.houseKeys.get())?.ageRecipient ?? null,
-      houseEd25519Public: (await house.houseKeys.get())?.ed25519Public ?? null,
+      // it is party to. Public keys are public, so this path never needs
+      // the private halves and works on a house whose secret store is
+      // missing (which is when an operator needs to see them).
+      houseAgeRecipient: housePublic?.ageRecipient ?? null,
+      houseEd25519Public: housePublic?.ed25519Public ?? null,
       houseAddress: "house@house",
     });
   });
