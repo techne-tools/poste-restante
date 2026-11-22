@@ -30,3 +30,6 @@ jobs:
           # Only this repo's own workflows. Vendored upstream trees that ship
           # composite actions (e.g. JUCE/) are not ours to police.
           inputs: .github/workflows
+          # Gate on high; lower severities still print in the run log. Without
+          # this the job reds on a single style warning and gets muted.
+          min-severity: high
