@@ -47,7 +47,7 @@
     "mailparser": "^3.9.20",
     "nodemailer": "^9.1.1",
     "pg": "^8.23.0",
-    "smtp-server": "^3.19.7",
+    "smtp-server": "^3.21.4",
     "zod": "^4.5.2"
   },
   "devDependencies": {
