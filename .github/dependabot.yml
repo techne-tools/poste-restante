@@ -1,0 +1,41 @@
+# Emitted by agent-dispatch bin/repo-bootstrap.sh.
+#
+# github-actions is ALWAYS scheduled, because action pins must move when
+# upstream publishes a patch (usually its own security fix). Source ecosystems
+# appear only when their manifest is present. Where a repo pins exactly, the
+# scheduled bumps are churn — either drop that ecosystem here or update by hand;
+# CVE-only updates arrive through Settings -> Code security -> Dependabot
+# security updates regardless of this file.
+
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 3
+    labels: ["dependencies", "ci"]
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 3
+    labels: ["dependencies"]
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    groups:
+      npm-dev:
+        dependency-type: "development"

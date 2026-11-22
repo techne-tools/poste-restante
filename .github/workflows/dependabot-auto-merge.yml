@@ -1,0 +1,43 @@
+# Emitted by agent-dispatch bin/repo-bootstrap.sh.
+#
+# `gh pr merge --auto` merges IMMEDIATELY when the base branch has no required
+# checks — a red build would land. `gh pr checks --watch` waits for this PR's
+# checks and exits non-zero on failure, so the merge only happens on green, and
+# exits non-zero with no checks at all: never merge blind.
+#
+# Deliberately `pull_request`, not `pull_request_target`: the target trigger runs
+# with a write token in the base repo's context, and Dependabot PRs get write
+# permissions on the plain trigger anyway. Nothing here checks out code either.
+name: Dependabot Auto-Merge
+
+on: pull_request
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: read
+
+jobs:
+  auto-merge:
+    # The PR author, not github.actor: the actor is spoofable by a commit author
+    # string, the PR's user login is not.
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@v3
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Merge patch + minor updates once CI is green
+        if: contains(fromJSON('["version-update:semver-patch", "version-update:semver-minor"]'), steps.metadata.outputs.update-type)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          if gh pr checks "$PR_URL" --watch --fail-fast; then
+            gh pr merge --squash --delete-branch "$PR_URL"
+          else
+            gh pr comment "$PR_URL" --body "Auto-merge held: CI is not green on this head. Review before merging."
+          fi

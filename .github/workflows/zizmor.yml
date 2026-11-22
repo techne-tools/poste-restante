@@ -1,0 +1,32 @@
+name: Workflow security (zizmor)
+
+# Emitted by agent-dispatch. actionlint (in ci.yml) checks that workflow YAML is
+# valid; zizmor checks that it is safe — script injection via ${{ }}, over-broad
+# permissions, credential persistence. advanced-security: false so this works on
+# a private repo without GHAS and fails the job on findings (the GHAS mode does
+# not fail; it only uploads SARIF).
+
+on:
+  push:
+  pull_request:
+
+permissions: {}
+
+jobs:
+  zizmor:
+    name: zizmor
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Run zizmor
+        uses: zizmorcore/zizmor-action@v0.8.1
+        with:
+          advanced-security: false
+          # Only this repo's own workflows. Vendored upstream trees that ship
+          # composite actions (e.g. JUCE/) are not ours to police.
+          inputs: .github/workflows

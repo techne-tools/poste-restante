@@ -1,0 +1,29 @@
+# Emitted by agent-dispatch bin/repo-bootstrap.sh.
+#
+# CodeRabbit is an advisory reviewer: its approval is not a merge gate, CI is.
+# Auto-review is on for source and off for lockfiles, builds and vendored trees,
+# so it speaks once per real change. To silence it entirely set
+# reviews.auto_review.enabled: false — the bot stays summonable on any PR with
+# `@coderabbitai review`.
+language: "en-AU"
+reviews:
+  profile: "quiet"
+  request_changes_workflow: false
+  poem: false
+  in_progress_fortune: false
+  auto_review:
+    enabled: true
+    drafts: false
+    auto_incremental_review: true
+    ignore_title_keywords: ["WIP", "wip", "chore(release)"]
+  path_filters:
+    - "!**/*.lock"
+    - "!**/package-lock.json"
+    - "!**/dist/**"
+    - "!**/build/**"
+    - "!**/node_modules/**"
+    - "!**/.venv/**"
+    - "!**/target/**"
+  path_instructions:
+    - path: "**/*.sh"
+      instructions: "Flag unquoted expansions, a missing `set -euo pipefail`, and any `rm -rf` without a guard."

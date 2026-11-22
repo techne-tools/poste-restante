@@ -1,0 +1,30 @@
+name: Case collisions
+
+# Emitted by agent-dispatch. The working copy is macOS (case-insensitive) and
+# the runner is Linux (case-sensitive): two tracked paths differing only by case
+# merge fine locally and collide in git. Cheap check, no dependencies.
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  case-collision:
+    name: Case collisions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Fail on tracked paths that differ only by case
+        run: |
+          dupes=$(git ls-files | tr '[:upper:]' '[:lower:]' | sort | uniq -d)
+          if [ -n "$dupes" ]; then
+            echo "case-colliding paths:"
+            echo "$dupes"
+            exit 1
+          fi
+          echo "no case collisions"
