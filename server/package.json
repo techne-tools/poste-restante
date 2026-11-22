@@ -36,7 +36,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1127.0",
-    "@hono/node-server": "^2.1.1",
+    "@hono/node-server": "^2.1.8",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@qdrant/js-client-rest": "^1.19.0",
     "age-encryption": "0.3.1",
